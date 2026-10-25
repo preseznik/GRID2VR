@@ -237,6 +237,7 @@ $preflight.keepHorizonLevel=!$RecenterTilt
 $preflight.untilExit=[bool]$UntilExit
 $preflight.playerControlProbe=$PlayerControlProbe
 $preflight.playerControlOnly=[bool]$PlayerControlOnly
+$preflight.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly)
 $preflight.backgroundPlay=$BackgroundPlay
 $preflight.xrRuntime=$XrRuntime
 $preflight.headsetSettings=Get-HeadsetSettings $HeadsetScale

@@ -12,14 +12,16 @@ function Find-TestStatement($Ast,[string]$Text) {
     return [scriptblock]::Create($statement.Extent.Text)
 }
 $start=Read-TestAst 'Start-UserSession.ps1'
-$bind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n@{mode=`$LaunchMode;opponents=`$Opponents;laps=`$Laps;replays=`$VrReplayCameras;garage=`$VrGarageMenus}")
+$bind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n@{mode=`$LaunchMode;opponents=`$Opponents;opponentCars=`$OpponentCars;laps=`$Laps;replays=`$VrReplayCameras;garage=`$VrGarageMenus}")
 $defaults=& $bind
-if($defaults.mode -ne 'Practice' -or $defaults.opponents -ne 7 -or $defaults.laps -ne 1 -or $defaults.replays -ne 1 -or $defaults.garage -ne 1) { throw 'Launch defaults changed.' }
+if($defaults.mode -ne 'Practice' -or $defaults.opponents -ne 7 -or $defaults.opponentCars -cne 'same' -or $defaults.laps -ne 1 -or $defaults.replays -ne 1 -or $defaults.garage -ne 1) { throw 'Launch defaults changed.' }
 foreach($mode in @('Normal','Practice','Race')) {
-    $bound=& $bind -LaunchMode $mode -Opponents 1 -Laps 20 -VrReplayCameras 0 -VrGarageMenus 0
-    if($bound.mode -ne $mode -or $bound.opponents -ne 1 -or $bound.laps -ne 20 -or $bound.replays -or $bound.garage) { throw 'Launch options lost during binding.' }
+    foreach($choice in @('same','mixed','class')) {
+        $bound=& $bind -LaunchMode $mode -Opponents 1 -OpponentCars $choice -Laps 20 -VrReplayCameras 0 -VrGarageMenus 0
+        if($bound.mode -ne $mode -or $bound.opponents -ne 1 -or $bound.opponentCars -cne $choice -or $bound.laps -ne 20 -or $bound.replays -or $bound.garage) { throw 'Launch options lost during binding.' }
+    }
 }
-foreach($invalid in @(@{LaunchMode='Replay'},@{Opponents=0},@{Opponents=8},@{Laps=21},@{VrReplayCameras=2},@{VrGarageMenus=2})) {
+foreach($invalid in @(@{LaunchMode='Replay'},@{Opponents=0},@{Opponents=8},@{OpponentCars='unknown'},@{Laps=21},@{VrReplayCameras=2},@{VrGarageMenus=2})) {
     $rejected=$false
     try { $null=& $bind @invalid } catch [Management.Automation.ParameterBindingException] { $rejected=$true }
     if(!$rejected) { throw 'Invalid launch option accepted.' }
@@ -96,8 +98,9 @@ try {
         $global:LASTEXITCODE=0
     }
     $python='Invoke-ModeTestPython'; $Car='z06'; $Track='cities/chicago/route_0'; $sessionLaps=20; $Opponents=7
+    foreach($OpponentCars in @('same','mixed','class')) {
     foreach($LaunchMode in @('Normal','Practice','Race')) {
-        $selection=Join-Path $fixture $LaunchMode
+        $selection=Join-Path $fixture ($LaunchMode+'-'+$OpponentCars)
         $script:pythonArguments=@(); $parameters=@{}
         . $prepare (Join-Path $root 'tools')
         . $route
@@ -112,8 +115,12 @@ try {
             if($modeIndex -lt 0 -or $captured[$modeIndex+1] -cne $LaunchMode.ToLowerInvariant() -or
                $captured -notcontains '--practice-bundle' -or $captured -notcontains 'human') { throw 'Selected mode lost guarded human entry.' }
             if($LaunchMode -eq 'Race' -and ($opponentIndex -lt 0 -or $captured[$opponentIndex+1] -ne 7)) { throw 'Race opponent count was lost.' }
+            $carsIndex=[Array]::IndexOf($captured,'--opponent-cars')
+            if($LaunchMode -eq 'Race' -and ($carsIndex -lt 0 -or $captured[$carsIndex+1] -cne $OpponentCars)) { throw 'Race opponent car choice was lost.' }
+            if($LaunchMode -eq 'Practice' -and $carsIndex -ge 0) { throw 'Practice acquired a race opponent choice.' }
             if($LaunchMode -eq 'Practice' -and $opponentIndex -ge 0) { throw 'Practice gained AI opponents.' }
         }
+    }
     }
 
     foreach($name in @('Run-StereoProbe.ps1','Run-Diagnostic.ps1')) {

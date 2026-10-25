@@ -113,6 +113,7 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'Recenter-Key.ps1')
 Assert-RecenterKey $RecenterKey $RecenterModifiers
 . (Join-Path $PSScriptRoot 'Recenter-Device.ps1')
+. (Join-Path $PSScriptRoot 'Borderless-Desktop.ps1')
 Assert-RecenterDevice (Split-Path $PSScriptRoot -Parent) $RecenterDeviceBase64
 . (Join-Path $PSScriptRoot 'Practice-Flow.ps1')
 . (Join-Path $PSScriptRoot 'Native-Startup.ps1')
@@ -420,6 +421,7 @@ $receipt.vrGarageMenus=[bool]$VrGarageMenus
 $receipt.frontendSceneAudit=[bool]$FrontendSceneAudit
 $receipt.playerControlProbe=$PlayerControlProbe
 $receipt.playerControlOnly=[bool]$PlayerControlOnly
+$receipt.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly)
 $receipt.backgroundPlay=$BackgroundPlay
 if ($selectedSession) { $receipt.selectedSession=$selectedSession }
 $before=@(Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\GRID 2') -Recurse -File | ForEach-Object {@{path=$_.FullName;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}})
@@ -479,6 +481,10 @@ try {
                 if ($process) { $null=$process.Handle; $handles[[int]$p.ProcessId]=$process }
                 $receipt.processes+=@{id=$p.ProcessId;parent=$p.ParentProcessId;path=$p.ExecutablePath;commandLine=$p.CommandLine;createdUtc=$identity.createdUtc}
                 if ($UntilExit -or $RecenterDeviceBase64) { $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'session.json') }
+                if($RuntimeSession -and $UntilExit -and $PlayerControlOnly -and $process) {
+                    try { Start-DesktopBorderless $root $run $process }
+                    catch { Write-Warning "Desktop borderless unavailable; retaining windowed play: $_" }
+                }
                 if($RecenterDeviceBase64 -and $RuntimeSession -and $XrProjection -and $process) {
                     try { Start-RecenterDevice $root $run $RecenterDeviceBase64 $process }
                     catch { [IO.File]::WriteAllText((Join-Path $run 'recenter-controller.json'),(@{result=$_.Exception.Message;requests=0} | ConvertTo-Json)); Write-Warning "Device recenter unavailable: $_" }

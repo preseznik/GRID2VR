@@ -30,6 +30,7 @@ internal static class SelfTests
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-settings.json"), "{\"Car\":\"pag\",\"Track\":\"p2p/okutama/route_1\",\"Runtime\":\"VDXR\"}");
             Check(client.Load() == (defaults with { ModernInterface = false })); // Existing settings retain Classic and gain F10.
             Check(!client.Load().SkipIntro && !client.Load().DiagnosticLogging);
+            Check(client.Load().OpponentCars == "same");
             Check(!client.Load().PerformanceDisplay && client.Load().Graphics.HiddenHudElements == 1 && client.Load().Graphics.HudDistance == 1m);
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-settings.json"), "{\"Car\":\"z28\",\"Track\":\"circuits/brands_hatch/route_2\",\"Runtime\":\"SteamVR\",\"RecenterKey\":82,\"RecenterModifiers\":5}");
             Check(client.Load() == new Choices("z28", "circuits/brands_hatch/route_2", "SteamVR", 82, 5, 1) { ModernInterface = false }); // Old choices gain one lap and retain Classic.
@@ -293,6 +294,7 @@ internal static class SelfTests
             using var invalidSize = JsonDocument.Parse("{\"scene\":{\"width\":\"3840\",\"height\":2160},\"sceneObserved\":true}");
             Check(LauncherPresentation.MeasuredScene(invalidSize.RootElement, true) == "Current session: scene not yet measured.");
             LaunchModeTests.Run(client);
+            DesktopWindowTests.Run(fixture);
             CockpitTests.Run(client);
             LauncherFeaturesTests.Run(fixture);
             InstallationTests.Run(fixture);

@@ -1,0 +1,10 @@
+[
+  {"id": "hot_hatches", "label": "Hot hatches", "cars": ["foc", "giu", "gol"]},
+  {"id": "muscle", "label": "Muscle cars", "cars": ["bos", "cha", "crt", "css", "mac", "z28"]},
+  {"id": "road_sports", "label": "Road sports", "cars": ["190", "300", "37r", "a4c", "b1m", "bm3", "brz", "c63", "e30", "gen", "nsx", "rs5", "rx1", "s15", "s20", "sky", "ttr"]},
+  {"id": "grand_tourers", "label": "Grand tourers", "cars": ["a8c", "sl6", "slr", "van", "xkr", "zag"]},
+  {"id": "supercars", "label": "Supercars", "cars": ["177", "bug", "koe", "mf1", "mp4", "pag", "vip", "z06", "zen"]},
+  {"id": "track_specials", "label": "Track specials", "cars": ["ato", "bac", "cat", "ktm"]},
+  {"id": "touring", "label": "Touring cars", "cars": ["320", "crz", "s60", "scr"]},
+  {"id": "gt_race", "label": "GT race cars", "cars": ["r8l", "sls"]}
+]

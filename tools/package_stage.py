@@ -3,7 +3,9 @@ import argparse, ast, hashlib, json, shutil, sys, zipfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parent.parent
+DATA_FILES=['cockpit-assets.json','cockpit-cars.json','cockpit-defaults.json','car-classes.json']
 SCRIPTS=['Paths','Setup-Package','Start-UserSession','Run-StereoProbe','Run-Diagnostic','Write-DiagnosticReceipt','Save-BenchmarkReports','User-Session','Session-Control','Finish-Diagnostic','Profiles','Cockpit-Camera','Cockpit-Assets','Recenter-Device','Recenter-Key','Headset-Settings','OpenXR-Runtime','Practice-Flow','Native-Startup','Startup-Movies','Cinema-Matte','Instance-Capacity','Driving-Controls','Flicker-Automation','Launcher-VrPreview']
+SCRIPTS += ['Borderless-Desktop']
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def copy(source,target):
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
@@ -32,7 +34,7 @@ def stage(a):
                     target=mod/'tools'/dependency.name;copy(dependency,target);included.add(name);pending.append(target)
     for name in ['stereo-probe-settings.xml','practice-settings.xml']:
         copy(ROOT/'tools'/name,mod/'tools'/name)
-    for name in ['cockpit-assets.json','cockpit-cars.json','cockpit-defaults.json']:copy(ROOT/'tools/data'/name,mod/'tools/data'/name)
+    for name in DATA_FILES:copy(ROOT/'tools/data'/name,mod/'tools/data'/name)
     copy(ROOT/'README.md',mod/'README.md');copy(ROOT/'CHANGELOG.md',mod/'CHANGELOG.md')
     tree(ROOT/'licenses',mod/'licenses')
     tree(Path('C:/Program Files/PowerShell/7'),payload/'powershell',('*.pdb','*.xml','ref','SDK','en-US'))

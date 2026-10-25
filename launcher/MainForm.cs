@@ -10,7 +10,8 @@ internal sealed class MainForm : LauncherForm
     private readonly ProfilePanel profiles;
     private readonly UpdatesPanel updates;
     private readonly ComboBox car = Choice("PracticeCar"), track = Choice("PracticeTrack"), eventChoice = Choice("PracticeEvent"), runtime = Choice("Runtime");
-    private readonly ComboBox launchMode = Choice("LaunchMode");
+    private readonly ComboBox launchMode = Choice("LaunchMode"), opponentCars = Choice("OpponentCars");
+    private readonly Label opponentHint = TextLabel("");
     private readonly TextBox carSearch = new() { Name = "CarSearch", AccessibleName = "Find car", PlaceholderText = "Name, manufacturer or code", Dock = DockStyle.Fill };
     private readonly Label carCount = TextLabel("");
     private ContentItem[] cars = [];
@@ -98,8 +99,12 @@ internal sealed class MainForm : LauncherForm
         selection = selectionColumns.Second;
         Section(selection, "Race options");
         Field(selection, "Opponents", opponents);
+        opponentCars.Items.AddRange(new ContentItem[] { new("same", "Same car"), new("mixed", "Mixed"), new("class", "Same class") });
+        opponentCars.SelectedIndex = 0;
+        Field(selection, "Opponent cars", opponentCars);
+        opponentHint.Name = "OpponentHint"; selection.Controls.Add(opponentHint);
         Field(selection, "Laps (circuits)", laps); selection.Controls.Add(lapsHint);
-        Field(selection, "Conditions", TextLabel("Day / dry · Race opponents use your selected car"));
+        Field(selection, "Conditions", TextLabel("Day / dry"));
         Section(selection, "Requested session");
         requestedSession.Name = "RequestedSession"; selection.Controls.Add(requestedSession);
         selection.Controls.Add(TextLabel("Normal opens the game's menus. Practice starts solo; Race adds computer-controlled opponents. Car, track and laps apply to Practice and Race."));
@@ -146,7 +151,7 @@ internal sealed class MainForm : LauncherForm
         Section(graphics, "Desktop");
         desktopMsaa.Items.AddRange(new ContentItem[] { new("off", "Off"), new("2xmsaa", "2× MSAA"), new("4xmsaa", "4× MSAA"), new("8xmsaa", "8× MSAA") });
         Field(graphics, "VSync", desktopVSync); Field(graphics, "Anti-aliasing (MSAA)", desktopMsaa);
-        graphics.Controls.Add(TextLabel("Desktop VSync and anti-aliasing apply only to Launch. Launch VR keeps its existing settings."));
+        graphics.Controls.Add(TextLabel("Launch starts borderless and fills the game window's monitor. Desktop VSync and anti-aliasing apply only to Launch. Launch VR keeps its existing settings."));
         graphics.Controls.Add(graphicsDefaults);
         graphics.Controls.Add(TextLabel("Defaults reproduce the working profile exactly. Other settings need game/headset checks. Changes apply to the next launch; original game settings are restored afterward."));
         renderScale.ValueChanged += (_, _) => UpdateSceneResolution();
@@ -257,6 +262,7 @@ internal sealed class MainForm : LauncherForm
         runtime.SelectedIndexChanged += (_, _) => UpdateRequestedSession();
         laps.ValueChanged += (_, _) => UpdateRequestedSession();
         opponents.ValueChanged += (_, _) => UpdateRequestedSession();
+        opponentCars.SelectedIndexChanged += (_, _) => UpdateRequestedSession();
         launchMode.SelectedIndexChanged += (_, _) => { UpdateRequestedSession(); EnableActions(); };
 
         desktop.Click += async (_, _) => await Act(() => Launch(false));
@@ -340,6 +346,7 @@ internal sealed class MainForm : LauncherForm
         runtime.SelectedItem = choices.Runtime;
         laps.Value = choices.Laps;
         opponents.Value = choices.Opponents; SelectChoice(launchMode, choices.LaunchMode);
+        SelectChoice(opponentCars, choices.OpponentCars);
         ApplyGraphics(choices.Graphics);
         modernInterface.Checked = choices.ModernInterface;
         previewVrFixes.Checked = choices.PreviewVrFixes;
@@ -372,14 +379,21 @@ internal sealed class MainForm : LauncherForm
         carCount.Text = matches.Length == 0 ? "No matching cars. Clear or change the search." : $"{matches.Length} of {cars.Length} installed cars";
         UpdateRequestedSession(); EnableActions();
     }
-    private void UpdateRequestedSession() => requestedSession.Text = LauncherPresentation.RequestedSession(
-        car.SelectedItem as ContentItem, track.SelectedItem as ContentItem, runtime.SelectedItem as string, recenterKey, recenterModifiers, laps.Value,
-        ChoiceId(launchMode), opponents.Value) + (!AppPaths.Packaged(client.Root) && previewVrFixes.Checked ? "\nPreview VR fixes enabled" : "");
+    private void UpdateRequestedSession()
+    {
+        var vehicle = car.SelectedItem as ContentItem;
+        var mode = ChoiceId(launchMode);
+        var rivals = ChoiceId(opponentCars);
+        opponentHint.Text = LauncherPresentation.OpponentHint(vehicle, cars, mode, rivals);
+        requestedSession.Text = LauncherPresentation.RequestedSession(
+            vehicle, track.SelectedItem as ContentItem, runtime.SelectedItem as string, recenterKey, recenterModifiers, laps.Value,
+            mode, opponents.Value, rivals) + (!AppPaths.Packaged(client.Root) && previewVrFixes.Checked ? "\nPreview VR fixes enabled" : "");
+    }
     private Choices Current() => new(((ContentItem)car.SelectedItem!).Id, ((ContentItem)track.SelectedItem!).Id, (string)runtime.SelectedItem!, recenterKey, recenterModifiers, (int)laps.Value)
     {
         Graphics = CurrentGraphics(), ModernInterface = modernInterface.Checked, PreviewVrFixes = previewVrFixes.Checked,
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
-        LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked,
+        LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked,
         VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
     };
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
@@ -493,7 +507,7 @@ internal sealed class MainForm : LauncherForm
         carSearch.Enabled = car.Enabled = track.Enabled = eventChoice.Enabled = !normal && !busy && !active && !pending;
         var pointToPoint = track.SelectedItem is ContentItem route && SessionClient.IsPointToPoint(route.Id);
         laps.Enabled = loaded && idle && !normal && !pointToPoint && !capturingRecenter;
-        opponents.Enabled = loaded && idle && ChoiceId(launchMode) == "Race" && !capturingRecenter;
+        opponentCars.Enabled = opponents.Enabled = loaded && idle && ChoiceId(launchMode) == "Race" && !capturingRecenter;
         lapsHint.Text = normal ? "Normal uses the event options you choose in the game." : pointToPoint ? "Point-to-point route: one run. Your circuit lap setting is kept." : "Choose 1–20 laps for circuit and city routes.";
         recover.Enabled = known && pending && !active && !busy;
         recenter.Enabled = drivingControls.Enabled = loaded && idle;
@@ -525,7 +539,8 @@ internal sealed class MainForm : LauncherForm
     {
         tips.SetToolTip(help, "Help / About and instructions. You can also press F1.");
         tips.SetToolTip(launchMode, "Normal opens the game menus. Practice starts a selected solo event. Race adds computer-controlled opponents.");
-        tips.SetToolTip(opponents, "Race mode: 1–7 computer-controlled opponents, using the selected car. Practice stays solo.");
+        tips.SetToolTip(opponents, "Race mode: 1–7 computer-controlled opponents. Practice stays solo.");
+        tips.SetToolTip(opponentCars, "Same car matches your car. Mixed uses any installed selectable model. Same class uses your car's vehicle category, without tier restrictions. Race mode only.");
         tips.SetToolTip(replay3d, "Keep recorded replays in tracked 3D when supported. Off shows them on the existing VR screen. Driving stays in 3D; apply on the next VR launch.");
         tips.SetToolTip(garage3d, "Show the garage menus in tracked 3D. Off uses the stationary VR screen. Loading and ordinary flat menus stay on that screen. Applies on the next VR launch.");
         tips.SetToolTip(drivingControls, DrivingControls.RuntimeNotice);

@@ -61,6 +61,7 @@ target_include_directories(garage_presentation_test PRIVATE src)
 add_test(NAME guarded_garage_presentation COMMAND garage_presentation_test
     "${CMAKE_SOURCE_DIR}/tests/fixtures/native-garage-state-183323.txt")
 add_test(NAME launcher_launch_modes COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-LaunchModes.ps1")
+add_test(NAME launcher_desktop_borderless COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-DesktopBorderless.ps1")
 add_test(NAME career_profile_routing COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-Profiles.ps1")
 add_executable(profile_storage_test tests/profile_storage_test.cpp src/profile_storage.cpp)
 target_include_directories(profile_storage_test PRIVATE src)

@@ -1,3 +1,10 @@
+# GRID2VR 0.1.3 — Stable
+
+- Choose Same car, Mixed or Same class for Race opponents.
+- Same class groups cars by vehicle type; Mixed draws from all installed selectable models.
+- Remember your opponent car choice between launches and show the selected class in Race options.
+- Start desktop Normal, Practice and Race sessions in borderless windowed mode.
+
 # GRID2VR 0.1.2 — Stable
 
 - Fix VR failing to enter gameplay when the instance-buffer diagnostic log fills.

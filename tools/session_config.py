@@ -7,7 +7,9 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import random
 import re
+import secrets
 import stat
 import subprocess
 import xml.etree.ElementTree as ET
@@ -16,7 +18,7 @@ SUPPORTED_AVX_SHA256 = '519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0
 SESSION_FILENAME = 'GRID2VR.session.xml'
 TOKEN = re.compile(r'[a-z0-9_]+\Z')
 # Shipped example_benchmark.xml uses eight cars, grids 0..7 and these opponent
-# presets. Keep one selected car/livery for the whole grid; do not infer classes.
+# presets. Opponent model choices retain those drivers and grid positions.
 RACE_DRIVERS = ('Average2_1', 'Average3_1', 'Ayala_1_1', 'Alvarez_1_1',
                 'Bakheet_1_1', 'Banerjee_1_1', 'Bantao_1_1')
 
@@ -54,6 +56,9 @@ def catalog(game_root):
     root = plain_path(game_root)
     if not regular(root/'grid2_avx.exe'):
         raise ValueError('GRID 2 AVX executable is missing')
+    # Launcher vehicle categories, deliberately independent of performance tiers.
+    groups = json.loads(plain_path(Path(__file__).parent/'data/car-classes.json').read_text(encoding='utf-8'))
+    classes = {car: group for group in groups for car in group['cars']}
     cars = []
     for folder in children(root/'cars/models'):
         # Do not advertise incomplete loose cars or infer ownership from codes.
@@ -62,7 +67,9 @@ def catalog(game_root):
         liveries = [p.name.removeprefix('livery_') for p in children(folder)
                     if p.name.startswith('livery_') and len(p.name) > len('livery_')]
         if liveries:
-            cars.append(dict(id=folder.name, liveries=liveries))
+            group = classes.get(folder.name, {})
+            cars.append(dict(id=folder.name, liveries=liveries,
+                             classId=group.get('id'), className=group.get('label')))
     tracks = []
     for category in ('circuits', 'cities', 'p2p'):
         for location in children(root/'tracks/locations'/category):
@@ -77,11 +84,15 @@ def catalog(game_root):
                 limits='Loose installed content only; labels are game codes. Presence does not prove launch compatibility. Packaged-only DLC and player control are not inferred.')
 
 
-def configuration(installed, car, track, livery='user', mode='benchmark', lighting='day', weather='dry', laps=1, control='ai', cycle_camera=False, opponents=0):
+def configuration(installed, car, track, livery='user', mode='benchmark', lighting='day', weather='dry', laps=1, control='ai', cycle_camera=False, opponents=0, opponent_cars='same', opponent_seed=0):
     if (mode, control) not in (('benchmark', 'ai'), ('attract', 'ai'), ('practice', 'human'), ('race', 'human')):
         raise ValueError('Human control requires practice or race mode and its guarded flow bundle')
     if type(opponents) is not int or (mode == 'race' and not 1 <= opponents <= 7) or (mode != 'race' and opponents != 0):
         raise ValueError('Race requires 1 to 7 opponents; other modes require zero')
+    if opponent_cars not in ('same', 'mixed', 'class'):
+        raise ValueError('Unknown opponent car selection')
+    if type(opponent_seed) is not int or not 0 <= opponent_seed < 2**64:
+        raise ValueError('Invalid opponent grid seed')
     if lighting not in ('day', 'day_alt', 'night', 'night_alt') or weather not in ('dry', 'wet'):
         raise ValueError('Unsupported session mode or conditions')
     if type(laps) is not int or not 1 <= laps <= 20:
@@ -102,8 +113,21 @@ def configuration(installed, car, track, livery='user', mode='benchmark', lighti
     # The native loader still needs its shipped driver presets. Human practice
     # comes from normal race entry, never from changing these XML attributes.
     ET.SubElement(entry, 'car', name=car, livery=livery, ai_driver='Cau_Demo_1_1', ai_driver0='Cau_Demo_1_0', grid='0')
+    pool = []
+    if mode == 'race' and opponent_cars != 'same':
+        pool = sorted((v['id'], 'user') for v in installed['cars']
+                      if v['id'] != car and 'user' in v['liveries'] and
+                      (opponent_cars == 'mixed' or (vehicle.get('classId') and v.get('classId') == vehicle['classId'])))
+        if any(not TOKEN.fullmatch(code) for code, _ in pool):
+            raise ValueError('Invalid opponent content identifier')
+    rng = random.Random(opponent_seed)
+    remaining = []
     for grid, driver in enumerate(RACE_DRIVERS[:opponents], start=1):
-        ET.SubElement(entry, 'car', name=car, livery=livery, ai_driver=driver, ai_driver0='Cau_Demo_1_0', grid=str(grid))
+        if pool and not remaining:
+            remaining = pool.copy()
+            rng.shuffle(remaining)
+        code, skin = remaining.pop() if remaining else (car, livery)
+        ET.SubElement(entry, 'car', name=code, livery=skin, ai_driver=driver, ai_driver0='Cau_Demo_1_0', grid=str(grid))
     ET.indent(config, space='  ')
     return ET.tostring(config, encoding='utf-8', xml_declaration=True)+b'\n'
 
@@ -133,6 +157,9 @@ def prepare(game_root, output, practice_bundle=None, **selection):
     digest = hashlib.sha256(executable.read_bytes()).hexdigest()
     if digest != SUPPORTED_AVX_SHA256:
         raise ValueError('Unsupported GRID 2 AVX fingerprint')
+    if selection.get('mode') == 'race' and selection.get('opponent_cars', 'same') in ('mixed', 'class'):
+        # Persist once: verification/staging must reconstruct the very same grid.
+        selection.setdefault('opponent_seed', secrets.randbits(64))
     payload = configuration(installed, **selection)
     mode = selection.get('mode', 'benchmark')
     control = selection.get('control', 'ai')
@@ -253,6 +280,7 @@ def main():
     selected.add_argument('--weather', choices=('dry', 'wet'), default='dry')
     selected.add_argument('--laps', type=int, default=1)
     selected.add_argument('--opponents', type=int, default=0)
+    selected.add_argument('--opponent-cars', choices=('same', 'mixed', 'class'), default='same')
     selected.add_argument('--control', choices=('ai', 'human'), default='ai')
     selected.add_argument('--cycle-camera', action='store_true')
     selected.add_argument('--practice-bundle', type=Path)

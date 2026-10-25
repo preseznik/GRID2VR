@@ -43,6 +43,7 @@ internal static class ResponsiveLayoutTests
             using var form = new MainForm(fixture, profileStore);
             ((ProfilePanel)form.Controls.Find("ProfilePanel", true).Single()).Reload();
             LauncherAppearance.Modern = modern; LauncherAppearance.Apply(form);
+            LaunchModeTests.RunForm(form);
             var tabs = (TabControl)form.Controls.Find("LauncherTabs", true).Single();
             var controlTabs = (TabControl)form.Controls.Find("ControlTabs", true).Single();
             Require(controlTabs.TabPages.Cast<TabPage>().Select(p => p.Text).SequenceEqual(new[] { "General", "VR", "Driving", "Seat" }), "Controls subtabs changed.");
@@ -99,8 +100,10 @@ internal static class ResponsiveLayoutTests
                         evidence.Add(new { page = page.Text, modern, width, height = content.Height,
                             columns = columns?.Second.Left > 0 ? 2 : 1, rows = rows.Length,
                             minimumEditorWidth = rows.Select(r => r.Controls[1].Width).DefaultIfEmpty(0).Min(), boundsValid = true });
-                        if (width is 460 or 1320 && page.Text is "Profile" or "Graphics" or "Settings" or "Advanced" or "VR" or "Seat" or "Driving" or "General")
+                        if (width is 460 or 1320 && page.Text is "Launcher" or "Profile" or "Graphics" or "Settings" or "Advanced" or "VR" or "Seat" or "Driving" or "General")
                         {
+                            // Native combo text is omitted by this offscreen capture;
+                            // RunForm checks the selected text and state separately.
                             using var bitmap = new Bitmap(content.Width, content.Height);
                             content.DrawToBitmap(bitmap, content.ClientRectangle);
                             bitmap.Save(Path.Combine(root, "build", $"launcher-responsive-{page.Text.ToLowerInvariant()}-{width}-{(modern ? "modern" : "classic")}.png"));

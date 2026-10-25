@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version='0.1.2',[ValidateSet('Stable','Experimental')][string]$Channel='Stable',
+param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version='0.1.3',[ValidateSet('Stable','Experimental')][string]$Channel='Stable',
     [string]$InnoCompiler="$env:LOCALAPPDATA\Programs\Inno Setup 7\ISCC.exe")
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent

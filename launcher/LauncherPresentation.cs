@@ -13,13 +13,31 @@ internal static class LauncherPresentation
     public static ContentItem[] FilterCars(IEnumerable<ContentItem> cars, string query) => cars
         .Where(car => car.Label.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase) || car.Id.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray();
 
-    public static string RequestedSession(ContentItem? car, ContentItem? track, string? runtime, int key, int modifiers, int laps = 1, string mode = "Practice", int opponents = 7)
+    public static string OpponentSelection(ContentItem? car, string selection) => selection switch
+    {
+        "mixed" => "Mixed cars",
+        "class" => string.IsNullOrEmpty(car?.ClassId) ? "Same class (unknown class; same car)" : $"Same class: {car.ClassName}",
+        _ => "Same car"
+    };
+
+    public static string OpponentHint(ContentItem? car, IEnumerable<ContentItem> cars, string mode, string selection)
+    {
+        if (mode != "Race") return "Your opponent car choice is kept for Race mode.";
+        if (selection == "same") return "All opponents use your selected car.";
+        if (selection == "mixed") return "Mixed: all installed vehicle classes. Models repeat when needed.";
+        if (car == null) return "Select a car to see its class.";
+        if (string.IsNullOrEmpty(car.ClassId)) return "Unknown vehicle class: opponents use your selected car.";
+        return $"Class: {car.ClassName}. " + (cars.Any(c => c.Id != car.Id && c.ClassId == car.ClassId)
+            ? "Vehicle category; no tier restriction." : "No other installed models in this class; opponents use your car.");
+    }
+
+    public static string RequestedSession(ContentItem? car, ContentItem? track, string? runtime, int key, int modifiers, int laps = 1, string mode = "Practice", int opponents = 7, string opponentCars = "same")
     {
         var vr = $"VR: {runtime} · Recenter: {RecenterShortcut.Label(key, modifiers)}";
         if (mode == "Normal") return $"Normal launch · choose your event in the game\n{vr}";
         if (car == null || track == null || runtime == null) return "Select a car, track and runtime.";
         var length = SessionClient.IsPointToPoint(track.Id) ? "point-to-point" : $"{laps} {(laps == 1 ? "lap" : "laps")}";
-        var eventMode = mode == "Race" ? $"race · {opponents} AI {(opponents == 1 ? "opponent" : "opponents")}" : "solo practice";
+        var eventMode = mode == "Race" ? $"race · {opponents} AI {(opponents == 1 ? "opponent" : "opponents")} · {OpponentSelection(car, opponentCars)}" : "solo practice";
         return $"{car.Label}\n{track.Label}\n{vr}\nDay / dry · {eventMode} · {length}";
     }
 
@@ -48,7 +66,7 @@ internal static class LauncherPresentation
 
     public static HelpTopic[] Instructions(int key, int modifiers) =>
     [
-        new("Getting started", "1. Choose a launch mode. Normal opens GRID 2's own menus so you can choose an event in the game. Practice starts a solo session using the selected car and track. Race adds 1–7 AI opponents in the same car. The Laps slider offers 1–20 laps for circuits; point-to-point routes use one run and retain your circuit lap preference.\n\n" +
+        new("Getting started", "1. Choose a launch mode. Normal opens GRID 2's own menus so you can choose an event in the game. Practice starts a solo session using the selected car and track. Race adds 1–7 AI opponents. Opponent cars offers Same car, Mixed (any installed selectable model), and Same class (your car's vehicle category, without tier restrictions). Mixed and Same class prefer other models and repeat small pools; if none are available, opponents use your car. Unknown classes also use your car. The Laps slider offers 1–20 laps for circuits; point-to-point routes use one run and retain your circuit lap preference.\n\n" +
             "2. For VR, choose the OpenXR runtime on Settings. For VDXR, connect the headset through Virtual Desktop and keep SteamVR closed. For SteamVR, connect through SteamVR. This choice applies only to GRID2VR's session.\n\n" +
             "3. Choose Launch for desktop play or Launch VR for the headset. Both save your choices. Select GRID 2 while it loads; VR begins when the game and tracking are ready.\n\n" +
             "4. Car and track selection has been confirmed working. Not every installed combination has been driven; circuit lap counts still need an in-game completion check.\n\n" +
@@ -70,6 +88,7 @@ internal static class LauncherPresentation
             "Headset texture scale changes the finished image sent to each eye, independently of Render resolution. 100% is the current working 1280 × 720 per eye. Choose 25–200% in steps of 25; 200% sends 2560 × 1440, four times the pixels. This percentage is relative to GRID2VR's working profile, not the runtime's recommended size. Higher settings can preserve more scene detail but cannot create detail missing from the game render. It does not change world scale, tracking, FOV or refresh rate. Applies to the next VR launch; desktop practice ignores it.\n\n" +
             "Tree detail, Object detail, Crowd detail and Texture filtering use GRID 2's native settings. Defaults keep the current Ultra detail and 16× filtering. Non-default graphics still need game/headset checks.\n\n" +
             "Anti-aliasing (VR) offers Off, 2×, 4× and 8× MSAA for the game scene. It is independent of desktop anti-aliasing and defaults to Off to preserve existing settings. Higher values smooth geometry edges but use more GPU time and memory.\n\n" +
+            "Desktop Launch starts borderless and fills the monitor where the game window opens. This applies to Normal, Practice and Race. Alt+Tab and minimization remain available; Windows display resolution and refresh rate are unchanged. Launch VR keeps its existing mirror window.\n\n" +
             "Desktop VSync and Anti-aliasing (MSAA) affect Launch only. Launch VR retains its existing VSync setting, motion blur off and current shadow, ambient-occlusion and post-processing profile.\n\n" +
             "Restore graphics defaults resets only graphics choices. Save settings or launch to keep them. Changes apply to the next launch; original game settings are restored after the session.\n\n" +
             "Full-headset stereo, head tracking, keyboard driving, recentering and removing/replacing the headset have been tested through Virtual Desktop's VDXR runtime. SteamVR support is retained for later testing.\n\n" +
@@ -84,7 +103,7 @@ internal static class LauncherPresentation
             "Follow view\nOff keeps HUD and results text relative to the seated reference. On keeps it in front of your head. Recenter resets the seated reference.\n\n" +
             "These options apply to HUD and results text during stereo VR. Individual HUD elements cannot be hidden yet. Loading and pause screens use their existing room-fixed presentation; the desktop HUD is unchanged.\n\n" +
             "Save settings or relaunch VR to apply. HUD layout and non-default distances need headset verification."),
-        new("Settings and recovery", "Save settings keeps the launch mode, opponents, selected car and track, circuit laps, graphics, runtime, recenter shortcut, appearance, startup, diagnostics and VR presentation choices for the next launch. Launch and Launch VR also save them. Driving controls has its own Save button. The car search is temporary.\n\n" +
+        new("Settings and recovery", "Save settings keeps the launch mode, opponent count and car choice, selected car and track, circuit laps, graphics, runtime, recenter shortcut, appearance, startup, diagnostics and VR presentation choices for the next launch. Launch and Launch VR also save them. Driving controls has its own Save button. The car search is temporary.\n\n" +
             "Updates\nCheck the GRID2VR GitHub releases automatically at startup or manually under Settings → Updates. Experimental releases are optional. Download and install verifies the installer size and SHA-256 before starting it. Finish the game and recovery before installation. Updates never silently install. Update preferences save immediately and do not change graphics or career settings. A private or unavailable public release feed cannot provide updates; use the Releases link for details.\n\n" +
             "Skip intro / logos skips startup logo and attract movies in all launch modes using the native movie player. Pre-race camera flythroughs, the countdown and the first playable career race remain. Startup definitions and career saving stay unchanged. This option starts off, matching DiRT2VR.\n\n" +
             "Diagnostic logging saves extra troubleshooting details for the next launch. Leave it off for normal play to reduce disk usage. Essential session status, errors and recovery receipts are still kept. Open logs shows the saved files. This option starts off, matching DiRT2VR.\n\n" +

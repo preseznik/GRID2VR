@@ -2,6 +2,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
@@ -245,6 +246,15 @@ class SessionConfigurationTests(unittest.TestCase):
             self.assertFalse(staged['playerControlValidated'])
         self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
 
+    def test_same_car_xml_is_byte_identical_to_legacy_output(self):
+        # Golden digests from the pre-opponent-choice generator, including formatting.
+        for count, digest in ((1, '78664f58dca84c1f042e62033fb2c710821d2b77f842503a5fb365e561daa028'),
+                              (7, '096f62e85f95aa95c7ab4d0f24a4f9fe0b9e37e29ac928552ae84482a58aeeb3')):
+            for options in ({}, dict(opponent_cars='same', opponent_seed=1234)):
+                payload = sessions.configuration(self.installed, 'z06', 'cities/chicago/route_0',
+                    mode='race', control='human', opponents=count, **options)
+                self.assertEqual(hashlib.sha256(payload).hexdigest(), digest)
+
     def test_race_rejects_invalid_count_control_and_missing_flow(self):
         cases = [dict(mode='race', control='human', opponents=count) for count in (0, 8, -1, True, 1.5, '2')]
         cases += [dict(mode='race', opponents=1), dict(mode='race', control='human', opponents=1),
@@ -255,6 +265,122 @@ class SessionConfigurationTests(unittest.TestCase):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 self.prepare(destination, **options)
             self.assertFalse(destination.exists())
+
+    def add_car(self, code, livery='user'):
+        folder = self.root/'cars/models'/code
+        (folder/f'livery_{livery}').mkdir(parents=True)
+        (folder/'cameras.xml').write_bytes(b'native camera')
+        (folder/f'{code}_highLOD.pssg').write_bytes(b'native mesh')
+
+    def test_vehicle_categories_cover_known_models_and_leave_unknowns_unclassified(self):
+        groups = json.loads((Path(sessions.__file__).parent/'data/car-classes.json').read_text())
+        mapped = [car for group in groups for car in group['cars']]
+        labels = (Path(__file__).parents[1]/'launcher/CarNames.cs').read_text()
+        self.assertEqual(set(mapped), set(re.findall(r'\["([a-z0-9_]+)"\] =', labels)))
+        self.assertEqual(len(mapped), len(set(mapped)))
+        self.assertEqual(len({group['id'] for group in groups}), 8)
+        self.add_car('custom')
+        cars = {v['id']: v for v in sessions.catalog(self.root)['cars']}
+        self.assertEqual((cars['pag']['classId'], cars['pag']['className']), ('supercars', 'Supercars'))
+        self.assertIsNone(cars['custom']['classId'])
+        self.assertIsNone(cars['custom']['className'])
+
+    def test_opponent_modes_preserve_player_grid_and_drivers(self):
+        self.add_car('foc')
+        installed = sessions.catalog(self.root)
+        installed['cars'][next(i for i, v in enumerate(installed['cars']) if v['id'] == 'z06')]['liveries'].append('custom')
+        for choice in ('same', 'mixed', 'class'):
+            for count in (1, 7):
+                with self.subTest(choice=choice, count=count):
+                    payload = sessions.configuration(installed, 'z06', 'cities/chicago/route_0', livery='custom',
+                        mode='race', control='human', opponents=count, opponent_cars=choice, opponent_seed=42)
+                    route = ET.fromstring(payload).find('track'); cars = route.findall('car')
+                    self.assertEqual(route.get('number_cars'), str(count+1))
+                    self.assertEqual(cars[0].attrib, dict(name='z06', livery='custom', ai_driver='Cau_Demo_1_1', ai_driver0='Cau_Demo_1_0', grid='0'))
+                    self.assertEqual([v.get('grid') for v in cars], [str(i) for i in range(count+1)])
+                    self.assertEqual([v.get('ai_driver') for v in cars[1:]], list(sessions.RACE_DRIVERS[:count]))
+                    self.assertTrue(all(v.get('ai_driver0') == 'Cau_Demo_1_0' for v in cars))
+                    rivals = [v.get('name') for v in cars[1:]]
+                    if choice == 'same':
+                        self.assertEqual(set(rivals), {'z06'})
+                        self.assertTrue(all(v.get('livery') == 'custom' for v in cars))
+                    else:
+                        self.assertTrue(all(v.get('livery') == 'user' for v in cars[1:]))
+                        self.assertNotIn('z06', rivals)
+                        if choice == 'class': self.assertEqual(set(rivals), {'pag'})
+                        elif count == 7:
+                            for i in (0, 2, 4): self.assertEqual(set(rivals[i:i+2]), {'pag', 'foc'})
+
+    def test_full_mixed_pool_chooses_models_without_replacement(self):
+        for code in ('foc', 'gol', 's20', 'r8l', 'sls', 'brz'):
+            self.add_car(code)
+        installed = sessions.catalog(self.root)
+        orders = set()
+        for seed in range(4):
+            payload = sessions.configuration(installed, 'z06', 'cities/chicago/route_0', mode='race', control='human',
+                opponents=7, opponent_cars='mixed', opponent_seed=seed)
+            rivals = tuple(v.get('name') for v in ET.fromstring(payload).findall('track/car')[1:])
+            self.assertEqual(len(set(rivals)), 7)
+            self.assertNotIn('z06', rivals)
+            orders.add(rivals)
+        self.assertGreater(len(orders), 1)
+
+    def test_opponent_fallback_and_incomplete_or_nonselectable_models(self):
+        self.add_car('foc', 'team')  # No user livery: cannot be an alternative.
+        self.add_car('gol')
+        (self.root/'cars/models/gol/gol_highLOD.pssg').unlink()
+        self.add_car('custom')
+        self.add_car('other_custom')
+        installed = sessions.catalog(self.root)
+        for choice, car, expected in (('mixed', 'z06', {'pag', 'custom', 'other_custom'}),
+                                      ('class', 'custom', {'custom'}), ('class', 'foc', {'foc'})):
+            payload = sessions.configuration(installed, car, 'cities/chicago/route_0', livery='team' if car == 'foc' else 'user',
+                mode='race', control='human', opponents=7, opponent_cars=choice)
+            self.assertEqual({v.get('name') for v in ET.fromstring(payload).findall('track/car')[1:]}, expected)
+        for choice in ('mixed', 'class'):
+            payload = sessions.configuration({**installed, 'cars': [installed['cars'][0]]}, installed['cars'][0]['id'],
+                'cities/chicago/route_0', mode='race', control='human', opponents=7, opponent_cars=choice)
+            self.assertEqual(len({v.get('name') for v in ET.fromstring(payload).findall('track/car')}), 1)
+
+    def test_opponent_preferences_leave_practice_solo_and_invalid_values_are_refused(self):
+        for choice in ('same', 'mixed', 'class'):
+            payload = sessions.configuration(self.installed, 'z06', 'cities/chicago/route_0', mode='practice', control='human', opponent_cars=choice)
+            self.assertEqual(len(ET.fromstring(payload).findall('track/car')), 1)
+        for options in (dict(opponent_cars='unknown'), dict(opponent_cars=None),
+                        *(dict(opponent_seed=seed) for seed in (-1, 2**64, True, 1.5, '1', None))):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                self.prepare(Path(self.temp.name)/'invalid grid', **options)
+            self.assertFalse((Path(self.temp.name)/'invalid grid').exists())
+        forged = {**self.installed, 'cars': [*self.installed['cars'], dict(id='../foreign', liveries=['user'])]}
+        with self.assertRaises(ValueError):
+            sessions.configuration(forged, 'z06', 'cities/chicago/route_0', mode='race', control='human', opponents=1, opponent_cars='mixed')
+
+    def test_random_grid_seed_persists_through_verification_and_staging(self):
+        bundle = self.practice_bundle()
+        for code in ('foc', 'gol'): self.add_car(code)
+        before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        destination = Path(self.temp.name)/'random grid'
+        with patch.object(sessions.secrets, 'randbits', return_value=1234):
+            original = self.prepare(destination, mode='race', control='human', opponents=7, opponent_cars='mixed', practice_bundle=bundle)
+        self.assertEqual(original['selection']['opponent_seed'], 1234)
+        run = Path(self.temp.name)/'random run'; run.mkdir()
+        with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
+            self.assertEqual(sessions.verify(self.root, destination), original)
+            staged = sessions.stage(self.root, destination, run)
+            self.assertEqual(staged['selection'], original['selection'])
+            self.assertEqual((run/'session-config.xml').read_bytes(), (destination/'session.xml').read_bytes())
+            for change in (dict(opponent_seed=5678), dict(opponent_cars='same')):
+                (destination/'session.json').write_text(json.dumps({**original, 'selection': {**original['selection'], **change}}))
+                with self.assertRaises(ValueError): sessions.verify(self.root, destination)
+            (destination/'session.json').write_text(json.dumps(original))
+            xml = destination/'session.xml'; payload = xml.read_bytes()
+            xml.write_bytes(payload.replace(b'name="gol"', b'name="pag"'))
+            with self.assertRaises(ValueError): sessions.verify(self.root, destination)
+            xml.write_bytes(payload)
+            (self.root/'cars/models/pag/cameras.xml').unlink()
+            with self.assertRaises(ValueError): sessions.verify(self.root, destination)
+            (self.root/'cars/models/pag/cameras.xml').write_bytes(b'native camera')
+        self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
 
     def test_race_revalidation_rejects_changed_opponents_and_flow(self):
         bundle = self.practice_bundle()

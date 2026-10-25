@@ -6,6 +6,7 @@ param(
     [string]$Track='p2p/okutama/route_1',
     [ValidateRange(1,20)][int]$Laps=1,
     [ValidateRange(1,7)][int]$Opponents=7,
+    [ValidateSet('same','mixed','class')][string]$OpponentCars='same',
     [ValidateRange(50,300)][int]$RenderScale=100,
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [ValidateSet(0,1)][int]$DesktopVSync=1,
@@ -66,6 +67,8 @@ try {
     $receipt=@{schema=1;workerId=$PID;workerStartedUtc=$worker.StartTime.ToUniversalTime().ToString('o');
         mode=$Mode;launchMode=$LaunchMode;runtime=$XrRuntime;car=$Car;track=$Track;laps=$sessionLaps;opponents=$(if($LaunchMode -eq 'Race'){$Opponents}else{0});headsetScale=$HeadsetScale;previewVrFixes=[bool]$PreviewVrFixes;skipIntro=[bool]$SkipIntro;diagnosticLogging=[bool]$DiagnosticLogging;recenterKey=$RecenterKey;recenterModifiers=$RecenterModifiers;state='starting';message="Preparing $LaunchMode session";log=$log}
     if($LaunchMode -eq 'Normal') { $receipt.car=$null; $receipt.track=$null; $receipt.laps=$null }
+    $receipt.opponentCars=if($LaunchMode -eq 'Race'){$OpponentCars.ToLowerInvariant()}else{$null}
+    $receipt.desktopBorderlessRequested=($Mode -eq 'Desktop')
     $receipt.vrHud=@{enabled=($Mode -eq 'VR');distance=$HudDistance;followView=[bool]$HudFollowView;hiddenElements=$HudHiddenElements}
     $receipt.career=$career
     $receipt.cockpitS2000=$CockpitS2000
@@ -99,7 +102,7 @@ try {
         $bundle=Join-Path (Get-Grid2DataRoot $root) 'practice-flow-20261014'
         $selectionArguments=@('--game-root',(Get-Grid2GameRoot $root),'prepare','--output',$selection,'--car',$Car,'--track',$Track,'--laps',$sessionLaps,
             '--mode',$LaunchMode.ToLowerInvariant(),'--control','human','--practice-bundle',$bundle)
-        if($LaunchMode -eq 'Race') { $selectionArguments+=@('--opponents',$Opponents) }
+        if($LaunchMode -eq 'Race') { $selectionArguments+=@('--opponents',$Opponents,'--opponent-cars',$OpponentCars.ToLowerInvariant()) }
         & $python (Join-Path $PSScriptRoot 'session_config.py') @selectionArguments
         if($LASTEXITCODE) { throw "$LaunchMode selection could not be prepared." }
     }

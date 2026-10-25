@@ -15,6 +15,7 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public bool PerformanceFollowView { get; init; } = true;
     public string LaunchMode { get; init; } = "Practice";
     public int Opponents { get; init; } = 7;
+    public string OpponentCars { get; init; } = "same";
     public bool VrReplayCameras { get; init; } = true;
     public bool VrGarageMenus { get; init; } = true;
     public bool VrCockpit { get; init; } = true;
@@ -23,7 +24,7 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public DrivingBinding? RecenterDevice { get; init; }
     public bool KeepHorizonLevel { get; init; } = true;
 }
-internal sealed record ContentItem(string Id, string Label)
+internal sealed record ContentItem(string Id, string Label, string? ClassId = null, string? ClassName = null)
 {
     public override string ToString() => Label;
 }
@@ -62,6 +63,7 @@ internal sealed class SessionClient(string root)
             value.Runtime is not ("VDXR" or "SteamVR")) throw new ArgumentException("Invalid session selection.");
         if (value.LaunchMode is not ("Practice" or "Race" or "Normal")) throw new ArgumentException("Choose Normal, Practice or Race.");
         if (value.Opponents is < 1 or > 7) throw new ArgumentException("Choose between 1 and 7 opponents.");
+        if (value.OpponentCars is not ("same" or "mixed" or "class")) throw new ArgumentException("Choose Same car, Mixed or Same class.");
         if (value.CockpitDriver is not ("HeadOnly" or "HideDriver")) throw new ArgumentException("Choose a cockpit driver visibility option.");
         if (!RecenterShortcut.Valid(value.RecenterKey, value.RecenterModifiers)) throw new ArgumentException("Invalid recenter shortcut; system shortcuts are reserved.");
         if (value.Laps is < 1 or > 20) throw new ArgumentException("Choose between 1 and 20 circuit laps.");
@@ -146,6 +148,7 @@ internal sealed class SessionClient(string root)
         Validate(value);
         var command = Command("Start-UserSession.ps1", "-Mode", vr ? "VR" : "Desktop", "-XrRuntime", value.Runtime, "-Car", value.Car, "-Track", value.Track,
             "-LaunchMode", value.LaunchMode, "-Opponents", value.Opponents.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "-OpponentCars", value.OpponentCars,
             "-RecenterKey", value.RecenterKey.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-RecenterModifiers", value.RecenterModifiers.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-Laps", EffectiveLaps(value.Track, value.Laps).ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -227,8 +230,8 @@ internal sealed class SessionClient(string root)
         using var doc = JsonDocument.Parse(await ReadCommand(info));
         var cars = doc.RootElement.GetProperty("cars").EnumerateArray()
             .Where(c => c.GetProperty("liveries").EnumerateArray().Any(l => l.GetString() == "user"))
-            .Select(c => c.GetProperty("id").GetString()!)
-            .Select(id => new ContentItem(id, CarLabel(id))).OrderBy(c => c.Label).ToArray();
+            .Select(c => new ContentItem(c.GetProperty("id").GetString()!, CarLabel(c.GetProperty("id").GetString()!),
+                c.GetProperty("classId").GetString(), c.GetProperty("className").GetString())).OrderBy(c => c.Label).ToArray();
         var tracks = doc.RootElement.GetProperty("tracks").EnumerateArray().Select(t => t.GetProperty("id").GetString()!)
             .Select(id => new ContentItem(id, TrackLabel(id))).OrderBy(t => t.Label).ToArray();
         return (cars, tracks);
