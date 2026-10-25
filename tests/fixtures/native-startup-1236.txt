@@ -1,0 +1,21 @@
+Exact camera-rejection.json from diagnostic-20261024-154914-467, 2026-10-24.
+Frame 1236, first eye of first attempted pair: eye_camera_pose.
+The native camera's basis, affine terms and bidirectional inverse checks pass.
+Source origin: (9997.8515625, -9999.9345703125, -4.095300674438477).
+Native origin: (9997.8515625, -9999.9365234375, -4.095181941986084).
+Y differs by .001953125, exactly two float steps at this magnitude, exceeding
+the former absolute .001-unit source/native position agreement bound.
+The native affine W is 1.0000001192092896, already inside its unchanged bound.
+
+context: 512-byte CameraContext; view: 144-byte prepared SceneView;
+pose: 28 little-endian bytes, four quaternion floats then three position floats.
+The fixture is the exact first-eye headset input, including near-identity pose.
+
+Position agreement now allows max(.001, min(.01, 2 ULPs)) per coordinate.
+Finite, absolute position, basis scale/handedness, affine and inverse checks
+remain required. The source position and exact requested eye displacement are
+preserved, not snapped to the native inverse origin. Three ULPs at the captured
+coordinate, discrepancies above .01 and malformed matrices remain rejected.
+
+This fixture qualifies CPU math only; corrected startup still needs live VR
+acceptance. The separate later-run shutdown exception is not explained here.

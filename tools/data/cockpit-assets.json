@@ -1,0 +1,578 @@
+{
+  "schema": 1,
+  "cars": [
+    {
+      "car": "177",
+      "originalSha256": "fa4c5e2227feac86737b9bfd1b97e4b319f166fe80d794900b27124aed4648a1",
+      "position": [
+        0.3722,
+        1.0303,
+        -0.5671
+      ],
+      "HeadOnly": "78615b2a0750338bc869b1e2b7012edb9f604600a6895856912671ee22c4c758",
+      "HideDriver": "bfa18a00eabaf53d56de879f57b8caf6bd6adf0df7f5f52556515f2a2a89a478"
+    },
+    {
+      "car": "190",
+      "originalSha256": "ef9343914f426357e54e73ffeb17f26d2ac63a32865f9b031be2a3236977cae5",
+      "position": [
+        0.3285,
+        1.1315,
+        0.0263
+      ],
+      "HeadOnly": "de68b397a0dd71f7ab4f50b0dff68195a9b779b107a9939ffecc3f0832c1d241",
+      "HideDriver": "c2f50d50aba22904ddf323ff65f8abbac01b4a7a5038b7492470f08ed984cede"
+    },
+    {
+      "car": "300",
+      "originalSha256": "f0094826f0aec6c27f921ab0be3b5bb8523d43da708f622475b322c8dcf72c81",
+      "position": [
+        -0.3645,
+        1.0736,
+        -0.3668
+      ],
+      "HeadOnly": "5355cae3980b68d661125f63c85100fb6fea5b807a3d7731c4562bdd24514a33",
+      "HideDriver": "d9d9f1590e19c1d030b135aa5213dbe46c9860a7b5901d4f47538913bb6f2cbf"
+    },
+    {
+      "car": "320",
+      "originalSha256": "319cc7eb9553f33b899d2ca15b874883daa2bff70698216c9a10f8ea99f649e4",
+      "position": [
+        0.4183,
+        1.0832,
+        -0.1181
+      ],
+      "HeadOnly": "6f78ad779935698c53b7ef8b2729768025bbcd702cb747517f9d3cdce0d86dfc",
+      "HideDriver": "0f6bfb2c7b5a9bf8ca985de136ea8950830eefd8a33a1427b793d2d0e629ec86"
+    },
+    {
+      "car": "37r",
+      "originalSha256": "410f1f81bad9c5319791e9942aaac157f7fb3e918273a9c2b8e480b5194d670d",
+      "position": [
+        0.372,
+        1.1271,
+        -0.3098
+      ],
+      "HeadOnly": "36e4c108af85c59f85c0de8bbec9c78a93a051b1dd41e54ac9880dd36d0cf64a",
+      "HideDriver": "f2b750ad472da05bff68cbc8adc8065b33881e9248359495eecba57004a9d1a8"
+    },
+    {
+      "car": "a4c",
+      "originalSha256": "3e820772a16cd543be5e522576c8560d5844901e5db8eef612caea9c08f3cc23",
+      "position": [
+        0.2686,
+        1.0218,
+        -0.1229
+      ],
+      "HeadOnly": "dc3d5778176c1b6ebfd8e360349639726bc079639d2df22fac23fe817d59bd47",
+      "HideDriver": "6e1eb962a7cd15c9231804933794b7a54f36cd84218d90c536697f058c5b79a8"
+    },
+    {
+      "car": "a8c",
+      "originalSha256": "5beda6a717448f5ba69c62341462a8754764a6375a51e3a8b3e821451c46fe7c",
+      "position": [
+        0.3823,
+        1.1136,
+        -0.4673
+      ],
+      "HeadOnly": "528055f439c4f9dfe93a895c38f0e696b0c164fe6974b2d205d8a7999c62feb7",
+      "HideDriver": "650cb2dc9f1fa044475485750424cc5c0dbb24df4218f7adfb5b14e6e64d449a"
+    },
+    {
+      "car": "ato",
+      "originalSha256": "d9bbab825eaa62352e9de2a67aec53e2da00cb4d113abbe3d50a3fe840c66082",
+      "position": [
+        -0.2849,
+        0.9732,
+        -0.5529
+      ],
+      "HeadOnly": "9ca629bf4e7aa8a487472d1a2fa0ad748634b269cd6ee699796fd09e550c2097",
+      "HideDriver": "4141340291f4db71bce89f45de683424aa917ed4055fed28ddecfa4b676aac5d"
+    },
+    {
+      "car": "b1m",
+      "originalSha256": "5217ca2631b16c8e955ac6158bd5668e65eda93ae44d9585479d072d73c54de9",
+      "position": [
+        0.3597,
+        1.2075,
+        -0.101
+      ],
+      "HeadOnly": "a87ffbf082893fa6d2787c6849ced3a7b8f2245c3c296721bf06a33115c8bceb",
+      "HideDriver": "fab3a221e9d3ca1c9621e637c5317f8ebbd1d079a65d50b3d50e093dd41ffec8"
+    },
+    {
+      "car": "bac",
+      "originalSha256": "18a36e8a1a4e6681a7d2ff2a9951fc5a17fd674a47abaa3f9f836b13b231775f",
+      "position": [
+        0.0027,
+        0.8396,
+        -0.2097
+      ],
+      "HeadOnly": "375f6776d876449c19eec6318706b034627509a86ee7a007d5ae5f5c259a62d2",
+      "HideDriver": "4a7061f5da60f751b0d705be4d2ecd04a947c47f1d77dae4127fbddec8c44052"
+    },
+    {
+      "car": "bm3",
+      "originalSha256": "06df4cfe050439a0a0ac4bac94b51157b3647b69c7f5ea1c2d24e1a11c2d50c5",
+      "position": [
+        -0.3627,
+        1.174,
+        -0.0718
+      ],
+      "HeadOnly": "368d59c0f9680065cf2cd793ea9ada30fd76dc8e9201dbf2411d9e2570353bda",
+      "HideDriver": "51a7e365998deaed8d08ba62a12126e5bf33e0b49b7e7d0f29c1beb8f86eac87"
+    },
+    {
+      "car": "bos",
+      "originalSha256": "015396a7042cf3ca977cf16fd1e2c70fed2d310b5829ba86543aa30bab1e721f",
+      "position": [
+        0.3922,
+        1.1485,
+        0.0354
+      ],
+      "HeadOnly": "964fff29df886bca7e889c05eec717d519f3c53c86c831a5ee6f50a8ecf21e38",
+      "HideDriver": "9d87d2173962926a85ded73905c2d2a100b5c82cc27b2bf3777d0ff3bb62f0e2"
+    },
+    {
+      "car": "brz",
+      "originalSha256": "63bffbe19c8b73f7f1bbfbfd77c87961285ce54bc20b7a8c5da3f6a34f1c5487",
+      "position": [
+        -0.4085,
+        1.0958,
+        -0.0769
+      ],
+      "HeadOnly": "48e0ecf283e67951886d8380fb7844cc17194d658edd8da13e96d609a7c06a52",
+      "HideDriver": "3e8fd88ad6249571b5380ff4438065730aebb0021a901efd3a49eff49cf8ea53"
+    },
+    {
+      "car": "bug",
+      "originalSha256": "50aac77e751b343242f4857cd085050ae08ce10d935ba9cbd591816917154f91",
+      "position": [
+        0.4142,
+        0.9926,
+        0.0602
+      ],
+      "HeadOnly": "ae81ad85246d50c68d5f4e97b5df00c7c49e4ccfbaa74a8190823071179a88a7",
+      "HideDriver": "e2a03dd4a986b11fb2e9b6b536af23ff6ed6459e2eb7fab5b3805a8cc4502929"
+    },
+    {
+      "car": "c63",
+      "originalSha256": "5f0fc44438eacfacae308e5b735ee7c76fdbd185a6a597bd56efe235723699ff",
+      "position": [
+        0.3764,
+        1.1724,
+        -0.1064
+      ],
+      "HeadOnly": "1ab74d2eaf021575b97e7fb40a14fa5dcaaa4b55b5c80863774394609c9627f7",
+      "HideDriver": "001981a4ff648731913b80d5ea864104c7f62394ccae0945879fe7f43940465a"
+    },
+    {
+      "car": "cat",
+      "originalSha256": "aa288f9754dbbd5ec55f694080b2a045443cee02593ea21586e5dcf78a039d9b",
+      "position": [
+        -0.2129,
+        0.7591,
+        0.0084
+      ],
+      "HeadOnly": "9b0222336e4ef8e150883ae0cd01663aedb6f68d00605c9d26ef56cf2154c72f",
+      "HideDriver": "c4a239e93a8b17310c8cdd1cdddec171d460dd3e943f9420a3f3d1f60b7761b7"
+    },
+    {
+      "car": "cha",
+      "originalSha256": "30950a8a96cff3e8ebefa84a2c6f4a209e16ca07f05c110ce82fe88bbd23e664",
+      "position": [
+        0.3874,
+        1.2308,
+        -0.1855
+      ],
+      "HeadOnly": "b87fcb2b135f361ea3b74dabbf5443639985ca38dca391d67ad96f1d8d09b3ec",
+      "HideDriver": "d7145c0cf96394dae0fa0fb79d96b8235f58634db2538a402257213c057b0482"
+    },
+    {
+      "car": "crt",
+      "originalSha256": "e4786cc326108f5024dd10a790ec83e7cf3449e9129af62a5479d10108f33f46",
+      "position": [
+        0.408,
+        1.1615,
+        0.003
+      ],
+      "HeadOnly": "ded27c0b8f4fecbbe54b60ab0742d8fe7c6e0c69e9ced2e3a1625aec2d019615",
+      "HideDriver": "1d123ca4488aed97d370de1e9460303df922f36c287970ca964687e2e9dad367"
+    },
+    {
+      "car": "crz",
+      "originalSha256": "866b2fb83b4f596bd1668742aeccf84d5fbf184570047a612ef20317adee4a75",
+      "position": [
+        0.4014,
+        1.1188,
+        -0.0662
+      ],
+      "HeadOnly": "71e8eeebaed3bb24da41c4d67ce300c8d130445d5fe6f22995bf0066ab09290d",
+      "HideDriver": "4030dcb74c0562331c048fac735fff1d144245e54520d77b88c54085b6c9201f"
+    },
+    {
+      "car": "css",
+      "originalSha256": "d071914a45bf491167fd7ad6a4f49efec0ffa7caf43bc4df99bc147768fcbce1",
+      "position": [
+        0.4114,
+        1.1315,
+        -0.1064
+      ],
+      "HeadOnly": "b1e9e800ee5d860690e360f86fe4b8c0094dfe10881521c0f1707cf909bbbed2",
+      "HideDriver": "f438341bcb82652dbe50d0cd65e3a2a24c931a9972b90d1b827ce30f106c8354"
+    },
+    {
+      "car": "e30",
+      "originalSha256": "456516986bba9552f0fb16bb31e04f4bd7b85b968a1fa764500dd0e57485664d",
+      "position": [
+        0.3553,
+        1.1239,
+        0.0294
+      ],
+      "HeadOnly": "7f457ce6ce2b35efd63661c1857a49cc89d90b6012c35449685450eef8f34412",
+      "HideDriver": "f8970af235e51d7a4abb969b59c585c6c74aa75b1caa1a745463dbf1059dd684"
+    },
+    {
+      "car": "foc",
+      "originalSha256": "fad99a8ffe0ee874885d54c2a6db26bfc796abbce18f5573592b54dd905f8138",
+      "position": [
+        0.3617,
+        1.2122,
+        0.0422
+      ],
+      "HeadOnly": "31e48dad2aa8df1abde068257ab59e0c6562404b10368eff7d907b0dae515594",
+      "HideDriver": "76a6b42a82eaf970144fd971573b11a4ae7954235d5d5999b8c3bc581cf01995"
+    },
+    {
+      "car": "gen",
+      "originalSha256": "2d408e66e7487110df06ad778cc39721e1e44ec0b54542278c2f22c438fbeb60",
+      "position": [
+        0.4466,
+        1.1812,
+        -0.0959
+      ],
+      "HeadOnly": "92813ca50f0c4866e789b852ebca2c03e2cc4d7d54f1afc4267779873a9d95e4",
+      "HideDriver": "a2479c4d6285f9dfe47b5cf759f8b8ce277438e8380342113c196cf4f9632c8f"
+    },
+    {
+      "car": "giu",
+      "originalSha256": "f55a54fcd82b17b5ce7c208c1e09a74683f2a0936e667f7419e5a09e01a696dc",
+      "position": [
+        -0.3696,
+        1.192,
+        -0.123
+      ],
+      "HeadOnly": "739de55263fc9a6dfe5bba8cb963d65811dd180c1c17a8d96349af4cd86930b2",
+      "HideDriver": "d208cd64b38025cd04a0e4fd2d663eaf3b686d69f0170f41063d9ea69bac7d2c"
+    },
+    {
+      "car": "gol",
+      "originalSha256": "fd46344a9b71df3f64efa9dbf5b0062094b6a363c2ba9d7aba2dcb265a53b687",
+      "position": [
+        0.3591,
+        1.2013,
+        -0.0501
+      ],
+      "HeadOnly": "0f7e9ebbfe1fee5ee7745df455b715e750f705eaea274162c61cf8313939d875",
+      "HideDriver": "e23be4b36038b3989ba640177d2e8cfaf21ff58accf4a959168fcecad44f6091"
+    },
+    {
+      "car": "koe",
+      "originalSha256": "4f33aab6d40032d268f57ce86dc835ec55b0a1fb862c1f7cfbc3b63fbdfca941",
+      "position": [
+        0.3222,
+        0.8961,
+        -0.0116
+      ],
+      "HeadOnly": "43a81d2173c04dbc6071249b32fd4516823b7b9a4eeaf8e3276205c83486a681",
+      "HideDriver": "d272f658cbf3ca0a56848a79a88fbdb47fd4d1f618264d471bad33263d2027a5"
+    },
+    {
+      "car": "ktm",
+      "originalSha256": "e558ece55195b2b3d1a97cc14febf9ed94bf3e57d2566ef62382f18b3d4b2a02",
+      "position": [
+        -0.3111,
+        0.9219,
+        -0.1476
+      ],
+      "HeadOnly": "73e5307264c0433ad08dff20ca8a1f36dd6e6baf336024f029c0d02435b5e10e",
+      "HideDriver": "d56cb5d5e8716c6828c04f989c606686a655098c0a354c43d283061ae40a36cf"
+    },
+    {
+      "car": "mac",
+      "originalSha256": "3c01130b672cb349bf6b10cfc71c377ba48435bc8feca40cbc7445bcc041335a",
+      "position": [
+        0.4242,
+        1.1357,
+        -0.2441
+      ],
+      "HeadOnly": "f59772906a43107eb0ee4b90c2ba29c5d8a49751002bba013538e6c6318d058f",
+      "HideDriver": "81c0740550206865dd3b3984368ac85fdbf32874f7440edfab32715d7c665bc2"
+    },
+    {
+      "car": "mf1",
+      "originalSha256": "10350ca63b81e10fbb7c935ba7368e25791f23e4912ffe7723f52a718c62dc30",
+      "position": [
+        0.002,
+        0.9529,
+        0.2631
+      ],
+      "HeadOnly": "4bbd95953e203e608a5de7e856281344731342eb6162861f9480a8f43f8d2ea8",
+      "HideDriver": "eb6bf5cd29439ce4543c8f98eb5deacf014fd707f12391fb4b2a2d5e63effb11"
+    },
+    {
+      "car": "mp4",
+      "originalSha256": "e11efcc937b43b92975cb3b654f9acc57d22cf88ddcc31b31727e2c63e7196ec",
+      "position": [
+        0.3471,
+        1.0153,
+        -0.0189
+      ],
+      "HeadOnly": "2ac2f29922970a543f80d479122762551f180c0146e9a1a27d36246180d89563",
+      "HideDriver": "47263cb4602df5d9e175dac782ab84f40a02403f0011c433157fed23dbf2cfca"
+    },
+    {
+      "car": "nsx",
+      "originalSha256": "3d6199dd5954ad8f707c16f5024357b282b84c13ed802c4e47a9cc17def03da9",
+      "position": [
+        -0.3617,
+        0.9332,
+        -0.0111
+      ],
+      "HeadOnly": "8306109d2bb99a81b2451fe115d402cb81ebb7990a07aceb6c6ae80351b8538a",
+      "HideDriver": "4fe20d3451d7092cd070d33c543490214913e24b7aee2f22299ea0d4ce114edf"
+    },
+    {
+      "car": "pag",
+      "originalSha256": "0ff08d0e3824b5772e70ddedbbda87014a9db3a9ab28ab23014e237cfcc340a4",
+      "position": [
+        0.3263,
+        0.9725,
+        -0.0164
+      ],
+      "HeadOnly": "0657044715287307aaf2a6d3cf784967a9133c70e02bd2b1128de9cd499c9782",
+      "HideDriver": "f591ca1e553490c3fa64c21ec9c71b3e24048eabe4a254dc513ecdc438226b7f"
+    },
+    {
+      "car": "r8l",
+      "originalSha256": "0e71b8d1ad45f89a042e34d61229303753110343418481e5a104055e56b85d0c",
+      "position": [
+        0.3929,
+        0.9862,
+        -0.1457
+      ],
+      "HeadOnly": "511c19d0f9ef3e9247e557d036d759a65a8e04fbf627e72104491a98b761dfae",
+      "HideDriver": "3efbb8d178796b928be1d245f732384c2155750e8ff528f147b1000c5993ce12"
+    },
+    {
+      "car": "rs5",
+      "originalSha256": "2aaa704150ec99bd240b237e56f56f030796495bea0a982b3940b0e0114fcd69",
+      "position": [
+        0.37,
+        1.1663,
+        -0.138
+      ],
+      "HeadOnly": "e7458d0d8ed35f4b1e66a3bde41a001961ba4fdbf40d204b87545699765b3456",
+      "HideDriver": "40c4f400d8fb3066ff8227b9aecc5404f0545aa9c2ca10b6518a5621eb57aa44"
+    },
+    {
+      "car": "rx1",
+      "originalSha256": "a6c07a5a01deeee13b6f578c61a5c4f4fa223fd0d0bded33cf62d64c2fb14fe3",
+      "position": [
+        -0.3723,
+        1.0369,
+        -0.3946
+      ],
+      "HeadOnly": "f817a5904d39bac802c116fcfd16e4d5724ae993a04ef2d29d50cbbc7ac81404",
+      "HideDriver": "7c20bce6e744607e30315dd2e1df0fc7312de521cd74fe6f283c8d8aa0405ff0"
+    },
+    {
+      "car": "s15",
+      "originalSha256": "7d0a25ccf84f6aff24c509a15d5bef353dc2f030d910991bd3131dcd688f7087",
+      "position": [
+        -0.3566,
+        1.0177,
+        -0.2166
+      ],
+      "HeadOnly": "c377e7938932a3eb3ef4a0ffb1958e344237e7e2993135eeb7083b0f129b2c6f",
+      "HideDriver": "2e4a0a206fa390be2992744524f24add4f8c2a73e95737178dda6d618069aa42"
+    },
+    {
+      "car": "s20",
+      "originalSha256": "cc6883b9277ca1053e6ac8653f03c8ece95d2ddd5b871a448ef2665447ea24df",
+      "position": [
+        0.3537,
+        1.0665,
+        -0.5216
+      ],
+      "HeadOnly": "4214a1c793e76316204a0745ba1f2645ada6175681700f851d28daa05993aeb4",
+      "HideDriver": "0130a0af7e459e551a95a426d848e95043aec60d603b1de1e8010d879c661338"
+    },
+    {
+      "car": "s60",
+      "originalSha256": "1fa03b6ef14d86bff094c46f5553d69cb414e1d0e44740aa27351199e06c11e6",
+      "position": [
+        0.2877,
+        0.9674,
+        -0.1145
+      ],
+      "HeadOnly": "531be1411671e04d0988f4b9529e1e2d307de736bad0e131e60d5dd934394b04",
+      "HideDriver": "bb6d6e88d20a5ae812a22ae57626a69a975d113bc56959d2641f875e8b9205ee"
+    },
+    {
+      "car": "scr",
+      "originalSha256": "f93d5f5af5fdfa0e6098640048c6d04c6677c7c04d9e7fe26dd9ae28e6eaf522",
+      "position": [
+        0.2803,
+        0.9632,
+        -0.0763
+      ],
+      "HeadOnly": "b6c7c3304487913ecbd50500f62e96c0f2231cc07cd2e79bc620282098c27cf9",
+      "HideDriver": "b2ff6583b4ac49b1b962f3b70dc3fb315cc2530a7591123071986242fc82509c"
+    },
+    {
+      "car": "sky",
+      "originalSha256": "5d0003402c19c509675e5953cd338ea2c49fcdcda5b921128f23376a58601db0",
+      "position": [
+        -0.403,
+        1.1314,
+        0.1675
+      ],
+      "HeadOnly": "2704a82680514f7b3792f15a9aea4b079f6924a5ac16e098602d37f654fd04cb",
+      "HideDriver": "3b56c505d0c3cba61244b472872016708ae72d541d728c956858630747d4f222"
+    },
+    {
+      "car": "sl6",
+      "originalSha256": "7ffdbdd5424d3e3c911695b40b2433a16a70ed9469493942e3f7e7139d0aa208",
+      "position": [
+        0.3789,
+        1.0773,
+        -0.3282
+      ],
+      "HeadOnly": "907a927092feac07ac99151f32222253380e437909f535e126ff0d4fe07e71a7",
+      "HideDriver": "ee75c1d892cada6e55446501a08c82e6055087a656277288a11dab4368570894"
+    },
+    {
+      "car": "slr",
+      "originalSha256": "ae6d941dc6a4c10a47b5a8fba604ea30e7afd6beb5ba4826b7a8da5d62227868",
+      "position": [
+        0.359,
+        1.0372,
+        -0.7275
+      ],
+      "HeadOnly": "ac57b896a5697ec6464ae43ee8de405e8f5d53521d71cbe709eb6d9483813501",
+      "HideDriver": "6fb5f3f21edcf39bea51f31bb62c29c0bf8c7cf57152b43f842285b6103edc1d"
+    },
+    {
+      "car": "sls",
+      "originalSha256": "5470747d0ce96715c3d0be77b91906717898bf21af253cea24372e9166f44540",
+      "position": [
+        0.4171,
+        1.0002,
+        -0.5979
+      ],
+      "HeadOnly": "eac2b575b91a460894ef0f72190a7f60bda454cb8e607ca9339baabb18f46343",
+      "HideDriver": "d20700d3b4d022c14d300f27ef5dbbdab0d380ff52fd4bd127ff551951a3b1d3"
+    },
+    {
+      "car": "ttr",
+      "originalSha256": "9483b5226b76b2c16bdd7fd8200c5739203b36879ef59601ab35bd383a4edd28",
+      "position": [
+        0.3385,
+        1.1307,
+        -0.1963
+      ],
+      "HeadOnly": "e62e62f4ce899db63a9571d642dafa978eaa0e0805d052c9fafe66dd831d4666",
+      "HideDriver": "a797c08772b9be9f81e6dcb99ede58a3bead4f1f9904f6bee5d0b6b4a6e8a7ae"
+    },
+    {
+      "car": "van",
+      "originalSha256": "0a9173c82bffa99fe240cb161acda35dc936b5adb151850dfdafe9a283805125",
+      "position": [
+        0.3879,
+        1.0991,
+        -0.231
+      ],
+      "HeadOnly": "4f3598bd64f4b8186ea630d7de5c99a1fdc709e1bf2bbeb598434d0a86030b06",
+      "HideDriver": "80cc1dfc30e5cdd0a8c7c463d7206cb2bc627f5ddddc06c3e9f7162d3f9a86e9"
+    },
+    {
+      "car": "vip",
+      "originalSha256": "272e74d56a471145d91e2b55e92c1779046d2661fdcbf3c2b3ba73bb2e3d3ebb",
+      "position": [
+        0.3837,
+        1.0145,
+        -0.5454
+      ],
+      "HeadOnly": "ddcc50c7273c5041b0c58839db7897381ecb34d2595d2d3c2b01f913e2bc3014",
+      "HideDriver": "8ea5cc4ca758765c489fd44c183d3272badafcc5db8d76abb9a6efc29e984f3f"
+    },
+    {
+      "car": "xkr",
+      "originalSha256": "4ec7f721276bca44f64c3655ea0e137e41e51281481d636411e623609136471f",
+      "position": [
+        0.3782,
+        1.1511,
+        -0.3352
+      ],
+      "HeadOnly": "807a66e67a5acd50800dd98658e82b170c64da4f4c347a898388be8ae0b09dcd",
+      "HideDriver": "d3e91766218868134f857e74b44fb04bc10207d8ad47f9c23c99321b14ea24df"
+    },
+    {
+      "car": "z06",
+      "originalSha256": "33da22237892a5bbb8a8329deed87987455c4677e9dcac765999b75041940e36",
+      "position": [
+        0.4379,
+        1.0799,
+        -0.4141
+      ],
+      "HeadOnly": "bfb6cd3ed9ff41f672da130a8320e66e088881701edd6ec68536d86274a9bbf9",
+      "HideDriver": "60c2f0164220eecd8d39f893c10bb68c390371af4650cbed0e5ad765b6894411"
+    },
+    {
+      "car": "z28",
+      "originalSha256": "c944df72e4ad5b4219220aea54888cff24c60c93822d932195c8619df3bd8fa7",
+      "position": [
+        0.3674,
+        1.0792,
+        -0.3297
+      ],
+      "HeadOnly": "b3a7597040618b3e5547a4f1f0c642dac3de068ab18cb1f2df9a9e5cbebacdd0",
+      "HideDriver": "17335f35e16eb4cb30f83ab794f0309131b403eb5ab379ea51522bb2296be7bd"
+    },
+    {
+      "car": "zag",
+      "originalSha256": "2e803f299c514d94b10ea56974a3af37ab147d2b42eadb89b5a67ae97865d96b",
+      "position": [
+        0.3694,
+        1.0298,
+        -0.4204
+      ],
+      "HeadOnly": "0dfe79827c850c91dd650bfb4bfc749fd41c99ac6e211f3338907d1f535001ce",
+      "HideDriver": "3ace52aafa5de6f1d276db0237fd7c13f107ab53232149164b02fad1dea6ebcb"
+    },
+    {
+      "car": "zen",
+      "originalSha256": "2b809e46c29f97db86168b6d293896f1ed5ee56bc624db018c08212d5df6a347",
+      "position": [
+        0.3794,
+        0.9982,
+        -0.2273
+      ],
+      "HeadOnly": "544683caebb4916604419f41433f2eecb18250cf411870437ea8519ac39bc0bc",
+      "HideDriver": "6ee05a22cb04006f5317703e9c3f7e6872ca0f2bcfceb8c39c06e3eebe0a6c51"
+    }
+  ],
+  "calibrationSha256": "12a559ab7f0a5101603aa20fada534a973a039cfb07b8c7979fae98b0200e233",
+  "executableSha256": "519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502",
+  "converterSha256": "4448ec5a685b30beeb27cf21f6492ae4f4ad64d137c19d354b678bf52f10d029",
+  "startView": "bonnet",
+  "nearPlaneMetres": 0.02,
+  "intro": {
+    "name": "cutscene/intro_buildup.xml",
+    "originalSha256": "b421f3141a4a5edde7d5c5c0c194b90daa826c55894abc2fc29e406f6d960f96",
+    "sha256": "881e4520fa6239de98c5b33a3d580219a5002716c46e422bc1853958927f1189"
+  },
+  "semanticRoundtrip": true,
+  "installed": false
+}

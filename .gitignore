@@ -1,0 +1,17 @@
+/artifacts/
+/build/
+/.deps/
+__pycache__/
+/launcher/bin/
+/launcher/obj/
+
+# Keep internal documentation local. Public Markdown is explicitly allowed.
+/docs/
+/AGENTS.md
+/.agents/
+/.codex/
+/launcher/assets/branding-provenance.json
+*.md
+!/README.md
+!/CHANGELOG.md
+!/third_party/minhook/README.md

@@ -1,0 +1,20 @@
+Exact failure from diagnostic-20261024-143019-258, 2026-10-24.
+BMW 1M / Miami route 0, AI benchmark, SkipIntro enabled, simulated frozen eyes.
+Frame 1406, visibility scene 4256: native_frustum_readback, before the first eye.
+
+volume/source/render/eyes are the original visibility inputs (224/144/144/88 bytes).
+refused-matrix/volume/points preserve the original native-builder refusal
+(64/224/240 bytes; points are the ten float64 eye positions).
+
+Source and render cameras are byte-identical, at
+(9997.849609375, -9999.9365234375, -4.246407508850098).
+Native corner reconstruction produces intended side-face residuals down to
+-.0386857001, outside the unchanged .03 spatial limit. The captured eye points
+still have minimum .2679108323 clearance, above the unchanged .25 limit.
+
+The fallback builds the identical intended frustum around a local origin,
+validates native local output, translates planes/corners back, then requires
+the original world-space geometric and both-eye containment checks again.
+The original refused volume must remain rejected. Unit tests model the local
+builder using independent matrix inversion; native runtime acceptance requires
+a new unattended game run. No headset acceptance is implied.

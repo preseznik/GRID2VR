@@ -1,0 +1,19 @@
+Exact camera inputs from diagnostic-20261024-145553-087, 2026-10-24.
+BAC Mono / California route 2, user VR session at 300% scene / 200% headset,
+4x MSAA. The user entered replay and then returned to gameplay.
+Native SHA256: 06ce18a859abe7573262a07f8ba06fe9720c8adb6dd9cc76c9c6070499656ab4.
+
+Frame 7677, scene 396313: replay_camera_transition before the first eye,
+after 6246 accepted stereo pairs. Center view bytes are identical.
+Only clipWords change: e8, ec, 138, 148, 198, 1a8, 1b8, 1c8.
+Near changes 0x3e4cccce (0.20000001788139343) to the native short-pass constant
+0x3e4ccccd (0.20000000298023224); far changes 2500 to 100. Main far remains 2500.
+
+The existing menu classifier missed the one-ULP-high source near value, so
+ReplayOnce began and its unchanged strict camera guard correctly refused.
+Recognizing this exact source near permits existing cancellation BEFORE eye
+replay, visibility restoration, history reset, screen presentation and fresh
+world-camera resumption. It does not permit replaying the changed camera.
+
+The fixtures establish classification, not a headset replay round trip.
+That remains a live user acceptance gate.

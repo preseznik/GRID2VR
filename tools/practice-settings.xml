@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<hardware_settings_config version="11" deviceId="0x2702">
+  <cpu>
+    <threadStrategy workerMapFile="system/workerMap8Core.xml" forceFeedbackProcessor="6" dvdStorageProcessor="7" dataSetMonitorProcessor="4" renderProcessor="0" updateProcessor="2" fileStreamProcessor="5" parallelUpdateRender="false" />
+  </cpu>
+  <audio_card>
+    <dynamic_range value="high" />
+    <eq value="flat" />
+    <voice_chat enabled="true" />
+    <push_to_talk enabled="false" />
+  </audio_card>
+  <graphics_card firstBoot="false">
+    <directx forcedx10="false" />
+    <eyefinity force="" osd="" />
+    <stereo enabled="false" separation="0.015" convergence="0.5" />
+    <advanced forward="true" global_illumination="true" />
+    <intel tree_aoit="false" particle_avsm="false" particle_aoit="false" />
+    <resolution width="1280" height="720" aspect="16:9" fullscreen="false" vsync="1" multisampling="off">
+      <refreshRate rate="60" />
+    </resolution>
+    <gamma level="0.8" />
+  </graphics_card>
+  <shadows enabled="true" size="2048" maskQuality="2" particles="true" />
+  <advanced_fog enabled="true" />
+  <particles enabled="true" wind="true" dynamicRes="false" lowResScalar="2" />
+  <crowd enabled="true" detail="3" />
+  <cloth enabled="true" tessellation="true" />
+  <postprocess quality="2" />
+  <groundcover mode="blended" clutter="true" />
+  <objects lod="1.5" maxlod="0" />
+  <trees lod="1.5" maxlod="0" />
+  <vehicles characterQuality="2" lodQuality="2" hires_ai_livery="1" />
+  <envmap faces="6" size="1024" drawallobjects="true" scaleminsize="1.0" mindistance="200.0" />
+  <water update="true" detail="2" scale="2" tessellation="true" />
+  <skidmarks enabled="true" />
+  <dynamic_ambient_occ enabled="true" quality="2" />
+  <dynamic_ambient_occ_soft enabled="true" />
+  <night_lighting volumes="true" lights="0" shadows="true" />
+  <anisotropic min="4" max="16" />
+  <physics environmentalDamage="true" vehicleDamage="true" />
+  <input device_type="auto" />
+  <motion enabled="true" ip="dbox" port="20777" delay="1" extradata="0" />
+  <screenshotMode enabled="false" />
+</hardware_settings_config>

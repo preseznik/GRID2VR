@@ -1,0 +1,623 @@
+{
+  "schema": 1,
+  "method": "Individual visual review of installed LOD0 cockpit geometry; height changes only.",
+  "evidence": "docs/evidence/cockpit-defaults-2026-10-25/index.html",
+  "limitations": [
+    "Offline untextured geometry review, not a game-render or headset acceptance test.",
+    "Source glass is omitted for sightline inspection; game shaders, animation and dynamic parts are not reproduced."
+  ],
+  "cars": [
+    {
+      "car": "177",
+      "name": "Aston Martin One-77",
+      "derivedPosition": [
+        0.3722,
+        1.0703,
+        -0.5671
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "d745fa9024817e79faaf4421e356982cde0c703203fdd3c51e52f4773e147d56",
+      "review": "Roof edge too close to horizon; modest drop preserves view over wheel."
+    },
+    {
+      "car": "190",
+      "name": "Mercedes-Benz 190E 2.5-16 Evolution II",
+      "derivedPosition": [
+        0.3285,
+        1.1315,
+        0.0263
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "d3e8341276023d5c52557142298969e01ee23e0515144890ed3407926790b039",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "300",
+      "name": "Nissan Fairlady Z Version S TT 2Seater",
+      "derivedPosition": [
+        -0.3645,
+        1.1136,
+        -0.3668
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "920f5b3c22376fded0244cf208558d20cb791112e80ccf632014f7d844d75154",
+      "review": "Low roof over right-hand seat; lower view opens windscreen without wheel obstruction."
+    },
+    {
+      "car": "320",
+      "name": "BMW 320 Touring Car",
+      "derivedPosition": [
+        0.4183,
+        1.0832,
+        -0.1181
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "db0bd51566ebfd206380866ddd21e4fb4f487c4fc9b038f8e988587267efcf29",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "37r",
+      "name": "Nissan 370Z Roadster",
+      "derivedPosition": [
+        0.372,
+        1.1271,
+        -0.3098
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "1c91edc1920978438579a85a26646a49210cef1aa519649950628d7f9bb698be",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "a4c",
+      "name": "Alfa Romeo 4C",
+      "derivedPosition": [
+        0.2686,
+        1.0518,
+        -0.1229
+      ],
+      "heightCentimeters": -3,
+      "meshSha256": "3bdd8360492630df9f648cde1612360528cf18a8bee5a7769dd5c9646a440ad1",
+      "review": "Low roof/header; small drop retains dashboard clearance."
+    },
+    {
+      "car": "a8c",
+      "name": "Alfa Romeo 8C Competizione",
+      "derivedPosition": [
+        0.3823,
+        1.1136,
+        -0.4673
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "bf0d4c3cd56b2b641ec0c2a69a46c65756651bd45c2021699a8efbdc341690cf",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "ato",
+      "name": "Ariel Atom 3",
+      "derivedPosition": [
+        -0.2849,
+        0.9732,
+        -0.5529
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "347a71552333b6f3a8ca55d6c27ed8697aedf5661eed2cbdc0bb318b112e8339",
+      "review": "Open cockpit; wheel below forward sightline and seat alignment retained."
+    },
+    {
+      "car": "b1m",
+      "name": "BMW 1 Series M Coupe",
+      "derivedPosition": [
+        0.3597,
+        1.2075,
+        -0.101
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "4a92c4f6322c2c81adaa44651f9cf13ede38783f44a0662e4e761c1b07a81776",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "bac",
+      "name": "BAC Mono",
+      "derivedPosition": [
+        0.0027,
+        0.8396,
+        -0.2097
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "37d801a78451370bea410da4a7fef987b29ea53e0bef10968e3b0e33d7968e8b",
+      "review": "Open cockpit; wheel below forward sightline and seat alignment retained."
+    },
+    {
+      "car": "bm3",
+      "name": "BMW M3 Coupe",
+      "derivedPosition": [
+        -0.3627,
+        1.214,
+        -0.0718
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "758d85a92e8158abf350705b45bdd14c9f3b880eb3a5c7a10292c43e8730a50d",
+      "review": "Header crowds right-hand view; lower eye point clears it."
+    },
+    {
+      "car": "bos",
+      "name": "Ford Mustang Boss 302",
+      "derivedPosition": [
+        0.3922,
+        1.1485,
+        0.0354
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "9d06ec4348146c54493f0993cd1f850dc8e3b24db712cb327f122a84c0476871",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "brz",
+      "name": "Subaru BRZ",
+      "derivedPosition": [
+        -0.4085,
+        1.0958,
+        -0.0769
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "13fbf05598653af0dd58132491c83bee593b42c2cb875a9284dfdb32b7a666e8",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "bug",
+      "name": "Bugatti Veyron 16.4 Super Sport",
+      "derivedPosition": [
+        0.4142,
+        1.0226,
+        0.0602
+      ],
+      "heightCentimeters": -3,
+      "meshSha256": "fa893c61d36bf5d0cedd48067b2707af05e7d843294edf8d7a005ef91e4c5697",
+      "review": "Very low front header; small drop gives a larger forward opening."
+    },
+    {
+      "car": "c63",
+      "name": "Mercedes-Benz C63 AMG",
+      "derivedPosition": [
+        0.3764,
+        1.1724,
+        -0.1064
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "eeb44608953774fb4630a4699dc71b8ea09bf6f6eea1c644f7a2d3f547ce2a04",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "cat",
+      "name": "Caterham SP300R",
+      "derivedPosition": [
+        -0.2129,
+        0.7591,
+        0.0084
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "7b7819bcbc9c3dc8f8259a49aac145db18fdb76567cdd41b12c92e99b8bf7e2c",
+      "review": "Open cockpit; wheel below forward sightline and seat alignment retained."
+    },
+    {
+      "car": "cha",
+      "name": "Dodge Challenger SRT8 392",
+      "derivedPosition": [
+        0.3874,
+        1.2608,
+        -0.1855
+      ],
+      "heightCentimeters": -3,
+      "meshSha256": "20655ba3c23ee72d3240bd7821057f192bc4afa39fea1b06014bf6d5a7f54c8e",
+      "review": "Roof close to sightline; small drop keeps tall wheel below horizon."
+    },
+    {
+      "car": "crt",
+      "name": "Dodge Charger R/T",
+      "derivedPosition": [
+        0.408,
+        1.2015,
+        0.003
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "0da1c7120d17856901911dbfffb52fb5dca8712850e679427e7added89b1cbae",
+      "review": "Header crowds forward view; larger drops bring wheel too high."
+    },
+    {
+      "car": "crz",
+      "name": "Chevrolet Cruze Touring Car",
+      "derivedPosition": [
+        0.4014,
+        1.1188,
+        -0.0662
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "a29f157dd4507e96f62ae8b7edcadc3a73b93102f06258a670559413871a41b1",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "css",
+      "name": "Chevrolet Camaro SS",
+      "derivedPosition": [
+        0.4114,
+        1.1715,
+        -0.1064
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "611b229f98b0ee239be1d986e8e2b41b6c98e4cb6f8a4f0faa5a374d92ea1f87",
+      "review": "Low roof and limited clearance above estimated eye; lower within cabin."
+    },
+    {
+      "car": "e30",
+      "name": "BMW E30 Sport Evo",
+      "derivedPosition": [
+        0.3553,
+        1.1239,
+        0.0294
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "575fd7f8ab6fe6ac0721ece98399383869b3a32c2a87d943ed573657ee9fe082",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "foc",
+      "name": "Ford Focus ST",
+      "derivedPosition": [
+        0.3617,
+        1.2122,
+        0.0422
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "ee9d23ef9804ed63f40d9653471ab651fce3ab44456f58b29bd167acc884431b",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "gen",
+      "name": "Hyundai Genesis Coupe",
+      "derivedPosition": [
+        0.4466,
+        1.1812,
+        -0.0959
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "9bdf9777c91235a6090f92a38cad4ea3950c3b26149c13adedf5e927fbd778d7",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "giu",
+      "name": "Alfa Romeo Giulietta Quadrifoglio Verde",
+      "derivedPosition": [
+        -0.3696,
+        1.192,
+        -0.123
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "3a8e3624b90045856d2e03b4f5602d46b6edce7e44dc19bece8a773f5c71a2e3",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "gol",
+      "name": "Volkswagen Golf R",
+      "derivedPosition": [
+        0.3591,
+        1.2013,
+        -0.0501
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "6167eb5ba6455259be1e780818ad5373d85d4dd03c720f1226adbd3dbcbff6b2",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "koe",
+      "name": "Koenigsegg Agera R",
+      "derivedPosition": [
+        0.3222,
+        0.9761,
+        -0.0116
+      ],
+      "heightCentimeters": -8,
+      "meshSha256": "2dd3c2167378af925a4cd9e8af915636b7525d58ae87deddef95194c922dbb89",
+      "review": "Roof header nearly on horizon and only 6cm above eye; 8cm drop balances header and wheel. Larger drop obstructs road with wheel."
+    },
+    {
+      "car": "ktm",
+      "name": "KTM X-Bow R",
+      "derivedPosition": [
+        -0.3111,
+        0.9219,
+        -0.1476
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "d37d39e8ebcfc6ad62c5bc73a1919da27317bf32e991914b34e2fa6776ba21b7",
+      "review": "Open cockpit; wheel below forward sightline and seat alignment retained."
+    },
+    {
+      "car": "mac",
+      "name": "Ford Mustang Mach 1 Twister Special",
+      "derivedPosition": [
+        0.4242,
+        1.1757,
+        -0.2441
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "29f8bc311c3e99f43a62e96d2e26a5cf3d6ddcbaa71d185d55cc233cef84710e",
+      "review": "Header intrudes into forward view; lower slightly without raising wheel into sightline."
+    },
+    {
+      "car": "mf1",
+      "name": "McLaren F1 GT",
+      "derivedPosition": [
+        0.002,
+        0.9929,
+        0.2631
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "26bfa0fa1bc7ada13258cfa2a896ed61ecf2528695c29110d6ed5ed85a8db24e",
+      "review": "Low roof at central seat; lower eye point opens view and improves roof clearance."
+    },
+    {
+      "car": "mp4",
+      "name": "McLaren MP4-12C",
+      "derivedPosition": [
+        0.3471,
+        1.0153,
+        -0.0189
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "54da8c10db7b95dc653e701dfadf5bf226e3cbf5adca64e94cffbed8c0fc1cc8",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "nsx",
+      "name": "Honda NSX R",
+      "derivedPosition": [
+        -0.3617,
+        0.9932,
+        -0.0111
+      ],
+      "heightCentimeters": -6,
+      "meshSha256": "054d4b9fd4fb0978aaa373f3147565c4710208fe1a0cb65dc5675f12d4ab9b48",
+      "review": "Roof diagonal intrudes near eye level at right-hand seat; 6cm drop clears forward sightlines."
+    },
+    {
+      "car": "pag",
+      "name": "Pagani Huayra",
+      "derivedPosition": [
+        0.3263,
+        1.0125,
+        -0.0164
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "b791dd98101e80677117d1905ed85204e6f55b5e785a54119071916622f4a6f2",
+      "review": "Windscreen header near horizon; lower modestly while keeping wheel below road view."
+    },
+    {
+      "car": "r8l",
+      "name": "Audi R8 LMS Ultra",
+      "derivedPosition": [
+        0.3929,
+        0.9862,
+        -0.1457
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "1bfc191926dc85e5f7189e28d30d9909bbcc874b20145365097f75ae7ec4e365",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "rs5",
+      "name": "Audi RS5 Coupe",
+      "derivedPosition": [
+        0.37,
+        1.1963,
+        -0.138
+      ],
+      "heightCentimeters": -3,
+      "meshSha256": "f5ac043a4b971ca7e1f6c0e0bccdf7762cc02e5d30378d04b6fc9cb740faddee",
+      "review": "Front header crowds upper view; small drop retains view above wheel."
+    },
+    {
+      "car": "rx1",
+      "name": "Mazda RX7 Type RZ",
+      "derivedPosition": [
+        -0.3723,
+        1.0369,
+        -0.3946
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "9d9953359450d8eada3f37f86f8f0f80d823b15f167b4f3d5b8dd5821002767d",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "s15",
+      "name": "Nissan Silvia Spec-R Aero (S15)",
+      "derivedPosition": [
+        -0.3566,
+        1.0177,
+        -0.2166
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "9c8a054178e93031324d41f2918efabbfbeb4e9cb3e869dd080b839e1f960ec8",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "s20",
+      "name": "Honda S2000",
+      "derivedPosition": [
+        0.3537,
+        1.0665,
+        -0.5216
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "da29d665d5d33f9202357ee135f1b53cc82e3411997cf3c6c309de28aabe2999",
+      "review": "Retain user-accepted desktop and headset position exactly."
+    },
+    {
+      "car": "s60",
+      "name": "Volvo S60 BTCS",
+      "derivedPosition": [
+        0.2877,
+        0.9674,
+        -0.1145
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "70fec0c9fc69a077eb6cbadeafceacae2c22f851ea6ba4f3e064e5b45382034c",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "scr",
+      "name": "Gomez Competition GC10-V8",
+      "derivedPosition": [
+        0.2803,
+        0.9632,
+        -0.0763
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "6cf1fde6694034c4b7c36bc9935505f7526a29b312fe47ff5a6849f9f1015aab",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "sky",
+      "name": "Nissan Nismo R34GT-R Z-Tune",
+      "derivedPosition": [
+        -0.403,
+        1.1314,
+        0.1675
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "f83f7d960269fde993ccea56bffccafda13a76292bacc2a4d9d1883c5ba28ede",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "sl6",
+      "name": "Mercedes-Benz SL65 AMG Black Series",
+      "derivedPosition": [
+        0.3789,
+        1.0773,
+        -0.3282
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "aa3faebda0490ef1af94c409b4c165fbe657470039d5fb4d4be00639dd19db24",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "slr",
+      "name": "Mercedes-Benz SLR McLaren 722",
+      "derivedPosition": [
+        0.359,
+        1.0672,
+        -0.7275
+      ],
+      "heightCentimeters": -3,
+      "meshSha256": "9f0dba872057dfad85b6bdb81b1b33a7c6d1c3bfc2e479fe47469b1edd096d5b",
+      "review": "Roof/header low above eye; small drop improves opening without hiding road behind wheel."
+    },
+    {
+      "car": "sls",
+      "name": "Mercedes-Benz SLS AMG GT3",
+      "derivedPosition": [
+        0.4171,
+        1.0402,
+        -0.5979
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "ba9c5b4eb7701e5ebeb53f20c142fd8d35482c27313d979c5639a81a4c2e8e6b",
+      "review": "Roof/cage edge near horizon; small drop clears it."
+    },
+    {
+      "car": "ttr",
+      "name": "Audi TT RS Roadster",
+      "derivedPosition": [
+        0.3385,
+        1.1707,
+        -0.1963
+      ],
+      "heightCentimeters": -4,
+      "meshSha256": "39ab7077f3fe49f04fb396da5b6b724319708950183fbce8d4f5b013e203414b",
+      "review": "Windscreen header close to eye level; lower to look through opening."
+    },
+    {
+      "car": "van",
+      "name": "Aston Martin Vanquish",
+      "derivedPosition": [
+        0.3879,
+        1.1291,
+        -0.231
+      ],
+      "heightCentimeters": -3,
+      "meshSha256": "93dfbf96306a969d75ecc383e45bb4c3e3e5efd7e10c77c2c2d10a42b0e596e5",
+      "review": "Limited roof clearance; small drop keeps tall wheel below road sightline."
+    },
+    {
+      "car": "vip",
+      "name": "SRT Viper GTS",
+      "derivedPosition": [
+        0.3837,
+        1.0645,
+        -0.5454
+      ],
+      "heightCentimeters": -5,
+      "meshSha256": "ecfaba02f3334b54d4bd3d8b9e342892d7aec9683d7519d8ba4120659c61a367",
+      "review": "Roof edge almost on horizon; 5cm drop balances roof and tall wheel."
+    },
+    {
+      "car": "xkr",
+      "name": "Jaguar XKR-S",
+      "derivedPosition": [
+        0.3782,
+        1.1511,
+        -0.3352
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "67f541a4624d0e57d348ffebe5c3b127afe2f04ef5fb3f7621dea1dc589fae04",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "z06",
+      "name": "Chevrolet Corvette Z06",
+      "derivedPosition": [
+        0.4379,
+        1.0799,
+        -0.4141
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "442de0a6e7ebfcd0779300ae5f32d91cff1c62498dd14aeec5d9d538c716e6b7",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    },
+    {
+      "car": "z28",
+      "name": "Chevrolet Camaro Z28",
+      "derivedPosition": [
+        0.3674,
+        1.0992,
+        -0.3297
+      ],
+      "heightCentimeters": -2,
+      "meshSha256": "ffd28cd6e2e377bfa0fd9890e72cfdf3286c4454dff62ac6bcb0423e7679b575",
+      "review": "Slightly high relative to roof; small correction retains dashboard clearance."
+    },
+    {
+      "car": "zag",
+      "name": "Aston Martin V12 Zagato",
+      "derivedPosition": [
+        0.3694,
+        1.0598,
+        -0.4204
+      ],
+      "heightCentimeters": -3,
+      "meshSha256": "b8e1da838ed32792e5462d0d083c3e8f56a25d25383d648a556f2c8b77014777",
+      "review": "Roof/cage diagonal crowds view; 3cm drop preserves downhill visibility over wheel."
+    },
+    {
+      "car": "zen",
+      "name": "Zenvo ST1",
+      "derivedPosition": [
+        0.3794,
+        0.9982,
+        -0.2273
+      ],
+      "heightCentimeters": 0,
+      "meshSha256": "9d6947bf412407d8dde0733af6e77bc0b5e5711ad60bbd8f3821be1ca4aac567",
+      "review": "Forward opening and wheel alignment look balanced; retain authored-pose estimate."
+    }
+  ]
+}

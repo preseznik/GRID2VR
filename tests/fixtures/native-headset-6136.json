@@ -1,0 +1,78 @@
+{
+  "run": "artifacts\\diagnostic-20261007-231628-771",
+  "frame": 6136,
+  "scene": 165180,
+  "cpuArchiveSha256": "bd4ade91ba0bbd29ab932687bcbf456b5fa140b8d700daf52ccfbb0ca5c2a5e0",
+  "files": {
+    "center-context": {
+      "file": "native-headset-6136-center-context.bin",
+      "source": "stage-165180-scene-complete-context.bin",
+      "sha256": "4ed005b99b2919eb1e7d903501d91286a57d67dbd3caaf916a886abcd8edfc75",
+      "bytes": 512
+    },
+    "center-view": {
+      "file": "native-headset-6136-center-view.bin",
+      "source": "stage-165180-scene-complete-view.bin",
+      "sha256": "5e32b85ccbf0c72b7ee58a49f77dd8040e4f0fd089012d2b4b295715fa2d5226",
+      "bytes": 144
+    },
+    "left-context": {
+      "file": "native-headset-6136-left-context.bin",
+      "source": "stage-165180-replay-complete-context.bin",
+      "sha256": "72cfd7dd9838aa72d684d578aecb29e08e3c0930632b05ffa60bb9ebd3dbba97",
+      "bytes": 512
+    },
+    "left-view": {
+      "file": "native-headset-6136-left-view.bin",
+      "source": "stage-165180-replay-entry-view.bin",
+      "sha256": "854212cab03c43d0f17cd48e03dddf73a45321db5a10c6b09ca798ba39f8fe42",
+      "bytes": 144
+    },
+    "right-context": {
+      "file": "native-headset-6136-right-context.bin",
+      "source": "stage-165180-right-replay-complete-context.bin",
+      "sha256": "4dc86dec2b5e7ce5277da23fd20e3e87ddde150054a9cd04831dffa44d14ce60",
+      "bytes": 512
+    },
+    "right-view": {
+      "file": "native-headset-6136-right-view.bin",
+      "source": "stage-165180-right-replay-entry-view.bin",
+      "sha256": "45b083a32ae42de09e138331c76387e27bc9e75b7f78abefad70383e7edd2a8b",
+      "bytes": 144
+    }
+  },
+  "views": [
+    {
+      "qx": "0.113154866",
+      "qy": "-0.14888145",
+      "qz": "0.0240490679",
+      "qw": "0.982065141",
+      "x": "-0.00109278539",
+      "y": "0.0412860252",
+      "z": "0.00286656409",
+      "left": "-1.37638187",
+      "right": "0.839099586",
+      "down": "-1.42814791",
+      "up": "0.965688765"
+    },
+    {
+      "qx": "0.113154866",
+      "qy": "-0.14888145",
+      "qz": "0.0240490679",
+      "qw": "0.982065141",
+      "x": "0.0606927723",
+      "y": "0.0421626121",
+      "z": "0.0221473724",
+      "left": "-0.839099586",
+      "right": "1.37638187",
+      "down": "-1.42814791",
+      "up": "0.965688765"
+    }
+  ],
+  "expectedCurrentGeometryAccepted": [
+    true,
+    false
+  ],
+  "reason": "Center inverse-view origin residual exceeds existing 0.0001 cap; right-eye relative rendered-position error exceeds 0.0001. Preserve rejection pending justified numerical-policy review. Requested eye inputs are byte-exact.",
+  "rawGpuDataRetained": false
+}

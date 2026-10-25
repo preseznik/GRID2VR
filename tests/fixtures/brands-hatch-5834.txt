@@ -1,0 +1,20 @@
+Exact failure inputs from diagnostic-20261023-182530-707, 2026-10-23.
+Camaro / Brands Hatch route 2, human practice, direct VDXR, 150% headset scale.
+Frame 5834, scene 175572: eye_frustum_construction / visibility_not_ready.
+
+brands-hatch-5834-volume.bin: original 224-byte native visibility volume.
+brands-hatch-5834-source.bin: original 144-byte visibility SceneView.
+brands-hatch-5834-render.bin: original 144-byte render SceneView.
+brands-hatch-5834-eyes.bin: actual 88-byte frozen SceneViews (two ScenePose
+records, then two EyeFrustum records; little-endian float fields).
+
+The native render basis has singular values approximately 1.000000019,
+0.999345274 and 0.999345219. Its small contraction exceeded the former
+symmetric Gram row-error limit .001. The revised guard admits squared scales
+in [.998, 1.001], preserving the prior expansion bound. It does not normalize
+the native camera. Native inverse and constructed-volume readback/containment
+guards remain independently required.
+
+These fixtures reproduce visibility construction, not an actual native camera
+inverse or OpenXR lifecycle. The captured game CameraContext is unavailable.
+Source receipts: docs/evidence/race-exit-headset-182530-2026-10-23.json.

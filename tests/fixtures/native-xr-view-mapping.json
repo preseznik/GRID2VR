@@ -1,0 +1,48 @@
+{
+  "sourceRun": "diagnostic-20261007-223402-042",
+  "sourceHashes": {
+    "engine.log": "bdb247b082f527b4e91f00cafd37746e8dae907dc5cfcb4892017dbe54489d42",
+    "trace.log": "05ebda71412a73036c60724c4fc986433479a354598ca5fd4fa3925afaba762f",
+    "openxr-session.log": "16a8f72899ab04728f3a515ff3f58aea1a7a5d4ebca64b8985181ac5e2beb396"
+  },
+  "engine": [
+    "1401058187 tid=5048 frame=5283 pass=0 views frozen valid=1 index=1",
+    "1401058187 tid=5048 frame=5283 pass=0 views input eye=0 qx=3.1131504e-09 qy=8.78423805e-08 qz=-2.44889495e-08 qw=1 x=-0.0323650166 y=3.13264636e-09 z=6.96162106e-09 left=-1.37638187 right=0.839099586 down=-1.42814791 up=0.965688765",
+    "1401058187 tid=5048 frame=5283 pass=0 views input eye=1 qx=3.1131504e-09 qy=8.78423805e-08 qz=-2.44889495e-08 qw=1 x=0.0323649868 y=-5.03546371e-10 z=-5.08589482e-09 left=-0.839099586 right=1.37638187 down=-1.42814791 up=0.965688765",
+    "1401058187 tid=5048 frame=5283 pass=0 visibility before_jobs id=79 valid=1 applied=1 radius=3341.26489 caller_rva=0x1176b4 eye_bounds=1",
+    "1401058843 tid=5048 frame=5283 pass=1 eye fullpose id=111 qx=3.1131504e-09 qy=8.78423805e-08 qz=-2.44889495e-08 qw=1 x=-0.0323650166 y=3.13264636e-09 z=6.96162106e-09 camera_builder=0x25bf00",
+    "1401059437 tid=5048 frame=5283 pass=2 eye fullpose id=111 qx=3.1131504e-09 qy=8.78423805e-08 qz=-2.44889495e-08 qw=1 x=0.0323649868 y=-5.03546371e-10 z=-5.08589482e-09 camera_builder=0x25bf00",
+    "1401060562 tid=5048 frame=5283 pass=0 sequence pair id=111 index=1 target=2 accepted=1 gpu_restored=1",
+    "1401060562 tid=5048 frame=5283 pass=0 visibility restore id=79 source_frame=5283 restored=1 reason=scene_complete",
+    "1401060562 tid=5048 frame=5283 pass=0 views complete id=111 accepted=1 visibility_restored=1",
+    "1401060562 tid=5048 frame=5284 pass=0 views frozen valid=1 index=2",
+    "1401060562 tid=5048 frame=5284 pass=0 views input eye=0 qx=-0.0743922666 qy=0.0807073191 qz=-0.0107351691 qw=0.993899822 x=-0.0500708036 y=-0.0157924797 z=-0.00231827167 left=-1.37638187 right=0.839099586 down=-1.42814791 up=0.965688765",
+    "1401060562 tid=5048 frame=5284 pass=0 views input eye=1 qx=-0.0743922666 qy=0.0807073191 qz=-0.0107351691 qw=0.993899822 x=0.0138010215 y=-0.0179510545 z=-0.0125995167 left=-0.839099586 right=1.37638187 down=-1.42814791 up=0.965688765",
+    "1401060562 tid=5048 frame=5284 pass=0 visibility before_jobs id=140 valid=1 applied=1 radius=3339.92773 caller_rva=0x1176b4 eye_bounds=1",
+    "1401060656 tid=5048 frame=5284 pass=1 eye fullpose id=172 qx=-0.0743922666 qy=0.0807073191 qz=-0.0107351691 qw=0.993899822 x=-0.0500708036 y=-0.0157924797 z=-0.00231827167 camera_builder=0x25bf00",
+    "1401060781 tid=5048 frame=5284 pass=2 eye fullpose id=172 qx=-0.0743922666 qy=0.0807073191 qz=-0.0107351691 qw=0.993899822 x=0.0138010215 y=-0.0179510545 z=-0.0125995167 camera_builder=0x25bf00",
+    "1401060921 tid=5048 frame=5284 pass=0 sequence pair id=172 index=2 target=2 accepted=1 gpu_restored=1",
+    "1401060921 tid=5048 frame=5284 pass=0 visibility restore id=140 source_frame=5284 restored=1 reason=scene_complete",
+    "1401060921 tid=5048 frame=5284 pass=0 views complete id=172 accepted=1 visibility_restored=1",
+    "1401060937 tid=5048 frame=5285 pass=0 visibility before_jobs id=201 valid=1 applied=0 radius=0 caller_rva=0x1176b4 eye_bounds=1"
+  ],
+  "trace": [
+    "1401058187 tid=5048 openxr recentered frame=5283 units_per_metre=1",
+    "1401060562 tid=5048 views output frame=5283 scene=111 accepted=1 ready=1",
+    "1401060921 tid=5048 views output frame=5284 scene=172 accepted=1 ready=1"
+  ],
+  "runtime": [
+    "1401058187 tid=5048 frame=5283 sample tracked=1 should_render=1 display_time=1401059079996500 period=11111100 view_flags=15 head_flags=15",
+    "1401058187 tid=5048 frame=5283 pose kind=head eye=0 qx=0.0663374513 qy=-0.0343809836 qz=0.0419826992 qw=0.996320546 x=-0.00823307037 y=0.0233968496 z=0.0222154707",
+    "1401058187 tid=5048 frame=5283 pose kind=eye eye=0 qx=0.0663374513 qy=-0.0343808942 qz=0.0419826806 qw=0.996320546 x=-0.0404074825 y=0.0208369419 z=0.0198179092",
+    "1401058187 tid=5048 frame=5283 fov eye=0 left=-0.942477763 right=0.69813168 down=-0.959931076 up=0.767944872",
+    "1401058187 tid=5048 frame=5283 pose kind=eye eye=1 qx=0.0663374513 qy=-0.0343808942 qz=0.0419826806 qw=0.996320546 x=0.023941312 y=0.0259567574 z=0.0246130321",
+    "1401058187 tid=5048 frame=5283 fov eye=1 left=-0.69813168 right=0.942477763 down=-0.959931076 up=0.767944872",
+    "1401060562 tid=5048 frame=5284 sample tracked=1 should_render=1 display_time=1401061458762400 period=11111100 view_flags=15 head_flags=15",
+    "1401060562 tid=5048 frame=5284 pose kind=head eye=0 qx=-0.0112049868 qy=0.0438280478 qz=0.033827167 qw=0.998403311 x=-0.0243033115 y=0.00630617142 z=0.0113149248",
+    "1401060562 tid=5048 frame=5284 pose kind=eye eye=0 qx=-0.0112049887 qy=0.0438280627 qz=0.033827167 qw=0.998403311 x=-0.0564699061 y=0.00415182346 z=0.0141719207",
+    "1401060562 tid=5048 frame=5284 fov eye=0 left=-0.942477763 right=0.69813168 down=-0.959931076 up=0.767944872",
+    "1401060562 tid=5048 frame=5284 pose kind=eye eye=1 qx=-0.0112049887 qy=0.0438280627 qz=0.033827167 qw=0.998403311 x=0.00786327943 y=0.00846051984 z=0.0084579289",
+    "1401060562 tid=5048 frame=5284 fov eye=1 left=-0.69813168 right=0.942477763 down=-0.959931076 up=0.767944872"
+  ]
+}

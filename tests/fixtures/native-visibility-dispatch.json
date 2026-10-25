@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "source": "E:\\SteamLibrary\\steamapps\\common\\grid 2\\grid2_avx.exe",
+  "sourceSha256": "519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502",
+  "preferredImageBase": "0x400000",
+  "format": "G2VD0001; little endian image base and record count; each record RVA, byte length, relocation count, HIGHLOW offsets, then original bytes",
+  "fixtureSha256": "505cb917fcd573303495b9f6a6eacf04aed44e69ef31bc749feadcc23326bace",
+  "records": [
+    {
+      "name": "alternate visibility branch",
+      "rva": "0x117666",
+      "size": 13,
+      "sha256": "ca7404318b5037eaf30abc4e7153ce8ebd0a332f149c5b6fef23370b8c2d4d66",
+      "highlowRelocationOffsets": []
+    },
+    {
+      "name": "world visibility dispatch caller",
+      "rva": "0x1176f9",
+      "size": 24,
+      "sha256": "396b1d322bd96af5e3cd8317f47043894d197a10fd200748f4dff4d251e246a9",
+      "highlowRelocationOffsets": []
+    },
+    {
+      "name": "complete scheduler dispatch",
+      "rva": "0x78d750",
+      "size": 92,
+      "sha256": "2876be50ae9168ca72a191d1006d87898ca6fe478a49264e3f3cb8aef63570c7",
+      "highlowRelocationOffsets": [
+        42
+      ]
+    },
+    {
+      "name": "complete native event Reset",
+      "rva": "0x3701c0",
+      "size": 47,
+      "sha256": "dcb82fa7bfa87202568d8a9f2b2f01d0354fa8ef982da0c41c9bbfa8bbe74e6a",
+      "highlowRelocationOffsets": [
+        6,
+        16
+      ]
+    },
+    {
+      "name": "seven-entry event vtable",
+      "rva": "0xcfeac0",
+      "size": 28,
+      "sha256": "ccf0ccdabb5c353de894591c86a2e56dbba0c900132d68694eb6deb214cce9b0",
+      "highlowRelocationOffsets": [
+        0,
+        4,
+        8,
+        12,
+        16,
+        20,
+        24
+      ]
+    }
+  ],
+  "limits": "Offline executable-byte fixture. Native dispatcher and Reset execute only in a private test arena with stubbed scheduler callees and a test-owned Win32 event. The outer caller is synthetic. Does not prove live game behavior."
+}

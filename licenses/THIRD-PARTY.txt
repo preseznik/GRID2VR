@@ -1,0 +1,30 @@
+GRID2VR 0.1.0 distribution components
+
+The package includes the original notices for MinHook, Khronos OpenXR,
+PowerShell, Microsoft .NET, CPython, NumPy, Pillow and their bundled components.
+Runtime licenses and third-party notices are also retained inside payload/.
+Microsoft Visual C++ redistributables are included in their original form.
+
+The unchanged xml-convert utility uses EgoEngineLibrary 15.0.0 (MIT).
+Its dependency binaries were matched by SHA-256 to these NuGet versions:
+
+BCnEncoder.NET 2.2.1: Copyright 2020 Nomi Lakkala. MIT (BCnEncoder.txt).
+ZstdSharp.Port 0.7.2: Copyright Oleg Stepanischev 2023. MIT (ZstdSharp.txt).
+SharpGLTF Core, Runtime and Toolkit 1.0.6: Copyright Vicente Penades.
+  MIT (SharpGLTF.txt).
+CommunityToolkit.HighPerformance 8.4.0: MIT; original License.md and
+  ThirdPartyNotices.txt are under converter/communitytoolkit.highperformance.
+System.IO.Hashing and System.IO.Packaging 10.0.11: Microsoft MIT; see
+  Microsoft-MIT.txt and their original THIRD-PARTY-NOTICES.TXT under converter/.
+SixLabors.ImageSharp 2.1.13: Copyright Six Labors. Apache-2.0 (Apache-2.0.txt).
+K4os.Compression.LZ4 1.3.8: Copyright 2017 Milosz Krajewski.
+  MIT (K4os-LZ4.txt).
+MiscUtil: original notice in MiscUtil.txt.
+
+Original package metadata is included under converter/ for attribution and
+source repository identification. Upstream license texts for BCnEncoder,
+ZstdSharp and SharpGLTF were obtained from the commits recorded in that
+metadata; K4os from its 1.3.8 release tag.
+
+No GRID 2 executables, textures, camera assets or player save files are included.
+Local camera/session assets are generated from the player's own installed game.

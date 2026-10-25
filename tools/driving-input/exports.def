@@ -1,0 +1,8 @@
+LIBRARY driving_input
+EXPORTS
+    CaptureOpen=_CaptureOpen
+    CaptureClose=_CaptureClose
+    CaptureCount=_CaptureCount
+    CaptureName=_CaptureName
+    CaptureProduct=_CaptureProduct
+    CaptureRead=_CaptureRead

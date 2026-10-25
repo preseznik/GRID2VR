@@ -1,0 +1,4108 @@
+{
+  "schema": 1,
+  "method": "d_Neutral eye estimate plus individually reviewed cockpit height",
+  "visualDefaultsSha256": "29cfa70a5d758420470c51cd1e2217296be8e9f81740f2e14c6e8f1aa3b70e33",
+  "handToleranceMeters": 0.001,
+  "skeleton": {
+    "path": "characters/models/driver_model.pssg",
+    "bytes": 611017,
+    "sha256": "ea990fb74ede129aa521ded061a8309220568be25ce6ab636fd104315dd3c113"
+  },
+  "exporterInputSha256": "5eb5d65e237e2f83b6b34e919eb7f4aaa489d693385eec0695a93acf2a176013",
+  "converterSha256": "4448ec5a685b30beeb27cf21f6492ae4f4ad64d137c19d354b678bf52f10d029",
+  "cars": [
+    {
+      "car": "177",
+      "position": [
+        0.3722,
+        1.0303,
+        -0.5671
+      ],
+      "head": [
+        0.3767195283114531,
+        0.9413243842299011,
+        -0.6284458250471762
+      ],
+      "headNub": [
+        0.36992337154947136,
+        1.1347173284338634,
+        -0.6114757267936687
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5647414666329817,
+            0.7528823922440234,
+            -0.16722877213809245
+          ],
+          "steeringDummy": [
+            0.5649430007,
+            0.7529138990215504,
+            -0.1672417765370047
+          ],
+          "distanceMeters": 0.00020439611442033613
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.17501927534604098,
+            0.7527188169985689,
+            -0.16732044646417887
+          ],
+          "steeringDummy": [
+            0.1750570089,
+            0.7529138990215504,
+            -0.1672417765370047
+          ],
+          "distanceMeters": 0.00021370487646871558
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/177/int_177_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "4c3084ea3ded3be13a94bb3179e78e602ac2540e3a2aba70c633f4fca8781641"
+        },
+        {
+          "path": "cars/models/177/177_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "dea3215279cd064b1e549595079f259791ff4c9bd1ec1d926e81dfb6d0429e79"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/177/cameras.xml",
+        "sha256": "fa4c5e2227feac86737b9bfd1b97e4b319f166fe80d794900b27124aed4648a1",
+        "decodedSha256": "1cea58f1d02df099c92952b0ed7cead0f7a66a1ce3becdf36ae91f8f02be4189",
+        "semanticSha256": "58856b0dbcbc21b0e056ce929717fb056cfe403c71992ad25e5d01d67dbbf910"
+      },
+      "derivedPosition": [
+        0.3722,
+        1.0703,
+        -0.5671
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "d745fa9024817e79faaf4421e356982cde0c703203fdd3c51e52f4773e147d56",
+        "note": "Roof edge too close to horizon; modest drop preserves view over wheel.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "190",
+      "position": [
+        0.3285,
+        1.1315,
+        0.0263
+      ],
+      "head": [
+        0.33310250951009324,
+        1.0029531438537307,
+        -0.03850481315908248
+      ],
+      "headNub": [
+        0.32615671618339953,
+        1.19581442924888,
+        -0.01633989944082876
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5428152975746708,
+            0.7533988969032391,
+            0.42128813456272624
+          ],
+          "steeringDummy": [
+            0.5427614451792667,
+            0.7535740295048338,
+            0.4212564198016437
+          ],
+          "distanceMeters": 0.00018594981769979744
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.10990352712702202,
+            0.7534317350425617,
+            0.4212211517745118
+          ],
+          "steeringDummy": [
+            0.10993708687927284,
+            0.7535741532694625,
+            0.42125640877557713
+          ],
+          "distanceMeters": 0.0001505066923722758
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/190/int_190_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "c6e261df1aa2e6154c88a63bf6c043a27d1431a0f74b919431de0109e2686db1"
+        },
+        {
+          "path": "cars/models/190/190_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "4fd79d3ec419f02bc855c71f4e6d1638e49d3c31ae8c6a0f9c92eaea1c0de1e0"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/190/cameras.xml",
+        "sha256": "ef9343914f426357e54e73ffeb17f26d2ac63a32865f9b031be2a3236977cae5",
+        "decodedSha256": "7341193a1d2cfc22ee9aa3091bc0b5a8bdcdb60fbbbaddd3da1da91754825e40",
+        "semanticSha256": "8c8e74705eacb7197fd9d313f74e790dfe0704b3b056fac257c7a99acae0083c"
+      },
+      "derivedPosition": [
+        0.3285,
+        1.1315,
+        0.0263
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "d3e8341276023d5c52557142298969e01ee23e0515144890ed3407926790b039",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "300",
+      "position": [
+        -0.3645,
+        1.0736,
+        -0.3668
+      ],
+      "head": [
+        -0.35967061440378795,
+        0.9857191797520913,
+        -0.4364817433199107
+      ],
+      "headNub": [
+        -0.36687198235115703,
+        1.1775807393904492,
+        -0.406947270543721
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.1718203329610912,
+            0.7759331509981028,
+            -0.00897152031335094
+          ],
+          "steeringDummy": [
+            -0.171710968,
+            0.7759602034291009,
+            -0.008974994018270592
+          ],
+          "distanceMeters": 0.00011271466347932268
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.5611981483577442,
+            0.775965961743411,
+            -0.009030257746061775
+          ],
+          "steeringDummy": [
+            -0.5611706078,
+            0.7759604677381944,
+            -0.008974941416972994
+          ],
+          "distanceMeters": 6.203678487829737e-05
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/300/int_300_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "4c979ca0a7917f21d0d2505ed97a1544b379438e5b7a078e8ddc368cc8670b5f"
+        },
+        {
+          "path": "cars/models/300/300_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "0f79f83eee20dc8c01713542859b0f602af7956211cecd4131d946975c4bb057"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/300/cameras.xml",
+        "sha256": "f0094826f0aec6c27f921ab0be3b5bb8523d43da708f622475b322c8dcf72c81",
+        "decodedSha256": "1857d8614a88221b41b6708263552d6eab701e0a81f95d997b05bd9dec4c26e9",
+        "semanticSha256": "c3a666fc9d4a4619a2274a79d6b0eed4202d207d81888d8af1751905fa652d19"
+      },
+      "derivedPosition": [
+        -0.3645,
+        1.1136,
+        -0.3668
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "920f5b3c22376fded0244cf208558d20cb791112e80ccf632014f7d844d75154",
+        "note": "Low roof over right-hand seat; lower view opens windscreen without wheel obstruction.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "320",
+      "position": [
+        0.4183,
+        1.0832,
+        -0.1181
+      ],
+      "head": [
+        0.4230870317334753,
+        0.9547019529835935,
+        -0.18354995746216754
+      ],
+      "headNub": [
+        0.4158949002541923,
+        1.1474409921070556,
+        -0.1604212114543695
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5884577620040697,
+            0.7561425703000283,
+            0.2054013323132659
+          ],
+          "steeringDummy": [
+            0.5883905771300073,
+            0.756099668949564,
+            0.20551473580988225
+          ],
+          "distanceMeters": 0.00013861704880444687
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.2443964235348687,
+            0.7560213189500038,
+            0.20547262415270606
+          ],
+          "steeringDummy": [
+            0.24430485393000667,
+            0.7560997448441887,
+            0.2055147898460995
+          ],
+          "distanceMeters": 0.00012772454389288764
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/320/int_320_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "9aadb7d4738034452c54351f9371904611ab4d1487e316d72133c570f4e0040f"
+        },
+        {
+          "path": "cars/models/320/320_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "03fe6e271dfabfb7c61212463e952ce58b564230304ae6bc802c294ca74e46ce"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/320/cameras.xml",
+        "sha256": "319cc7eb9553f33b899d2ca15b874883daa2bff70698216c9a10f8ea99f649e4",
+        "decodedSha256": "2081d54b4e68e2ca2c6332c4cb52372729ea1f0c9dc1bd49a6ee6d70958ca6fd",
+        "semanticSha256": "dfa97ced140934cc859ec4efffbc9427fd8b59160d19adb6bd38743e591f8c12"
+      },
+      "derivedPosition": [
+        0.4183,
+        1.0832,
+        -0.1181
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "db0bd51566ebfd206380866ddd21e4fb4f487c4fc9b038f8e988587267efcf29",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "37r",
+      "position": [
+        0.372,
+        1.1271,
+        -0.3098
+      ],
+      "head": [
+        0.3767482781789663,
+        0.9985747320371638,
+        -0.37506934399666014
+      ],
+      "headNub": [
+        0.36955551905530476,
+        1.191348150700586,
+        -0.35222911364865545
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5647234394186552,
+            0.79938398019705,
+            0.08372063638664164
+          ],
+          "steeringDummy": [
+            0.5649379492,
+            0.7994425588695367,
+            0.08368403163430008
+          ],
+          "distanceMeters": 0.0002253570834406152
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.17496021186271266,
+            0.7992929730817838,
+            0.08367773626262166
+          ],
+          "steeringDummy": [
+            0.17505194249999997,
+            0.7994427031080464,
+            0.08368409624471528
+          ],
+          "distanceMeters": 0.00017571010202595876
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/37r/int_37r_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "21bc65dc622bf6489d9cd3c7893a1d285d773a547c1e9fa6da69f4201432faa8"
+        },
+        {
+          "path": "cars/models/37r/37r_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "9699794be8776247329ef7cf166278d259bc91bcf0d29624ceaafc99dbb4d7f1"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/37r/cameras.xml",
+        "sha256": "410f1f81bad9c5319791e9942aaac157f7fb3e918273a9c2b8e480b5194d670d",
+        "decodedSha256": "03a47a1a930b89d7feb245e6ab4e39c7ee2019552abc3b97fad1b923472dfb6d",
+        "semanticSha256": "8a952ad5d2862aadfa7918918ff812b67d21432595ec7168d84b6535e519c1f4"
+      },
+      "derivedPosition": [
+        0.372,
+        1.1271,
+        -0.3098
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "1c91edc1920978438579a85a26646a49210cef1aa519649950628d7f9bb698be",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "a4c",
+      "position": [
+        0.2686,
+        1.0218,
+        -0.1229
+      ],
+      "head": [
+        0.2733825942213564,
+        0.9228622332724511,
+        -0.18357343516968774
+      ],
+      "headNub": [
+        0.2661925004880716,
+        1.1163197359791,
+        -0.16752662713950417
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.4589470463143623,
+            0.6669177741928747,
+            0.22200339227424082
+          ],
+          "steeringDummy": [
+            0.45883214391356636,
+            0.667016498068227,
+            0.22201081788848595
+          ],
+          "distanceMeters": 0.00015167104212793821
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.0744948044841924,
+            0.667010310258014,
+            0.2218948306643503
+          ],
+          "steeringDummy": [
+            0.07444628991356592,
+            0.667016480235656,
+            0.22201082927115096
+          ],
+          "distanceMeters": 0.00012588649239241156
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/a4c/int_a4c_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "bd4f9b3e39c2e2a469b99dfab6670d123b0938781d41dbc5a546e76dc78e1b05"
+        },
+        {
+          "path": "cars/models/a4c/a4c_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "87ee0d4458abc7c1062714afb6a09bc15a644c61c8628ad24757a29345f1b77a"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/a4c/cameras.xml",
+        "sha256": "3e820772a16cd543be5e522576c8560d5844901e5db8eef612caea9c08f3cc23",
+        "decodedSha256": "8a8810254eb1f03e2b130d5473afa70d32c67b03e0d9ec8b78e796a4669f67e0",
+        "semanticSha256": "5d9ad1b133d1b91142b29e4c6bd05b78650c04df214d16792e43ce7897e46bee"
+      },
+      "derivedPosition": [
+        0.2686,
+        1.0518,
+        -0.1229
+      ],
+      "visualReview": {
+        "heightCentimeters": -3,
+        "meshSha256": "3bdd8360492630df9f648cde1612360528cf18a8bee5a7769dd5c9646a440ad1",
+        "note": "Low roof/header; small drop retains dashboard clearance.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "a8c",
+      "position": [
+        0.3823,
+        1.1136,
+        -0.4673
+      ],
+      "head": [
+        0.3871525127803904,
+        0.9848338883578545,
+        -0.5305087119906838
+      ],
+      "headNub": [
+        0.37992946975569936,
+        1.1779383206335194,
+        -0.5106716574134391
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5752863686723716,
+            0.806572476840555,
+            -0.08057731369263013
+          ],
+          "steeringDummy": [
+            0.5754578978891921,
+            0.8064901181616649,
+            -0.08046497054547337
+          ],
+          "distanceMeters": 0.0002209665289691151
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.18558434969289206,
+            0.806450923246653,
+            -0.08058653172426229
+          ],
+          "steeringDummy": [
+            0.18557198058919247,
+            0.806490148105406,
+            -0.08046496096192077
+          ],
+          "distanceMeters": 0.00012833952830995003
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/a8c/int_a8c_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "d2dec5779010852fb84509fb80ef45a3fe3345ef42b56fc96648fd5838d18932"
+        },
+        {
+          "path": "cars/models/a8c/a8c_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "3fb183639bed39c4c79b99e60866c0d9e5201bab54830588bc6c8268667d49cd"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/a8c/cameras.xml",
+        "sha256": "5beda6a717448f5ba69c62341462a8754764a6375a51e3a8b3e821451c46fe7c",
+        "decodedSha256": "9e1a18baef12654815fb2ac7c663c3520b64d04d3499a720ba3c2654f7cad92a",
+        "semanticSha256": "4f4581498d0a21d0777dae85d8b85bbeafb83ece5390d851a13b16edee53b63a"
+      },
+      "derivedPosition": [
+        0.3823,
+        1.1136,
+        -0.4673
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "bf0d4c3cd56b2b641ec0c2a69a46c65756651bd45c2021699a8efbdc341690cf",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "ato",
+      "position": [
+        -0.2849,
+        0.9732,
+        -0.5529
+      ],
+      "head": [
+        -0.280403720809627,
+        0.8440283923420486,
+        -0.6113813280418635
+      ],
+      "headNub": [
+        -0.2871238361127414,
+        1.0377501849229045,
+        -0.5986648041883611
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.1408948404090685,
+            0.6179557711941187,
+            -0.12884294703317437
+          ],
+          "steeringDummy": [
+            -0.141027987,
+            0.6181577744293827,
+            -0.1288002812572141
+          ],
+          "distanceMeters": 0.00024566988047395385
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.4326766458866975,
+            0.6180503098442556,
+            -0.12881547609446903
+          ],
+          "steeringDummy": [
+            -0.43287199740000004,
+            0.6181577744293827,
+            -0.1288002812572141
+          ],
+          "distanceMeters": 0.00022347647277808032
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/ato/int_ato_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "2a54bdfdf9d0620a0e138361aeb04dafede9f8118b9dc5465bcb316602b15a91"
+        },
+        {
+          "path": "cars/models/ato/ato_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "4ac73e404becdb8c31a6cbc9333c914888673a9a0eeaab59f73df1e9e2ef229a"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/ato/cameras.xml",
+        "sha256": "d9bbab825eaa62352e9de2a67aec53e2da00cb4d113abbe3d50a3fe840c66082",
+        "decodedSha256": "ceaddc33dcfb7e8d440a1e879c98424502f26a0ccdba0e7ac2f2a4dfa70e5863",
+        "semanticSha256": "341b1467ed5fa3c246f4c56434155eadd43b8abc8981f681556f3dfd745d5ece"
+      },
+      "derivedPosition": [
+        -0.2849,
+        0.9732,
+        -0.5529
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "347a71552333b6f3a8ca55d6c27ed8697aedf5661eed2cbdc0bb318b112e8339",
+        "note": "Open cockpit; wheel below forward sightline and seat alignment retained.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "b1m",
+      "position": [
+        0.3597,
+        1.2075,
+        -0.101
+      ],
+      "head": [
+        0.36437528259254104,
+        1.0795169690037336,
+        -0.17054564836571706
+      ],
+      "headNub": [
+        0.3574215000111019,
+        1.2714254282616337,
+        -0.1412575787397922
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.532652894173819,
+            0.8483873730797657,
+            0.2639396482979455
+          ],
+          "steeringDummy": [
+            0.5326478642318137,
+            0.8484066849991605,
+            0.263952225276623
+          ],
+          "distanceMeters": 2.358878843733043e-05
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.18263157864383697,
+            0.8482299427283543,
+            0.2638536270663585
+          ],
+          "steeringDummy": [
+            0.1828018588318136,
+            0.8484066849991555,
+            0.26395245962691927
+          ],
+          "distanceMeters": 0.0002645771111270296
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/b1m/int_b1m_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "8cce3af044a174ca5d83c7752f102eefc60a0f8ffc13d0a89c4f245276092ba4"
+        },
+        {
+          "path": "cars/models/b1m/b1m_anim_dummies.pssg",
+          "bytes": 18519,
+          "sha256": "fa82335390635d1c79fa69edcc7e19b1a8a2bb20c58e774e9e99a4f4a0fd314f"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/b1m/cameras.xml",
+        "sha256": "5217ca2631b16c8e955ac6158bd5668e65eda93ae44d9585479d072d73c54de9",
+        "decodedSha256": "0c0ec99423c8c7a28d2c90b190382d0bf7801d8b8dfc2b24d2813e0ae2b56d5d",
+        "semanticSha256": "3e7c3683d32951c43607c6dba6dfd6f7400223499bc8fe0202570be1c72fd3d8"
+      },
+      "derivedPosition": [
+        0.3597,
+        1.2075,
+        -0.101
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "4a92c4f6322c2c81adaa44651f9cf13ede38783f44a0662e4e761c1b07a81776",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "bac",
+      "position": [
+        0.0027,
+        0.8396,
+        -0.2097
+      ],
+      "head": [
+        0.007241735463276764,
+        0.7109339855389364,
+        -0.2735616081209192
+      ],
+      "headNub": [
+        0.00047450106681319777,
+        0.9039504460262296,
+        -0.25273246102065317
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.16358508719845274,
+            0.5491535955719357,
+            0.17202830684117085
+          ],
+          "steeringDummy": [
+            0.1635719985,
+            0.54932698232,
+            0.17195099223000002
+          ],
+          "distanceMeters": 0.00019029405543002906
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.16367424868618494,
+            0.5493194001384516,
+            0.17184855287712814
+          ],
+          "steeringDummy": [
+            -0.1635719985,
+            0.54932698232,
+            0.17195099223000002
+          ],
+          "distanceMeters": 0.00014493588606240556
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/bac/int_bac_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "c44d9dded95db7c7a122666e0c5d66b758fb7ecaed78d95f3b37575401ab222f"
+        },
+        {
+          "path": "cars/models/bac/bac_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "b9480dcd49a23a1f37a63bc347361b02649001bcb9c0296cc68e681264116a69"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/bac/cameras.xml",
+        "sha256": "18a36e8a1a4e6681a7d2ff2a9951fc5a17fd674a47abaa3f9f836b13b231775f",
+        "decodedSha256": "2897a6daebea015666a39844d14e2f47d918d4d8269b5e4271c099e63c54c934",
+        "semanticSha256": "310ce56dd4bc89fe80dbb45b5bb5daaafe4bd91bf43ede2779d432d53cb2f685"
+      },
+      "derivedPosition": [
+        0.0027,
+        0.8396,
+        -0.2097
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "37d801a78451370bea410da4a7fef987b29ea53e0bef10968e3b0e33d7968e8b",
+        "note": "Open cockpit; wheel below forward sightline and seat alignment retained.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "bm3",
+      "position": [
+        -0.3627,
+        1.174,
+        -0.0718
+      ],
+      "head": [
+        -0.3578376879956353,
+        1.085352769459103,
+        -0.1357907592543643
+      ],
+      "headNub": [
+        -0.36506115853977844,
+        1.2783410773045492,
+        -0.11485425148460447
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.17962988565031646,
+            0.8964893623342606,
+            0.3249261433637939
+          ],
+          "steeringDummy": [
+            -0.17965910131538274,
+            0.8965255156228166,
+            0.3249986940430686
+          ],
+          "distanceMeters": 8.616389279679725e-05
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.5493105948220552,
+            0.8965010113966683,
+            0.32482880309459006
+          ],
+          "steeringDummy": [
+            -0.5492940575153831,
+            0.8965255205620893,
+            0.32499871363221955
+          ],
+          "distanceMeters": 0.0001724638295386886
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/bm3/int_bm3_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "677b232ab05a4965a8d96188450a2ae9f9e5a26bc023bb09f0043e1615e50a2e"
+        },
+        {
+          "path": "cars/models/bm3/bm3_anim_dummies.pssg",
+          "bytes": 18127,
+          "sha256": "bfdb7a540843fe29d53f0738797120df9c9360c32c214575218f33df610c1c76"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/bm3/cameras.xml",
+        "sha256": "06df4cfe050439a0a0ac4bac94b51157b3647b69c7f5ea1c2d24e1a11c2d50c5",
+        "decodedSha256": "3b9c625c994f7e6d57b4618cbd354ff12b80998f5477f39642b2c14fd5917219",
+        "semanticSha256": "9d03e8f13291de1570fc4efd56b5564ce59e24b6184ba5607df8a089f843ed6c"
+      },
+      "derivedPosition": [
+        -0.3627,
+        1.214,
+        -0.0718
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "758d85a92e8158abf350705b45bdd14c9f3b880eb3a5c7a10292c43e8730a50d",
+        "note": "Header crowds right-hand view; lower eye point clears it.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "bos",
+      "position": [
+        0.3922,
+        1.1485,
+        0.0354
+      ],
+      "head": [
+        0.396848529496665,
+        1.020135641981568,
+        -0.030906400092105355
+      ],
+      "headNub": [
+        0.38987315816682994,
+        1.2127205205707194,
+        -0.006464395612998795
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.6027362410716038,
+            0.8117180264623927,
+            0.42185012997102045
+          ],
+          "steeringDummy": [
+            0.6025680006,
+            0.8117034798981455,
+            0.42201876656274584
+          ],
+          "distanceMeters": 0.0002386519618306561
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.17798942621502786,
+            0.8117245122423414,
+            0.4220701522538711
+          ],
+          "steeringDummy": [
+            0.1776860058,
+            0.8117034798981455,
+            0.42201876656274584
+          ],
+          "distanceMeters": 0.00030845874442214297
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/bos/int_bos_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "81c0cfc113a391f3db1b88389a66cd41021605b035c8334dc44f9922127485cd"
+        },
+        {
+          "path": "cars/models/bos/bos_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "52f847ebe8199e241e55ab52e8902b7dc1a162123e773838c1c475704f72147b"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/bos/cameras.xml",
+        "sha256": "015396a7042cf3ca977cf16fd1e2c70fed2d310b5829ba86543aa30bab1e721f",
+        "decodedSha256": "2773cf2f08148f9824b4084575157efd6a71512404225759e87604d32518e44a",
+        "semanticSha256": "c577555fe93388629a544eb5be159aa4bffd7570e117e9055ead326d85b82fea"
+      },
+      "derivedPosition": [
+        0.3922,
+        1.1485,
+        0.0354
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "9d06ec4348146c54493f0993cd1f850dc8e3b24db712cb327f122a84c0476871",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "brz",
+      "position": [
+        -0.4085,
+        1.0958,
+        -0.0769
+      ],
+      "head": [
+        -0.40365196347205645,
+        0.9678897339631213,
+        -0.14655169536042198
+      ],
+      "headNub": [
+        -0.4108787582574408,
+        1.159753225302041,
+        -0.11703598805542567
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.21320062428391184,
+            0.7672289416987185,
+            0.28487117046148147
+          ],
+          "steeringDummy": [
+            -0.21333698920000002,
+            0.7673803026789906,
+            0.2849102087800442
+          ],
+          "distanceMeters": 0.0002074355972461829
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.6072458768066216,
+            0.767333582110779,
+            0.2848061751397004
+          ],
+          "steeringDummy": [
+            -0.6072690040000001,
+            0.7673803026789906,
+            0.2849102087800442
+          ],
+          "distanceMeters": 0.00011636441419422144
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/brz/int_brz_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "3ab689cdc01d9b6e838b184005cb393aef3fcf245a051cb12788ea6ed88cae92"
+        },
+        {
+          "path": "cars/models/brz/brz_anim_dummies.pssg",
+          "bytes": 18519,
+          "sha256": "f05ed7b6547d23f0b6f041bcaf6f12d2564a1fa199cc19861923f7b8536a6f90"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/brz/cameras.xml",
+        "sha256": "63bffbe19c8b73f7f1bbfbfd77c87961285ce54bc20b7a8c5da3f6a34f1c5487",
+        "decodedSha256": "1aafb8c2400345a0b48a4ba7efe41bcbf4d999696f49699f8275a07e23a0dcca",
+        "semanticSha256": "fda6d9d25c3062fc66b7354aa29692b2e9dfff9244a8f8b5bf6b4ac11fc02ed5"
+      },
+      "derivedPosition": [
+        -0.4085,
+        1.0958,
+        -0.0769
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "13fbf05598653af0dd58132491c83bee593b42c2cb875a9284dfdb32b7a666e8",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "bug",
+      "position": [
+        0.4142,
+        0.9926,
+        0.0602
+      ],
+      "head": [
+        0.4188728854070806,
+        0.8938380876351097,
+        -0.0033237204305103588
+      ],
+      "headNub": [
+        0.4118731520111146,
+        1.0869119041043744,
+        0.01688785980761349
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5918738363948023,
+            0.7232409038368853,
+            0.45224712309942294
+          ],
+          "steeringDummy": [
+            0.5919260085,
+            0.7232782081395054,
+            0.45226276328277126
+          ],
+          "distanceMeters": 6.60163229050039e-05
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.23231977314522614,
+            0.7233173582762803,
+            0.45209801737281297
+          ],
+          "steeringDummy": [
+            0.2323440015,
+            0.7232782081395054,
+            0.45226276328277126
+          ],
+          "distanceMeters": 0.00017105835621953672
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/bug/int_bug_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "2a2e9ee324a32fcd2644ab85e2286d519441637e3990a799935e00eab5fd7d38"
+        },
+        {
+          "path": "cars/models/bug/bug_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "632728ef0c92337c6eeef22d916faf821b1e11f2e6e71928f3aefbcf594e86c9"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/bug/cameras.xml",
+        "sha256": "50aac77e751b343242f4857cd085050ae08ce10d935ba9cbd591816917154f91",
+        "decodedSha256": "9194187494294fb289c77e379c1efc0a935b4262d711748c75cd5201d136b69e",
+        "semanticSha256": "db1001cf68b81b33f1e576ec18f3cfa87baab3d1f3b2d8499b306dce0356d412"
+      },
+      "derivedPosition": [
+        0.4142,
+        1.0226,
+        0.0602
+      ],
+      "visualReview": {
+        "heightCentimeters": -3,
+        "meshSha256": "fa893c61d36bf5d0cedd48067b2707af05e7d843294edf8d7a005ef91e4c5697",
+        "note": "Very low front header; small drop gives a larger forward opening.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "c63",
+      "position": [
+        0.3764,
+        1.1724,
+        -0.1064
+      ],
+      "head": [
+        0.3811733649514341,
+        1.0436984425499343,
+        -0.16996150209665303
+      ],
+      "headNub": [
+        0.3739805174271664,
+        1.2367457787559564,
+        -0.14956562561154677
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5709363057195607,
+            0.8460965813717838,
+            0.25552981142879283
+          ],
+          "steeringDummy": [
+            0.5709421912276186,
+            0.8461625325221929,
+            0.2555970053583301
+          ],
+          "distanceMeters": 9.433566458152269e-05
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.1780469990895927,
+            0.8462234451882349,
+            0.25549206817908293
+          ],
+          "steeringDummy": [
+            0.1779286840276187,
+            0.8461625438974915,
+            0.2555971106099738
+          ],
+          "distanceMeters": 0.00016953269121793696
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/c63/int_c63_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "c6fd918364d64821305ea12738347a86897bb02bf4ba4bfc946fa49621e63875"
+        },
+        {
+          "path": "cars/models/c63/c63_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "d54845865e2b0c2cf9be20b5af3669806d726b0a79e9fdb3f7af4ef9d2c0e986"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/c63/cameras.xml",
+        "sha256": "5f0fc44438eacfacae308e5b735ee7c76fdbd185a6a597bd56efe235723699ff",
+        "decodedSha256": "fc8feaea3f9b035224fcf4f205ea09af2902b1c58f59d3d9b839936e5fd83dfa",
+        "semanticSha256": "660395196a6f1b9c2e046b745bde7cc0432e228cbf4a4c22590a0844ff6bf061"
+      },
+      "derivedPosition": [
+        0.3764,
+        1.1724,
+        -0.1064
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "eeb44608953774fb4630a4699dc71b8ea09bf6f6eea1c644f7a2d3f547ce2a04",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "cat",
+      "position": [
+        -0.2129,
+        0.7591,
+        0.0084
+      ],
+      "head": [
+        -0.2085467362792216,
+        0.6297387182291727,
+        -0.0457519940563456
+      ],
+      "headNub": [
+        -0.21506268850103827,
+        0.8237856469262462,
+        -0.03956049349348426
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.044724366598614756,
+            0.49186931530446554,
+            0.47683310042953503
+          ],
+          "steeringDummy": [
+            -0.0470490009,
+            0.48883990652412157,
+            0.47320580146613017
+          ],
+          "distanceMeters": 0.005266739025575496
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.38290557392677016,
+            0.4889509306935723,
+            0.4730973913107648
+          ],
+          "steeringDummy": [
+            -0.3827049881,
+            0.48883990652412157,
+            0.47320580146613017
+          ],
+          "distanceMeters": 0.0002536016598716461
+        }
+      ],
+      "handChecksStatus": "authored-mismatch",
+      "warnings": [
+        "Neutral pose does not match both steering hand dummies within 1mm: L=0.005267m, R=0.000254m"
+      ],
+      "sources": [
+        {
+          "path": "cars/interiors/models/cat/int_cat_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "633cbc989e1cabdea70a6840fd64f73c5f6baea9aaa952e1327a5c3229cb1892"
+        },
+        {
+          "path": "cars/models/cat/cat_anim_dummies.pssg",
+          "bytes": 17817,
+          "sha256": "f9f6fd6d52055fe9af52a7957ec7ba780bdbaadc78bdbd2e20ca7aea96e930f9"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/cat/cameras.xml",
+        "sha256": "aa288f9754dbbd5ec55f694080b2a045443cee02593ea21586e5dcf78a039d9b",
+        "decodedSha256": "6858b2fa775d292fcf1878c5401e9ba868f0211c5f14626aef3f423e6772c204",
+        "semanticSha256": "e3c30d6517477a484a20286f3d610f55dbf53854af8688daf24c74e57086397c"
+      },
+      "derivedPosition": [
+        -0.2129,
+        0.7591,
+        0.0084
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "7b7819bcbc9c3dc8f8259a49aac145db18fdb76567cdd41b12c92e99b8bf7e2c",
+        "note": "Open cockpit; wheel below forward sightline and seat alignment retained.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "cha",
+      "position": [
+        0.3874,
+        1.2308,
+        -0.1855
+      ],
+      "head": [
+        0.3919962502797263,
+        1.1322899098121086,
+        -0.25093364257046263
+      ],
+      "headNub": [
+        0.3851261212781762,
+        1.3250356309741285,
+        -0.2277627308365878
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5780397635481733,
+            0.9496368538915217,
+            0.19947541103354013
+          ],
+          "steeringDummy": [
+            0.5780843488844483,
+            0.9496698643995709,
+            0.19966546408870503
+          ],
+          "distanceMeters": 0.00019798411458984248
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.19280069110961337,
+            0.9498626408750633,
+            0.19949032120785212
+          ],
+          "steeringDummy": [
+            0.19268482848444812,
+            0.9496698564786563,
+            0.1996654584643519
+          ],
+          "distanceMeters": 0.0002850667115299034
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/cha/int_cha_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "ea3963a82b0c5905dd6e280a387c202b7b53ad8ed4b310e7a0f6bab8e1e18e16"
+        },
+        {
+          "path": "cars/models/cha/cha_anim_dummies.pssg",
+          "bytes": 18127,
+          "sha256": "0898d9d7c18171e130fb6be7ad8fab9ba0ab2975fb5af25d656c9ab0dd5c369a"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/cha/cameras.xml",
+        "sha256": "30950a8a96cff3e8ebefa84a2c6f4a209e16ca07f05c110ce82fe88bbd23e664",
+        "decodedSha256": "b4154723c8600cab9e9d970041cb6cddf47c0d16fca3912a5e892ceb20547829",
+        "semanticSha256": "bbe91d6d3f298929e36d8c3dab16752be15643d3a22eddcfaa10d08a742295ac"
+      },
+      "derivedPosition": [
+        0.3874,
+        1.2608,
+        -0.1855
+      ],
+      "visualReview": {
+        "heightCentimeters": -3,
+        "meshSha256": "20655ba3c23ee72d3240bd7821057f192bc4afa39fea1b06014bf6d5a7f54c8e",
+        "note": "Roof close to sightline; small drop keeps tall wheel below horizon.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "crt",
+      "position": [
+        0.408,
+        1.1615,
+        0.003
+      ],
+      "head": [
+        0.41267137994951764,
+        1.0728868501437436,
+        -0.06133360914915723
+      ],
+      "headNub": [
+        0.4057130460087646,
+        1.2658156666167752,
+        -0.03976844714122683
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.6238267931634864,
+            0.8720633227008855,
+            0.42585180260392574
+          ],
+          "steeringDummy": [
+            0.6237373948,
+            0.8720542704860023,
+            0.42592690831441365
+          ],
+          "distanceMeters": 0.00011711053640145775
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.18452599495044966,
+            0.8730280720946828,
+            0.4279634173790365
+          ],
+          "steeringDummy": [
+            0.1881293803,
+            0.8720542768115886,
+            0.42592692582914676
+          ],
+          "distanceMeters": 0.004252053746544455
+        }
+      ],
+      "handChecksStatus": "authored-mismatch",
+      "warnings": [
+        "Neutral pose does not match both steering hand dummies within 1mm: L=0.000117m, R=0.004252m"
+      ],
+      "sources": [
+        {
+          "path": "cars/interiors/models/crt/int_crt_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "dbfbb965010ce5bdd293ee3dceabde0f453a279436a0f61455d14f1dfd4045d1"
+        },
+        {
+          "path": "cars/models/crt/crt_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "33f703021881309cc2067c6677a10654c5b000c63508accd5ac24ce741ae6347"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/crt/cameras.xml",
+        "sha256": "e4786cc326108f5024dd10a790ec83e7cf3449e9129af62a5479d10108f33f46",
+        "decodedSha256": "d51788ca8f3c59cc6790a26a312d0f68f99f0aa6722b4518b531b2eae3f3310a",
+        "semanticSha256": "b0b20b321ffd4f26077c09f4e3036207c68df8b40077b7016c8c0411680c2d6c"
+      },
+      "derivedPosition": [
+        0.408,
+        1.2015,
+        0.003
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "0da1c7120d17856901911dbfffb52fb5dca8712850e679427e7added89b1cbae",
+        "note": "Header crowds forward view; larger drops bring wheel too high.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "crz",
+      "position": [
+        0.4014,
+        1.1188,
+        -0.0662
+      ],
+      "head": [
+        0.4058973483796163,
+        0.9905149218293142,
+        -0.13357444319080436
+      ],
+      "headNub": [
+        0.39916065515667465,
+        1.182897524749313,
+        -0.10752537588523473
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5869028880437294,
+            0.7936719643493992,
+            0.29494059956013957
+          ],
+          "steeringDummy": [
+            0.5865990073,
+            0.793656899522405,
+            0.29504214242334337
+          ],
+          "distanceMeters": 0.00032075131876499534
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.21191098097003125,
+            0.793648507732124,
+            0.29501778249354316
+          ],
+          "steeringDummy": [
+            0.21178899710000001,
+            0.793656899522405,
+            0.29504214242334337
+          ],
+          "distanceMeters": 0.00012467514937544068
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/crz/int_crz_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "98e875ad7d791156cc28a436cc2707c41f43e75af3bc022451b661d48bf5899e"
+        },
+        {
+          "path": "cars/models/crz/crz_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "f94e185ed7af52d22b837afa0ecdc6fbb0c084eafc73108f0d673ac0b3d3767c"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/crz/cameras.xml",
+        "sha256": "866b2fb83b4f596bd1668742aeccf84d5fbf184570047a612ef20317adee4a75",
+        "decodedSha256": "af1e5fae5fbf7b7a9782198cb3ca8e2d5120fa0b015d30e7a3c39a14f372de2e",
+        "semanticSha256": "22b6f7b3dbc46dabe30c07dd1a36f32ea13c8714b795c3311fd1c91375d68c4e"
+      },
+      "derivedPosition": [
+        0.4014,
+        1.1188,
+        -0.0662
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "a29f157dd4507e96f62ae8b7edcadc3a73b93102f06258a670559413871a41b1",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "css",
+      "position": [
+        0.4114,
+        1.1315,
+        -0.1064
+      ],
+      "head": [
+        0.4162391059613024,
+        1.0424026670722204,
+        -0.16486996323444847
+      ],
+      "headNub": [
+        0.4090501577607764,
+        1.2361104039861817,
+        -0.15219579530176844
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5962046932600269,
+            0.8546327631356919,
+            0.2739348434844182
+          ],
+          "steeringDummy": [
+            0.5962979793,
+            0.8546418841642955,
+            0.27396607838101517
+          ],
+          "distanceMeters": 9.879826507618489e-05
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.22272162781596944,
+            0.8546722658520226,
+            0.27383459505363944
+          ],
+          "steeringDummy": [
+            0.22270399329999999,
+            0.8546418841642955,
+            0.27396607838101517
+          ],
+          "distanceMeters": 0.00013609514495533601
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/css/int_css_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "251c033a5f871b082c0cc732784a3bba3cdb7fb91b7a20e00761184c6db758eb"
+        },
+        {
+          "path": "cars/models/css/css_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "1d892053773c000fb81cc3790ee2e3f9ce581cca0c4214e0e9c1c8e588dc1325"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/css/cameras.xml",
+        "sha256": "d071914a45bf491167fd7ad6a4f49efec0ffa7caf43bc4df99bc147768fcbce1",
+        "decodedSha256": "00311f07cc3767f9dbf268402b9f5a8939d51728e3b794c7c42eff6dec277b12",
+        "semanticSha256": "5c0e6ec034067fb408b4f7a66253e08d480bd9840fb32bbaedc2c6103824103c"
+      },
+      "derivedPosition": [
+        0.4114,
+        1.1715,
+        -0.1064
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "611b229f98b0ee239be1d986e8e2b41b6c98e4cb6f8a4f0faa5a374d92ea1f87",
+        "note": "Low roof and limited clearance above estimated eye; lower within cabin.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "e30",
+      "position": [
+        0.3553,
+        1.1239,
+        0.0294
+      ],
+      "head": [
+        0.36009567068488696,
+        0.994966623200373,
+        -0.032221263632532054
+      ],
+      "headNub": [
+        0.35290521423075705,
+        1.1883005019006305,
+        -0.014748097575992061
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5480406647513414,
+            0.777816231510284,
+            0.4001381035503281
+          ],
+          "steeringDummy": [
+            0.5482930094,
+            0.77780155727177,
+            0.4002085674256547
+          ],
+          "distanceMeters": 0.0002624086749874377
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.1584729521916439,
+            0.7778639883222872,
+            0.4000236457327638
+          ],
+          "steeringDummy": [
+            0.1584070176,
+            0.77780155727177,
+            0.4002085674256547
+          ],
+          "distanceMeters": 0.00020601223008735885
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/e30/int_e30_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "5ffc7e8dc5d5c40bd4cb086f63499a2f7c93b6ff380b9fcbdabfeb4afc6f751a"
+        },
+        {
+          "path": "cars/models/e30/e30_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "21126ead93cf8b748ebf29e106166bbe59553c905221728b84a54584eb45611b"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/e30/cameras.xml",
+        "sha256": "456516986bba9552f0fb16bb31e04f4bd7b85b968a1fa764500dd0e57485664d",
+        "decodedSha256": "de46be5a4bde58fe78bec53e8c98895be2f36c463cc8f84e4e6fd70b55c2e7a8",
+        "semanticSha256": "cdfd5e66cd513bb15ba57a4f33ae666c502baf92526fed5e79dd8e940c47e9a2"
+      },
+      "derivedPosition": [
+        0.3553,
+        1.1239,
+        0.0294
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "575fd7f8ab6fe6ac0721ece98399383869b3a32c2a87d943ed573657ee9fe082",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "foc",
+      "position": [
+        0.3617,
+        1.2122,
+        0.0422
+      ],
+      "head": [
+        0.36655481561572417,
+        1.084307579799108,
+        -0.027507685826701114
+      ],
+      "headNub": [
+        0.3593280208303398,
+        1.2761710711380276,
+        0.002008021478295194
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.543321163817704,
+            0.8802400819530852,
+            0.4234036580406579
+          ],
+          "steeringDummy": [
+            0.5435479879,
+            0.8801757163192612,
+            0.42344462077796446
+          ],
+          "distanceMeters": 0.00023931160643531603
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.17626144478171873,
+            0.8800481812335955,
+            0.4233489644770933
+          ],
+          "steeringDummy": [
+            0.1762599945,
+            0.8801757163192612,
+            0.42344462077796446
+          ],
+          "distanceMeters": 0.00015942844567128938
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/foc/int_foc_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "da0f3c2ae18545c2605c4e347ad598690f69e956ec6b38608694737d71ec489d"
+        },
+        {
+          "path": "cars/models/foc/foc_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "b8ee2841dc47f8b9073a3f651e013648414c0306847329d14e92df9aa80fbf3a"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/foc/cameras.xml",
+        "sha256": "fad99a8ffe0ee874885d54c2a6db26bfc796abbce18f5573592b54dd905f8138",
+        "decodedSha256": "ba853092882469579b6701e8799c8ce94c05266259db0cd99d844b470d2c417d",
+        "semanticSha256": "b6164089ff14533045b050b56af3fb547132a211a0d72e76e6d582ad77acfee6"
+      },
+      "derivedPosition": [
+        0.3617,
+        1.2122,
+        0.0422
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "ee9d23ef9804ed63f40d9653471ab651fce3ab44456f58b29bd167acc884431b",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "gen",
+      "position": [
+        0.4466,
+        1.1812,
+        -0.0959
+      ],
+      "head": [
+        0.45140471021909817,
+        1.0532930285717568,
+        -0.1655582145731491
+      ],
+      "headNub": [
+        0.4441779154337138,
+        1.2451565199106764,
+        -0.13604250726815278
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.6519323872621703,
+            0.8398298650895445,
+            0.2684539233721453
+          ],
+          "steeringDummy": [
+            0.6521731606749983,
+            0.8396278126680767,
+            0.2684860489143315
+          ],
+          "distanceMeters": 0.000315957382896164
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.23706780507899936,
+            0.8395738378352459,
+            0.268386967330226
+          ],
+          "steeringDummy": [
+            0.23733507017499955,
+            0.8396278585854214,
+            0.26848614411947685
+          ],
+          "distanceMeters": 0.0002901463570607718
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/gen/int_gen_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "9f1d06735a5099564186efe73ac6ca19cce078e58ce914e83c12637810f2d620"
+        },
+        {
+          "path": "cars/models/gen/gen_anim_dummies.pssg",
+          "bytes": 18519,
+          "sha256": "34161bfa9a3517330f883a51e581918313e1f768718ec90f6b6d6660bf5258b0"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/gen/cameras.xml",
+        "sha256": "2d408e66e7487110df06ad778cc39721e1e44ec0b54542278c2f22c438fbeb60",
+        "decodedSha256": "55f6f4c0ff0f3eb21fe4767756b474acd347792be94d98358cbd0d6d0b91dea5",
+        "semanticSha256": "210045424715a0c52068ab5c6b212e614e6d48f5c74a4041d4668288edb58c7f"
+      },
+      "derivedPosition": [
+        0.4466,
+        1.1812,
+        -0.0959
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "9bdf9777c91235a6090f92a38cad4ea3950c3b26149c13adedf5e927fbd778d7",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "giu",
+      "position": [
+        -0.3696,
+        1.192,
+        -0.123
+      ],
+      "head": [
+        -0.3648111608212364,
+        1.0633280362113424,
+        -0.18683690897532598
+      ],
+      "headNub": [
+        -0.37200295895606705,
+        1.2563420992321788,
+        -0.16612815804436806
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.18751328692343677,
+            0.8370080154881021,
+            0.2691249859230786
+          ],
+          "steeringDummy": [
+            -0.1875980049,
+            0.8371576097662361,
+            0.2691764474372518
+          ],
+          "distanceMeters": 0.00017945437036861016
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.5556542954528289,
+            0.8371277147005891,
+            0.26908708970751577
+          ],
+          "steeringDummy": [
+            -0.5555260033,
+            0.8371576097662361,
+            0.2691764474372518
+          ],
+          "distanceMeters": 0.00015917724489093306
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/giu/int_giu_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "cd2a2f84ae93079ec4e15e734e3666e6cbfe2426d81869a1f6472c5b360a8d8c"
+        },
+        {
+          "path": "cars/models/giu/giu_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "931ee5fde8e67b3c4234b8acd455c98b6c4863c31cfb18dcc4ee96a15d82e30f"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/giu/cameras.xml",
+        "sha256": "f55a54fcd82b17b5ce7c208c1e09a74683f2a0936e667f7419e5a09e01a696dc",
+        "decodedSha256": "5f4e2a0ef52987fa629a92b609d163ff1229ef23db7a3785da3c08528dc76e42",
+        "semanticSha256": "c7f173c31db7a73b33c146f607ec3e1c5e114750ec586a3b731aad8283f38368"
+      },
+      "derivedPosition": [
+        -0.3696,
+        1.192,
+        -0.123
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "3a8e3624b90045856d2e03b4f5602d46b6edce7e44dc19bece8a773f5c71a2e3",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "gol",
+      "position": [
+        0.3591,
+        1.2013,
+        -0.0501
+      ],
+      "head": [
+        0.36395244699876517,
+        1.073440786190709,
+        -0.11975102822458777
+      ],
+      "headNub": [
+        0.3567256522133808,
+        1.2653042775296286,
+        -0.09023532091959147
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.552376811569583,
+            0.8247601090700046,
+            0.301070812699057
+          ],
+          "steeringDummy": [
+            0.552245006,
+            0.824799941352647,
+            0.3011002246410883
+          ],
+          "distanceMeters": 0.00014079908113206506
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.16225103821104478,
+            0.8246854005540187,
+            0.30100879495290445
+          ],
+          "steeringDummy": [
+            0.1623590142,
+            0.824799941352647,
+            0.3011002246410883
+          ],
+          "distanceMeters": 0.00018203789886357018
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/gol/int_gol_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "1dcfb6b86195f5b93f7de3d7460f736d5127a0aca3da1b3717feeb17b1524e15"
+        },
+        {
+          "path": "cars/models/gol/gol_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "57299ce78acde4de197a95ff9b87121d525c661b947a6580b80525d331448457"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/gol/cameras.xml",
+        "sha256": "fd46344a9b71df3f64efa9dbf5b0062094b6a363c2ba9d7aba2dcb265a53b687",
+        "decodedSha256": "a7c36e53926289f6967ed8faf4bc8b44b4f1fd44e961d658f61abd918684f516",
+        "semanticSha256": "7328a59a568f6af9d7de94bbba6dabd56797c20458129ca7f654e6131e063b67"
+      },
+      "derivedPosition": [
+        0.3591,
+        1.2013,
+        -0.0501
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "6167eb5ba6455259be1e780818ad5373d85d4dd03c720f1226adbd3dbcbff6b2",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "koe",
+      "position": [
+        0.3222,
+        0.8961,
+        -0.0116
+      ],
+      "head": [
+        0.3269879413060507,
+        0.8482232848269081,
+        -0.08128442372375562
+      ],
+      "headNub": [
+        0.31976114652066634,
+        1.040086776165828,
+        -0.05176871641875931
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5107736900238411,
+            0.6492492660583855,
+            0.32621366140990754
+          ],
+          "steeringDummy": [
+            0.5108758449851681,
+            0.6492486261183389,
+            0.3262550919108642
+          ],
+          "distanceMeters": 0.00011023852346849107
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.12971725438018716,
+            0.6492491157133433,
+            0.3261813628507242
+          ],
+          "steeringDummy": [
+            0.12980032868507838,
+            0.6492486628596126,
+            0.3262558472683746
+          ],
+          "distanceMeters": 0.00011157720951152482
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/koe/int_koe_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "d0718560005f4767bf0225b7ae0cbf63420e41646111f887b166472e2ace5df1"
+        },
+        {
+          "path": "cars/models/koe/koe_anim_dummies.pssg",
+          "bytes": 18107,
+          "sha256": "815dd9bb20b4d269bee2eaf918aa27593b1320dd4bd9944aaf1a75fb38831994"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/koe/cameras.xml",
+        "sha256": "4f33aab6d40032d268f57ce86dc835ec55b0a1fb862c1f7cfbc3b63fbdfca941",
+        "decodedSha256": "b0a0c8569da095c502154a496ba0248474c54ec8e28ec74fb6213b89ced7e625",
+        "semanticSha256": "42f323b28a3f3fd7539ab8503b295c6f95750697fe602cc6fc4a99c9a0492150"
+      },
+      "derivedPosition": [
+        0.3222,
+        0.9761,
+        -0.0116
+      ],
+      "visualReview": {
+        "heightCentimeters": -8,
+        "meshSha256": "2dd3c2167378af925a4cd9e8af915636b7525d58ae87deddef95194c922dbb89",
+        "note": "Roof header nearly on horizon and only 6cm above eye; 8cm drop balances header and wheel. Larger drop obstructs road with wheel.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "ktm",
+      "position": [
+        -0.3111,
+        0.9219,
+        -0.1476
+      ],
+      "head": [
+        -0.30717346764650755,
+        0.7933076680052458,
+        -0.21239523907309515
+      ],
+      "headNub": [
+        -0.31305777842287336,
+        0.9862029490824131,
+        -0.19021893924215458
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.15100642037352663,
+            0.6001133460655408,
+            0.2649687235909402
+          ],
+          "steeringDummy": [
+            -0.1509769857,
+            0.6000935554139502,
+            0.2651764658292868
+          ],
+          "distanceMeters": 0.0002107484459948539
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.47620481560663924,
+            0.600097656868307,
+            0.2649901546567654
+          ],
+          "steeringDummy": [
+            -0.4763549865,
+            0.6000925627927134,
+            0.26517632832484767
+          ],
+          "distanceMeters": 0.00023924439702140152
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/ktm/int_ktm_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "238f504a73baced883fb26deb5284ec77bb572b70092c69089d0b81b03d01292"
+        },
+        {
+          "path": "cars/models/ktm/ktm_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "4751406e803ebf6f96abdfe6a3ad0f1da620cc3d3e2fe31aeab1f0678454abfe"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/ktm/cameras.xml",
+        "sha256": "e558ece55195b2b3d1a97cc14febf9ed94bf3e57d2566ef62382f18b3d4b2a02",
+        "decodedSha256": "573fc9ffa330c8e4f3844016fc28ceac8a8e63f1c1fedd76d89c89712f0b846f",
+        "semanticSha256": "e6ef931cbc4b74077ca901ccce688b3bb1a24d57b7107261e61232a9ac24a666"
+      },
+      "derivedPosition": [
+        -0.3111,
+        0.9219,
+        -0.1476
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "d37d39e8ebcfc6ad62c5bc73a1919da27317bf32e991914b34e2fa6776ba21b7",
+        "note": "Open cockpit; wheel below forward sightline and seat alignment retained.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "mac",
+      "position": [
+        0.4242,
+        1.1357,
+        -0.2441
+      ],
+      "head": [
+        0.4289980813186744,
+        1.04685676882001,
+        -0.3065042687267808
+      ],
+      "headNub": [
+        0.42176700490002295,
+        1.2400893489327784,
+        -0.2879601492779031
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.619100943588509,
+            0.8076904793707146,
+            0.1485232365261961
+          ],
+          "steeringDummy": [
+            0.619355008,
+            0.8076411320004145,
+            0.14852627812917096
+          ],
+          "distanceMeters": 0.00025883032954129994
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.22499273685526353,
+            0.8076749091467078,
+            0.14832023115713786
+          ],
+          "steeringDummy": [
+            0.2251230032,
+            0.8076411320004145,
+            0.14852627812917096
+          ],
+          "distanceMeters": 0.00024610073316983953
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/mac/int_mac_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "fa51ac32484d6469aa95d98ed345ebc01386c38f38fa5e1d8a4eeb26a12d77d8"
+        },
+        {
+          "path": "cars/models/mac/mac_anim_dummies.pssg",
+          "bytes": 18229,
+          "sha256": "eb58466704c6a7625f5e0c72f93e0fe1f079eee1ddd00a329c2aa190e9a82fdf"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/mac/cameras.xml",
+        "sha256": "3c01130b672cb349bf6b10cfc71c377ba48435bc8feca40cbc7445bcc041335a",
+        "decodedSha256": "6600fe93a4bc2fbfd68d66334a5b1c018515b07b18130851bf92aff628d6a636",
+        "semanticSha256": "8b73c5c7923e57488364bf8606d9e7732cd92a39ae0cf40387521de461d0ee69"
+      },
+      "derivedPosition": [
+        0.4242,
+        1.1757,
+        -0.2441
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "29f8bc311c3e99f43a62e96d2e26a5cf3d6ddcbaa71d185d55cc233cef84710e",
+        "note": "Header intrudes into forward view; lower slightly without raising wheel into sightline.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "mf1",
+      "position": [
+        0.002,
+        0.9529,
+        0.2631
+      ],
+      "head": [
+        0.006727231532568301,
+        0.8648091540747598,
+        0.1942597302631818
+      ],
+      "headNub": [
+        -0.0004189738175299062,
+        1.0568739988711549,
+        0.22245600646722893
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.18678375570839473,
+            0.6231088782775082,
+            0.6444589106765662
+          ],
+          "steeringDummy": [
+            0.1865825496416688,
+            0.6230056893015492,
+            0.6445666499929061
+          ],
+          "distanceMeters": 0.0002504787542530688
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.1863154663695909,
+            0.6231226439169255,
+            0.6446660009248153
+          ],
+          "steeringDummy": [
+            -0.18658255115833147,
+            0.6230056784020027,
+            0.6445666853005747
+          ],
+          "distanceMeters": 0.00030802404009435704
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/mf1/int_mf1_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "638eec27d259094db2666298d544dad70832d1753edb755f38938608dae35266"
+        },
+        {
+          "path": "cars/models/mf1/mf1_anim_dummies.pssg",
+          "bytes": 18127,
+          "sha256": "ef2cb02feef34517a5e9edf8e3963649d7ad9fe37c9a1d1c37394ccd77041a16"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/mf1/cameras.xml",
+        "sha256": "10350ca63b81e10fbb7c935ba7368e25791f23e4912ffe7723f52a718c62dc30",
+        "decodedSha256": "fd73ca055cab871bec0a15d8e24464e94809b9ec5099a6a1f283eb0fa8910fdf",
+        "semanticSha256": "aa377c9172f8891e433773d26289ccbc59912b7f5d05f386bf510f9baf8b9d10"
+      },
+      "derivedPosition": [
+        0.002,
+        0.9929,
+        0.2631
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "26bfa0fa1bc7ada13258cfa2a896ed61ecf2528695c29110d6ed5ed85a8db24e",
+        "note": "Low roof at central seat; lower eye point opens view and improves roof clearance.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "mp4",
+      "position": [
+        0.3471,
+        1.0153,
+        -0.0189
+      ],
+      "head": [
+        0.35181786649760927,
+        0.8870770137573807,
+        -0.08660858315387056
+      ],
+      "headNub": [
+        0.3446693817556613,
+        1.0793838132959344,
+        -0.06011335968856002
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5571731292458993,
+            0.6816029898862198,
+            0.3479485466709086
+          ],
+          "steeringDummy": [
+            0.5568830073,
+            0.681800661211306,
+            0.3480965433790996
+          ],
+          "distanceMeters": 0.00038098257425919736
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.13349946913072802,
+            0.6818469806068997,
+            0.3481645264548583
+          ],
+          "steeringDummy": [
+            0.13326302169999998,
+            0.681800661211306,
+            0.3480965433790996
+          ],
+          "distanceMeters": 0.00025034890152678655
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/mp4/int_mp4_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "c6fce21e1097e900070825774fa6e261750f70316bf7d94398932eec9e2dceee"
+        },
+        {
+          "path": "cars/models/mp4/mp4_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "498eeb3ffe47d7a36fe31c3fce85dc71adcea4e74257b57f2f5ab4dcc5292274"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/mp4/cameras.xml",
+        "sha256": "e11efcc937b43b92975cb3b654f9acc57d22cf88ddcc31b31727e2c63e7196ec",
+        "decodedSha256": "433de2516c660e4596b3060d841cd12e4d208248b780452805e82c5f119876bd",
+        "semanticSha256": "85c057947fcd86cf0d35906e65a21369c0d52905de70a37e5dae361d5284d5b8"
+      },
+      "derivedPosition": [
+        0.3471,
+        1.0153,
+        -0.0189
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "54da8c10db7b95dc653e701dfadf5bf226e3cbf5adca64e94cffbed8c0fc1cc8",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "nsx",
+      "position": [
+        -0.3617,
+        0.9332,
+        -0.0111
+      ],
+      "head": [
+        -0.356731735132803,
+        0.8645343158294496,
+        -0.0749994146303272
+      ],
+      "headNub": [
+        -0.36414878908275333,
+        1.057527163196267,
+        -0.0541727244157052
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.18037648056473984,
+            0.6310078005952445,
+            0.37194445552150457
+          ],
+          "steeringDummy": [
+            -0.1806944189309306,
+            0.631169446796053,
+            0.37210179273330235
+          ],
+          "distanceMeters": 0.0003898323962271114
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.5682480694690086,
+            0.6313144740332419,
+            0.3721288931289672
+          ],
+          "steeringDummy": [
+            -0.5685087470309289,
+            0.6311694333162775,
+            0.3721018892254759
+          ],
+          "distanceMeters": 0.00029953098616006143
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/nsx/int_nsx_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "86708bf9fc45b05e03417aca1c72824b6f20e4c00e47e8a0cfe6bc65c219340b"
+        },
+        {
+          "path": "cars/models/nsx/nsx_anim_dummies.pssg",
+          "bytes": 18519,
+          "sha256": "1def18bf38df44488ad05255a80e9a9764fd4a50f9b8772d03a5c52e6ab421be"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/nsx/cameras.xml",
+        "sha256": "3d6199dd5954ad8f707c16f5024357b282b84c13ed802c4e47a9cc17def03da9",
+        "decodedSha256": "ffef1c0899ed5ee9732569db40538b944650cf618473b2bffb3d14ebe73a0d13",
+        "semanticSha256": "fb9ca53e370c7fead1bedba28e8b389be82db904a85d107bf73c0602210d1d57"
+      },
+      "derivedPosition": [
+        -0.3617,
+        0.9932,
+        -0.0111
+      ],
+      "visualReview": {
+        "heightCentimeters": -6,
+        "meshSha256": "054d4b9fd4fb0978aaa373f3147565c4710208fe1a0cb65dc5675f12d4ab9b48",
+        "note": "Roof diagonal intrudes near eye level at right-hand seat; 6cm drop clears forward sightlines.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "pag",
+      "position": [
+        0.3263,
+        0.9725,
+        -0.0164
+      ],
+      "head": [
+        0.33097761106884194,
+        0.883880403164387,
+        -0.08117031209372312
+      ],
+      "headNub": [
+        0.32403078384924605,
+        1.0767483937219375,
+        -0.05906414419384248
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5088892208416688,
+            0.6865159235076311,
+            0.3683079182193406
+          ],
+          "steeringDummy": [
+            0.5089713335,
+            0.6865227302645857,
+            0.36832040547308814
+          ],
+          "distanceMeters": 8.333517927392409e-05
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.13946506132309672,
+            0.6865577189109598,
+            0.36817225664199377
+          ],
+          "steeringDummy": [
+            0.13950803870000003,
+            0.6865227016183039,
+            0.36832041883106637
+          ],
+          "distanceMeters": 0.00015819386834270294
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/pag/int_pag_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "1a0a98e40eeba8e2e9587d87477f88c7e753dbab66ce9ac98d418f0f5cdb6977"
+        },
+        {
+          "path": "cars/models/pag/pag_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "92d2eb9b0b33c45622e209b4ed7a6c2841f254b926cd1f5e509cfcef739ced06"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/pag/cameras.xml",
+        "sha256": "0ff08d0e3824b5772e70ddedbbda87014a9db3a9ab28ab23014e237cfcc340a4",
+        "decodedSha256": "6b0574fdecc2f487a7f73f93230f3ccee77969731ad9e3f916531693f6e1ab15",
+        "semanticSha256": "a1be9947e98e3f260ceec5977b2ddc595962c8ac24cc3e4358ca03c3ca92ecd1"
+      },
+      "derivedPosition": [
+        0.3263,
+        1.0125,
+        -0.0164
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "b791dd98101e80677117d1905ed85204e6f55b5e785a54119071916622f4a6f2",
+        "note": "Windscreen header near horizon; lower modestly while keeping wheel below road view.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "r8l",
+      "position": [
+        0.3929,
+        0.9862,
+        -0.1457
+      ],
+      "head": [
+        0.3976743590163498,
+        0.8575144130317305,
+        -0.20949823716862961
+      ],
+      "headNub": [
+        0.39053716972977753,
+        1.050531793004744,
+        -0.1888015126262043
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5609257903178907,
+            0.6370759277804785,
+            0.21725562398186413
+          ],
+          "steeringDummy": [
+            0.5609355558022319,
+            0.6371128006309928,
+            0.21739582167311206
+          ],
+          "distanceMeters": 0.00014529406189077573
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.1935458144434626,
+            0.6371037832860525,
+            0.21728876109806367
+          ],
+          "steeringDummy": [
+            0.19369634880223205,
+            0.637112767939041,
+            0.21739583558552203
+          ],
+          "distanceMeters": 0.00018494935259124565
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/r8l/int_r8l_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "9e30b2af7478bac103c5e6e2278d9b88e44b2f52d3e2352650fcc78cbd59ff15"
+        },
+        {
+          "path": "cars/models/r8l/r8l_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "7a1369ef1b96e7abb87911cd1687c05eb50355429abdf8f8987140b2b4660806"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/r8l/cameras.xml",
+        "sha256": "0e71b8d1ad45f89a042e34d61229303753110343418481e5a104055e56b85d0c",
+        "decodedSha256": "1f27cc6c74aebeb8800df3a1f79d760516ebb5514d3f74b8783303a707d466c0",
+        "semanticSha256": "fc167046e28fe8fcd7db77e25df0ceceb9636da01a4ebeea300c44921ff73785"
+      },
+      "derivedPosition": [
+        0.3929,
+        0.9862,
+        -0.1457
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "1bfc191926dc85e5f7189e28d30d9909bbcc874b20145365097f75ae7ec4e365",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "rs5",
+      "position": [
+        0.37,
+        1.1663,
+        -0.138
+      ],
+      "head": [
+        0.37448140753226816,
+        1.067344814798601,
+        -0.19866435879530414
+      ],
+      "headNub": [
+        0.36768495299119225,
+        1.2608201926977505,
+        -0.18266157148195147
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5623155610588751,
+            0.8658301130488043,
+            0.2667626431807085
+          ],
+          "steeringDummy": [
+            0.5624893904,
+            0.8657821717309471,
+            0.2667725107480142
+          ],
+          "distanceMeters": 0.0001805889771783585
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.17310585520818514,
+            0.8656552362794263,
+            0.26670837799108194
+          ],
+          "steeringDummy": [
+            0.1730371416,
+            0.865782020244584,
+            0.26677244768335084
+          ],
+          "distanceMeters": 0.00015779942724340631
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/rs5/int_rs5_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "a9c08b637929f8b3862adf6c374bc8eae1d9e3cfdd40cfc67ed5c9b761e0ffd5"
+        },
+        {
+          "path": "cars/models/rs5/rs5_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "86ed97d0d4f9db8d75e0d064a47bea8ff553483e321f78887b75c8f1d50addfe"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/rs5/cameras.xml",
+        "sha256": "2aaa704150ec99bd240b237e56f56f030796495bea0a982b3940b0e0114fcd69",
+        "decodedSha256": "4f5f916de3b683833dc5960f1794a0df222f3f0df0529f80285a5db70f1dc437",
+        "semanticSha256": "41e5a38caca89f74901540a79d5db8343da8d7980ea9ba3feeba2262b68aa148"
+      },
+      "derivedPosition": [
+        0.37,
+        1.1963,
+        -0.138
+      ],
+      "visualReview": {
+        "heightCentimeters": -3,
+        "meshSha256": "f5ac043a4b971ca7e1f6c0e0bccdf7762cc02e5d30378d04b6fc9cb740faddee",
+        "note": "Front header crowds upper view; small drop retains view above wheel.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "rx1",
+      "position": [
+        -0.3723,
+        1.0369,
+        -0.3946
+      ],
+      "head": [
+        -0.3674931516814329,
+        0.9076031729375216,
+        -0.44923670260633713
+      ],
+      "headNub": [
+        -0.37468048016276495,
+        1.1015980273418915,
+        -0.44221234332788634
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.19566773267811435,
+            0.7178605932834177,
+            0.03263915459396804
+          ],
+          "steeringDummy": [
+            -0.19564098285690587,
+            0.7062417650580185,
+            0.06489281302598746
+          ],
+          "distanceMeters": 0.034282595688390406
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.5528690274703429,
+            0.717772532635444,
+            0.032666548643080995
+          ],
+          "steeringDummy": [
+            -0.5528009997569249,
+            0.7062415947047787,
+            0.06489270787559166
+          ],
+          "distanceMeters": 0.03422707256266278
+        }
+      ],
+      "handChecksStatus": "authored-mismatch",
+      "warnings": [
+        "Neutral pose does not match both steering hand dummies within 1mm: L=0.034283m, R=0.034227m"
+      ],
+      "sources": [
+        {
+          "path": "cars/interiors/models/rx1/int_rx1_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "e9f41de678a3a862e5999a2374208b9bfb5eb45dcc994532563e67ece5ec6afc"
+        },
+        {
+          "path": "cars/models/rx1/rx1_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "52d69e48ffb1094a6f00e3952cf054c2a7f598f3dfeccd4c9c7f7f81a39d4563"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/rx1/cameras.xml",
+        "sha256": "a6c07a5a01deeee13b6f578c61a5c4f4fa223fd0d0bded33cf62d64c2fb14fe3",
+        "decodedSha256": "84dafb01b02e07f561f9da3c394b08f2d8e210697e98a19170d47fcfeb944fb9",
+        "semanticSha256": "8b6387bc7ec8a86329050beeddc922e4cdd89c7a8b349b9c0b11981aeffed54b"
+      },
+      "derivedPosition": [
+        -0.3723,
+        1.0369,
+        -0.3946
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "9d9953359450d8eada3f37f86f8f0f80d823b15f167b4f3d5b8dd5821002767d",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "s15",
+      "position": [
+        -0.3566,
+        1.0177,
+        -0.2166
+      ],
+      "head": [
+        -0.351769430556207,
+        0.8888093271625279,
+        -0.2777904234351303
+      ],
+      "headNub": [
+        -0.35894918681666255,
+        1.0822006164085496,
+        -0.2609599988075071
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.17966117082130512,
+            0.6917900846337378,
+            0.19511388681009992
+          ],
+          "steeringDummy": [
+            -0.17979663610000002,
+            0.6919163411567313,
+            0.1952640756021948
+          ],
+          "distanceMeters": 0.00023842865725665083
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.5367564962384006,
+            0.6919681110974489,
+            0.1952530688652058
+          ],
+          "steeringDummy": [
+            -0.5369573831000001,
+            0.6919163564999881,
+            0.1952640763145009
+          ],
+          "distanceMeters": 0.00020773837744048624
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/s15/int_s15_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "937413a38dd0ce436d56b8565808ae0a9c5be323c07b72dac229153687cfaf14"
+        },
+        {
+          "path": "cars/models/s15/s15_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "92bc77449f4b4c136cd1027a36d5e89af41f5df00280945d364c57c39d6e7399"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/s15/cameras.xml",
+        "sha256": "7d0a25ccf84f6aff24c509a15d5bef353dc2f030d910991bd3131dcd688f7087",
+        "decodedSha256": "3423598186601e020edaed953d8229877dc8cdd0014e8a23f573e236fd8a7f32",
+        "semanticSha256": "dcda47f656b4eb960ee3fe51c7c7b29942e27152d0c50d3e4763a501deb65aac"
+      },
+      "derivedPosition": [
+        -0.3566,
+        1.0177,
+        -0.2166
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "9c8a054178e93031324d41f2918efabbfbeb4e9cb3e869dd080b839e1f960ec8",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "s20",
+      "position": [
+        0.3537,
+        1.0665,
+        -0.5216
+      ],
+      "head": [
+        0.3584887868332376,
+        0.937859715564139,
+        -0.5856860312212873
+      ],
+      "headNub": [
+        0.35129704059410694,
+        1.1308244235602452,
+        -0.5645223098246746
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5318129366669878,
+            0.6606879884459701,
+            -0.11007318561584582
+          ],
+          "steeringDummy": [
+            0.5318599939,
+            0.660715982228755,
+            -0.10999570374740666
+          ],
+          "distanceMeters": 9.487610336750826e-05
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.17152487155628846,
+            0.6606906689379974,
+            -0.11010523744995451
+          ],
+          "steeringDummy": [
+            0.17161399130000002,
+            0.660715982228755,
+            -0.10999570374740666
+          ],
+          "distanceMeters": 0.0001434598320159151
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/s20/int_s20_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "492696373a604679163aadf83ee645a310c079813f6a42532aff3fcb14308867"
+        },
+        {
+          "path": "cars/models/s20/s20_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "ba2eea73fdd7fd9b425df2d64c8c900ff47b1ad56c8eb5f294cad1558317136c"
+        }
+      ],
+      "validation": "s20-user-accepted",
+      "camera": {
+        "path": "cars/models/s20/cameras.xml",
+        "sha256": "cc6883b9277ca1053e6ac8653f03c8ece95d2ddd5b871a448ef2665447ea24df",
+        "decodedSha256": "03da5c8b235fd06dd301efe631855775a28f3c21bd7c2af3cc384bd2d5e9443d",
+        "semanticSha256": "4ed9af075d4f454452cc29f5fe207bb896ae0bddd27f0e8652fc273b7b0db640"
+      },
+      "derivedPosition": [
+        0.3537,
+        1.0665,
+        -0.5216
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "da29d665d5d33f9202357ee135f1b53cc82e3411997cf3c6c309de28aabe2999",
+        "note": "Retain user-accepted desktop and headset position exactly.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "s60",
+      "position": [
+        0.2877,
+        0.9674,
+        -0.1145
+      ],
+      "head": [
+        0.29228686074140414,
+        0.8387299709751678,
+        -0.17850865704933797
+      ],
+      "headNub": [
+        0.28534050066408784,
+        1.0317277767982314,
+        -0.15756592851403578
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.47264716479809427,
+            0.6196256891952601,
+            0.27639375802223315
+          ],
+          "steeringDummy": [
+            0.47273013,
+            0.6195678723580158,
+            0.27649533891252703
+          ],
+          "distanceMeters": 0.00014333418527724364
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.09844897228722954,
+            0.6196013857435828,
+            0.2763923960142942
+          ],
+          "steeringDummy": [
+            0.0983718932,
+            0.6195678574781919,
+            0.2764953381373829
+          ],
+          "distanceMeters": 0.00013290000366543564
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/s60/int_s60_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "650d685de2b38ad06bcc36d33853918698961041254ce073c95423b87e645fd4"
+        },
+        {
+          "path": "cars/models/s60/s60_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "fec7012abd94f46440a17decaeda207800cd9444ca85f0830d6b727a89ad0ebf"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/s60/cameras.xml",
+        "sha256": "1fa03b6ef14d86bff094c46f5553d69cb414e1d0e44740aa27351199e06c11e6",
+        "decodedSha256": "cf32918d82e9635bce10fda1eca93dea4c371d8544cf5685f0a1a36682e0d1d3",
+        "semanticSha256": "815ac185f0e98d5043229d4adb3f6ec71736510bf897594cb755f6c5a11ca62a"
+      },
+      "derivedPosition": [
+        0.2877,
+        0.9674,
+        -0.1145
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "70fec0c9fc69a077eb6cbadeafceacae2c22f851ea6ba4f3e064e5b45382034c",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "scr",
+      "position": [
+        0.2803,
+        0.9632,
+        -0.0763
+      ],
+      "head": [
+        0.2852585149501944,
+        0.8345211657708329,
+        -0.13955564696622444
+      ],
+      "headNub": [
+        0.2777898045505251,
+        1.0276106559070937,
+        -0.11966419118167335
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.4610157828328359,
+            0.6395936839053603,
+            0.3381193182659593
+          ],
+          "steeringDummy": [
+            0.46101271878844124,
+            0.6396053469981049,
+            0.33827647071271105
+          ],
+          "distanceMeters": 0.0001576144270696049
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.15207152157261547,
+            0.6396425554209533,
+            0.33823503785961156
+          ],
+          "steeringDummy": [
+            0.15182089578844044,
+            0.6396053257954123,
+            0.33827646751812473
+          ],
+          "distanceMeters": 0.00025674061874933344
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/scr/int_scr_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "ee4e8776ddb238ff0df2db6dac7e14fc42898edb18ba2373699f76a25b965810"
+        },
+        {
+          "path": "cars/models/scr/scr_anim_dummies.pssg",
+          "bytes": 17715,
+          "sha256": "1fb15040918fc551aaed42c075728e9c0d60db561cf25907a9e6814ee56e2ef8"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/scr/cameras.xml",
+        "sha256": "f93d5f5af5fdfa0e6098640048c6d04c6677c7c04d9e7fe26dd9ae28e6eaf522",
+        "decodedSha256": "f48087e3fe5e68d937a1afcabfb4c30a8de596fbda9b5c01cf5eca586e0744ec",
+        "semanticSha256": "e078e9fb1e84541965efe901d624a86f0605a7c803f36399a19dc2fe1ea447d0"
+      },
+      "derivedPosition": [
+        0.2803,
+        0.9632,
+        -0.0763
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "6cf1fde6694034c4b7c36bc9935505f7526a29b312fe47ff5a6849f9f1015aab",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "sky",
+      "position": [
+        -0.403,
+        1.1314,
+        0.1675
+      ],
+      "head": [
+        -0.3982404840199714,
+        1.0022629942222292,
+        0.10906616685741494
+      ],
+      "headNub": [
+        -0.40542943222049743,
+        1.1959707311361905,
+        0.12174033479009495
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            -0.23078465479440657,
+            0.8021908109777006,
+            0.5753130802458437
+          ],
+          "steeringDummy": [
+            -0.2307010144,
+            0.8022983420507502,
+            0.5753201432580815
+          ],
+          "distanceMeters": 0.00013641309830643715
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            -0.579275846594496,
+            0.8023365264315997,
+            0.5751734645235522
+          ],
+          "steeringDummy": [
+            -0.5792549998,
+            0.8022983420507502,
+            0.5753201432580815
+          ],
+          "distanceMeters": 0.0001529944016776903
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/sky/int_sky_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "a1761161d50aa7d869563ac8c3d17a1503dceba79b673a475874f23268c332e6"
+        },
+        {
+          "path": "cars/models/sky/sky_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "2df32e9caf352a3dc585d03f9b1eec8bc710f8d1224f631eb0e9f76d9ccc704b"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/sky/cameras.xml",
+        "sha256": "5d0003402c19c509675e5953cd338ea2c49fcdcda5b921128f23376a58601db0",
+        "decodedSha256": "fab95d28129e7d540140b7e9eb9df100ee917488de27692ba484d0c35717561d",
+        "semanticSha256": "721e43f076379c01a937e57f57c875285f572f1bfcd5bd227a6d71e871888d06"
+      },
+      "derivedPosition": [
+        -0.403,
+        1.1314,
+        0.1675
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "f83f7d960269fde993ccea56bffccafda13a76292bacc2a4d9d1883c5ba28ede",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "sl6",
+      "position": [
+        0.3789,
+        1.0773,
+        -0.3282
+      ],
+      "head": [
+        0.38351391995622847,
+        0.9488164147574665,
+        -0.3936937575820241
+      ],
+      "headNub": [
+        0.3765969415634398,
+        1.1415527643309578,
+        -0.37045891709747064
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5715610519260984,
+            0.7706763242794124,
+            0.05945241041970243
+          ],
+          "steeringDummy": [
+            0.5717190057,
+            0.7706286521824177,
+            0.05944065781031174
+          ],
+          "distanceMeters": 0.00016540903043399085
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.18176653306585125,
+            0.7704592688255332,
+            0.0593036378324551
+          ],
+          "steeringDummy": [
+            0.18183301389999998,
+            0.7706286521824177,
+            0.05944065781031174
+          ],
+          "distanceMeters": 0.0002277825656858389
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/sl6/int_sl6_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "e0546d4e06a1f179fc3c4a0b6e4d433568bcb067229e5c26cad67fb5a4326831"
+        },
+        {
+          "path": "cars/models/sl6/sl6_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "b820320e12c49ca88b51be72f897005a27c5332204354da97957ef3bc5cea4c6"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/sl6/cameras.xml",
+        "sha256": "7ffdbdd5424d3e3c911695b40b2433a16a70ed9469493942e3f7e7139d0aa208",
+        "decodedSha256": "5c49461cde00cff5e34af1324f5d44a81d352f47d54d2eff7740a2d5c27380f2",
+        "semanticSha256": "be8d346ed304ae141db9ef15b67a4579abecff4ca19c1cc3c9cd4bfdc78296f0"
+      },
+      "derivedPosition": [
+        0.3789,
+        1.0773,
+        -0.3282
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "aa3faebda0490ef1af94c409b4c165fbe657470039d5fb4d4be00639dd19db24",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "slr",
+      "position": [
+        0.359,
+        1.0372,
+        -0.7275
+      ],
+      "head": [
+        0.36382792267009306,
+        0.9389745923048254,
+        -0.7951440486921427
+      ],
+      "headNub": [
+        0.3566459831702111,
+        1.1312740433876831,
+        -0.7686045741759503
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.551471018504502,
+            0.7539190932354685,
+            -0.3219971057816356
+          ],
+          "steeringDummy": [
+            0.5515089031484357,
+            0.7539083041957108,
+            -0.32192671023457403
+          ],
+          "distanceMeters": 8.0667110218326e-05
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.16224480952789316,
+            0.7538963611025615,
+            -0.32193385199892544
+          ],
+          "steeringDummy": [
+            0.1622128930484357,
+            0.7539083304646262,
+            -0.32192671023457525
+          ],
+          "distanceMeters": 3.482717455132701e-05
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/slr/int_slr_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "d40c969c8188568a86fcd757e391f7ee8deb98418d0721330d707d2b09882bba"
+        },
+        {
+          "path": "cars/models/slr/slr_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "6701ddbcbca62d46ba7aa826dbfeff3c312e1cbd4c3d0e3c62487d233c8d9277"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/slr/cameras.xml",
+        "sha256": "ae6d941dc6a4c10a47b5a8fba604ea30e7afd6beb5ba4826b7a8da5d62227868",
+        "decodedSha256": "834157b000fcd5510b086063823280db596b6d341c69c3effb0ee586afc52608",
+        "semanticSha256": "612c2af694726b076ab97287cb19f448256449ac633c3136c06ca3736c6778a8"
+      },
+      "derivedPosition": [
+        0.359,
+        1.0672,
+        -0.7275
+      ],
+      "visualReview": {
+        "heightCentimeters": -3,
+        "meshSha256": "9f0dba872057dfad85b6bdb81b1b33a7c6d1c3bfc2e479fe47469b1edd096d5b",
+        "note": "Roof/header low above eye; small drop improves opening without hiding road behind wheel.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "sls",
+      "position": [
+        0.4171,
+        1.0002,
+        -0.5979
+      ],
+      "head": [
+        0.42190344310054934,
+        0.9119492764795837,
+        -0.6651091729192706
+      ],
+      "headNub": [
+        0.41470972130612044,
+        1.1043559039247293,
+        -0.639361494746796
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5870872732428203,
+            0.7406136134186053,
+            -0.22377922756029459
+          ],
+          "steeringDummy": [
+            0.5871560127,
+            0.7405717775131291,
+            -0.22365416168823765
+          ],
+          "distanceMeters": 0.00014871727644673167
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.2659887367101553,
+            0.7404200148597393,
+            -0.22378686067820572
+          ],
+          "steeringDummy": [
+            0.2661300153,
+            0.7405717775131291,
+            -0.22365416168823765
+          ],
+          "distanceMeters": 0.00024617181977423645
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/sls/int_sls_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "2dfeffd2f4c277b082f683c5a3fb9f02d5e2b055814524c44a6657838ce81077"
+        },
+        {
+          "path": "cars/models/sls/sls_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "2204c0edfdfa4ebcf8d43c4222cc87e27ea323e9bb49634505d0793f8323a0e9"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/sls/cameras.xml",
+        "sha256": "5470747d0ce96715c3d0be77b91906717898bf21af253cea24372e9166f44540",
+        "decodedSha256": "454f302bc85b88926d54569886a4be68b7d38c03234e595d0cd6a41bb073fb1f",
+        "semanticSha256": "7a1fb7c4ec1f327a646ba944f7a7d6cb19ef0fcc056e89737473e8d8b8ad997a"
+      },
+      "derivedPosition": [
+        0.4171,
+        1.0402,
+        -0.5979
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "ba9c5b4eb7701e5ebeb53f20c142fd8d35482c27313d979c5639a81a4c2e8e6b",
+        "note": "Roof/cage edge near horizon; small drop clears it.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "ttr",
+      "position": [
+        0.3385,
+        1.1307,
+        -0.1963
+      ],
+      "head": [
+        0.343252951148976,
+        1.0420374789002227,
+        -0.260399080583185
+      ],
+      "headNub": [
+        0.3360611976424248,
+        1.2350093049181174,
+        -0.2393003627509478
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5347736871606883,
+            0.8365998626035474,
+            0.18641296972586005
+          ],
+          "steeringDummy": [
+            0.5349660069,
+            0.8364902930726686,
+            0.18647168821629795
+          ],
+          "distanceMeters": 0.00022899830860770897
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.138062027659478,
+            0.8364160799512571,
+            0.18632254555420602
+          ],
+          "steeringDummy": [
+            0.13803599770000002,
+            0.8364902930726686,
+            0.18647168821629795
+          ],
+          "distanceMeters": 0.00016860806574993915
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/ttr/int_ttr_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "36ff815f26e745ff8eb1c0cf93c3659ffee2168a5358401212444dd7921a6531"
+        },
+        {
+          "path": "cars/models/ttr/ttr_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "30a0156c9215a62d5949c63836f9a3cf7b2c469c8660b526b5d56e84b113d922"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/ttr/cameras.xml",
+        "sha256": "9483b5226b76b2c16bdd7fd8200c5739203b36879ef59601ab35bd383a4edd28",
+        "decodedSha256": "d3d89da9bd35cb593340db7362b1d4ceb3b463a65489503e43532f6306bd4fc3",
+        "semanticSha256": "d4effd71b8d0ff8fb676d5363d3b6745ca52b4c21a216f7a0b4d44c04a5c7330"
+      },
+      "derivedPosition": [
+        0.3385,
+        1.1707,
+        -0.1963
+      ],
+      "visualReview": {
+        "heightCentimeters": -4,
+        "meshSha256": "39ab7077f3fe49f04fb396da5b6b724319708950183fbce8d4f5b013e203414b",
+        "note": "Windscreen header close to eye level; lower to look through opening.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "van",
+      "position": [
+        0.3879,
+        1.0991,
+        -0.231
+      ],
+      "head": [
+        0.39247659436438054,
+        1.00068044841785,
+        -0.29748435015992225
+      ],
+      "headNub": [
+        0.3856771782065559,
+        1.1932431971628747,
+        -0.27281942394845327
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5725420056170551,
+            0.8126107621584326,
+            0.17408111316056768
+          ],
+          "steeringDummy": [
+            0.572689850245755,
+            0.812542207149979,
+            0.17420393625550132
+          ],
+          "distanceMeters": 0.0002040669891691331
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.19885628021851526,
+            0.8125960591752347,
+            0.17409355840337062
+          ],
+          "steeringDummy": [
+            0.19879508434575344,
+            0.8125421901376249,
+            0.17420399846957385
+          ],
+          "distanceMeters": 0.00013727278054685455
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/van/int_van_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "946a0ce1d3859ca9b015f6d28e83e6b5115fa158c5e90a76e7dba454e21d33eb"
+        },
+        {
+          "path": "cars/models/van/van_anim_dummies.pssg",
+          "bytes": 17715,
+          "sha256": "6be9ef7ccaeba65baa09fa5218ab568b00e074aedb67e70937b2b5bdda1fdbb8"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/van/cameras.xml",
+        "sha256": "0a9173c82bffa99fe240cb161acda35dc936b5adb151850dfdafe9a283805125",
+        "decodedSha256": "129c792d4fad4aad936bfcdac1107e1e20a665ce7d29695beead20b49b6a1ffe",
+        "semanticSha256": "cf555700ac4777a630a8fabff2718f43dfc9b4380f62bb2f66c06ab9fd26829e"
+      },
+      "derivedPosition": [
+        0.3879,
+        1.1291,
+        -0.231
+      ],
+      "visualReview": {
+        "heightCentimeters": -3,
+        "meshSha256": "93dfbf96306a969d75ecc383e45bb4c3e3e5efd7e10c77c2c2d10a42b0e596e5",
+        "note": "Limited roof clearance; small drop keeps tall wheel below road sightline.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "vip",
+      "position": [
+        0.3837,
+        1.0145,
+        -0.5454
+      ],
+      "head": [
+        0.38844855781885174,
+        0.9357719122800319,
+        -0.6087694732768193
+      ],
+      "headNub": [
+        0.3812572747823746,
+        1.128854054056255,
+        -0.5887052059156686
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5743253403408646,
+            0.7510779966762032,
+            -0.15451192896649488
+          ],
+          "steeringDummy": [
+            0.574524965569406,
+            0.7510248026910851,
+            -0.15442478918273553
+          ],
+          "distanceMeters": 0.00022421680096861875
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.18883683971566523,
+            0.7510369618937173,
+            -0.15454514420830553
+          ],
+          "steeringDummy": [
+            0.1888710078694052,
+            0.7510248062912118,
+            -0.1544247828970065
+          ],
+          "distanceMeters": 0.00012570627136260888
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/vip/int_vip_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "f1a6a6b56c5031d70447fd035b6c6b736076005a6df700a5de67528ecab93823"
+        },
+        {
+          "path": "cars/models/vip/vip_anim_dummies.pssg",
+          "bytes": 18519,
+          "sha256": "265e04185ab2c3787e29b32fc2e970cc1fe31e678fee4e4bfd18ba92b24cbbd6"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/vip/cameras.xml",
+        "sha256": "272e74d56a471145d91e2b55e92c1779046d2661fdcbf3c2b3ba73bb2e3d3ebb",
+        "decodedSha256": "454b5825b8c657bf036ed93ec2f17b930d880c0beb1fdd9cf2b5e723a6e6fa30",
+        "semanticSha256": "e341e5d31376488d6e2ed0c973b0c291761f2a495b8ee135c882a48d3152fc9a"
+      },
+      "derivedPosition": [
+        0.3837,
+        1.0645,
+        -0.5454
+      ],
+      "visualReview": {
+        "heightCentimeters": -5,
+        "meshSha256": "ecfaba02f3334b54d4bd3d8b9e342892d7aec9683d7519d8ba4120659c61a367",
+        "note": "Roof edge almost on horizon; 5cm drop balances roof and tall wheel.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "xkr",
+      "position": [
+        0.3782,
+        1.1511,
+        -0.3352
+      ],
+      "head": [
+        0.3830467661021185,
+        1.0231726247590232,
+        -0.4048910303382926
+      ],
+      "headNub": [
+        0.37581997131673417,
+        1.2150361160979428,
+        -0.3753753230332963
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.571021681557988,
+            0.8144684663835565,
+            0.03912717657341627
+          ],
+          "steeringDummy": [
+            0.5713389963,
+            0.8144384017982311,
+            0.039164230093348795
+          ],
+          "distanceMeters": 0.0003208823587052776
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.18136857067136586,
+            0.8144152130294693,
+            0.039081236656642586
+          ],
+          "steeringDummy": [
+            0.1814530045,
+            0.8144384017982311,
+            0.039164230093348795
+          ],
+          "distanceMeters": 0.00012064286531252063
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/xkr/int_xkr_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "4e6334676698288209d355f0898e70a30c78e09b239703da62abf3c3abac3154"
+        },
+        {
+          "path": "cars/models/xkr/xkr_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "e08ba99d06988f5a900b3f2de5a2f8cbf0e24efd1c91dc3482a7b009cc83cc81"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/xkr/cameras.xml",
+        "sha256": "4ec7f721276bca44f64c3655ea0e137e41e51281481d636411e623609136471f",
+        "decodedSha256": "2ddaf8ac27f3a83973d1f88b08adc310449e29f1b516d81410e451efb8863163",
+        "semanticSha256": "856b872a53f231be0d726c6990d4c7467afe34ff3e9576160d26cda4d0260979"
+      },
+      "derivedPosition": [
+        0.3782,
+        1.1511,
+        -0.3352
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "67f541a4624d0e57d348ffebe5c3b127afe2f04ef5fb3f7621dea1dc589fae04",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "z06",
+      "position": [
+        0.4379,
+        1.0799,
+        -0.4141
+      ],
+      "head": [
+        0.44271909091802325,
+        0.9519603286275946,
+        -0.483768721108388
+      ],
+      "headNub": [
+        0.4354922961326389,
+        1.1438238199665145,
+        -0.45425301380339167
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.6309748125826703,
+            0.7311453195562511,
+            -0.04269275521812802
+          ],
+          "steeringDummy": [
+            0.6310120076,
+            0.7312522053223283,
+            -0.04264009625601291
+          ],
+          "distanceMeters": 0.0001248238863163093
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.2410911320764222,
+            0.7312713288792374,
+            -0.04273327149358219
+          ],
+          "steeringDummy": [
+            0.2411260158,
+            0.7312522053223283,
+            -0.04264009625601291
+          ],
+          "distanceMeters": 0.00010131243504922595
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/z06/int_z06_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "0cca7f44754097205ce08e02430ce0c50c4ac41a9fe26c3e92af6ce90b10fbb5"
+        },
+        {
+          "path": "cars/models/z06/z06_anim_dummies.pssg",
+          "bytes": 18495,
+          "sha256": "e90aa8245648b29e0a344e645759547f389f9b8438e7909a917c30b4049677bd"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/z06/cameras.xml",
+        "sha256": "33da22237892a5bbb8a8329deed87987455c4677e9dcac765999b75041940e36",
+        "decodedSha256": "465c6899c35bb100de94b64549e9a277fc0dcfd78d18687dfdacc546711f5f02",
+        "semanticSha256": "01716ecbaa2a77b56fdd20bf3de7c991898ab5ec36cac75332cef9faf490ee07"
+      },
+      "derivedPosition": [
+        0.4379,
+        1.0799,
+        -0.4141
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "442de0a6e7ebfcd0779300ae5f32d91cff1c62498dd14aeec5d9d538c716e6b7",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "z28",
+      "position": [
+        0.3674,
+        1.0792,
+        -0.3297
+      ],
+      "head": [
+        0.371981390907357,
+        0.9701815172696594,
+        -0.38942589378984593
+      ],
+      "headNub": [
+        0.3651148221304414,
+        1.163768280883986,
+        -0.37486505466887554
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5462966286551856,
+            0.7219183142282025,
+            0.08734803751404133
+          ],
+          "steeringDummy": [
+            0.546424985,
+            0.7218576892500586,
+            0.08738911217913205
+          ],
+          "distanceMeters": 0.00014777640996247398
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.18400536769662174,
+            0.7219783203425131,
+            0.08723029600557775
+          ],
+          "steeringDummy": [
+            0.184096992,
+            0.7218586616842954,
+            0.08738933830811538
+          ],
+          "distanceMeters": 0.00021910650709754803
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/z28/int_z28_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "98d0876aea99c35fdaf1b959526eb5d470a2011ca518a245787416c4f710af8e"
+        },
+        {
+          "path": "cars/models/z28/z28_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "c42dff15b9ff73050b9451f0c0932b588e024a3b34bb85eec85fda6eec0c249b"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/z28/cameras.xml",
+        "sha256": "c944df72e4ad5b4219220aea54888cff24c60c93822d932195c8619df3bd8fa7",
+        "decodedSha256": "8d6370b66dc6e842dd3467034c163ef87bddf92ec0483963c585d738416d4d93",
+        "semanticSha256": "93ffa6ece28c1fd14c9527869aee7f37cd65b3c7065135d7791cea312585ca5a"
+      },
+      "derivedPosition": [
+        0.3674,
+        1.0992,
+        -0.3297
+      ],
+      "visualReview": {
+        "heightCentimeters": -2,
+        "meshSha256": "ffd28cd6e2e377bfa0fd9890e72cfdf3286c4454dff62ac6bcb0423e7679b575",
+        "note": "Slightly high relative to roof; small correction retains dashboard clearance.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "zag",
+      "position": [
+        0.3694,
+        1.0298,
+        -0.4204
+      ],
+      "head": [
+        0.37416953320348967,
+        0.9304344256338424,
+        -0.47334053097963147
+      ],
+      "headNub": [
+        0.3669832502295336,
+        1.1245060933629258,
+        -0.46891922221248433
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.562387372844391,
+            0.7454421444420742,
+            -0.02369141147551007
+          ],
+          "steeringDummy": [
+            0.5623884797,
+            0.7454128886018736,
+            -0.023548736017682724
+          ],
+          "distanceMeters": 0.00014564825979539774
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.17262051674298912,
+            0.74552581498218,
+            -0.023746200751730395
+          ],
+          "steeringDummy": [
+            0.17250247300000002,
+            0.7454129862277116,
+            -0.02354871153410836
+          ],
+          "distanceMeters": 0.00025625503735678395
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/zag/int_zag_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "a9a8ad7191ebe8fdb465a656a2da0cc3b9055efaa538f67943f8bad45c4c78ec"
+        },
+        {
+          "path": "cars/models/zag/zag_anim_dummies.pssg",
+          "bytes": 18103,
+          "sha256": "fc33032239382e547d0b1aacf700652b90ba4a3550c36745b62bc6479b4eaeb0"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/zag/cameras.xml",
+        "sha256": "2e803f299c514d94b10ea56974a3af37ab147d2b42eadb89b5a67ae97865d96b",
+        "decodedSha256": "80acd173ec58f1710ad5632dca53f5c5b70c050f19c2324732c47236f8dca376",
+        "semanticSha256": "7f3f4d42d0821a9191bf342166a5b2c15de10343a70a037b4055511d81481da3"
+      },
+      "derivedPosition": [
+        0.3694,
+        1.0598,
+        -0.4204
+      ],
+      "visualReview": {
+        "heightCentimeters": -3,
+        "meshSha256": "b8e1da838ed32792e5462d0d083c3e8f56a25d25383d648a556f2c8b77014777",
+        "note": "Roof/cage diagonal crowds view; 3cm drop preserves downhill visibility over wheel.",
+        "evidence": "offline-geometry"
+      }
+    },
+    {
+      "car": "zen",
+      "position": [
+        0.3794,
+        0.9982,
+        -0.2273
+      ],
+      "head": [
+        0.3840538787048751,
+        0.8696069366364426,
+        -0.29203316795060086
+      ],
+      "headNub": [
+        0.37710705148527923,
+        1.062474927193993,
+        -0.26992700005072023
+      ],
+      "handChecks": [
+        {
+          "side": "L",
+          "animationJoint": [
+            0.5589613263671709,
+            0.6906847872403454,
+            0.18707236721972226
+          ],
+          "steeringDummy": [
+            0.5588738917464737,
+            0.6908422892331202,
+            0.1871423122812678
+          ],
+          "distanceMeters": 0.00019324596311199777
+        },
+        {
+          "side": "R",
+          "animationJoint": [
+            0.1958781775446361,
+            0.6908846993072046,
+            0.1870638545439469
+          ],
+          "steeringDummy": [
+            0.19575798494647217,
+            0.6908421232957178,
+            0.18714224140626157
+          ],
+          "distanceMeters": 0.0001496779128364028
+        }
+      ],
+      "handChecksStatus": "consistent",
+      "warnings": [],
+      "sources": [
+        {
+          "path": "cars/interiors/models/zen/int_zen_driver_anims.pssg",
+          "bytes": 115298,
+          "sha256": "744f6926f7b8501c9a76905bae74b78b55c6a6a9880b2813e71b63d8e0bdef76"
+        },
+        {
+          "path": "cars/models/zen/zen_anim_dummies.pssg",
+          "bytes": 17691,
+          "sha256": "39b94c205768a1c2d3b165ec562a27ce46b0528d5c9f08d4253a31347ce64127"
+        }
+      ],
+      "validation": "offline-derived",
+      "camera": {
+        "path": "cars/models/zen/cameras.xml",
+        "sha256": "2b809e46c29f97db86168b6d293896f1ed5ee56bc624db018c08212d5df6a347",
+        "decodedSha256": "b12fbff2d4e0a64a9fe24047e36d7e3437b8c05b923d5aa3dcfa95132a3cb414",
+        "semanticSha256": "0f77b1cc8b94ed695ced091065e5f7a8e40306782ba5752d78301b8a5832c6db"
+      },
+      "derivedPosition": [
+        0.3794,
+        0.9982,
+        -0.2273
+      ],
+      "visualReview": {
+        "heightCentimeters": 0,
+        "meshSha256": "9d6947bf412407d8dde0733af6e77bc0b5e5711ad60bbd8f3821be1ca4aac567",
+        "note": "Forward opening and wheel alignment look balanced; retain authored-pose estimate.",
+        "evidence": "offline-geometry"
+      }
+    }
+  ],
+  "unsupported": [],
+  "limits": [
+    "Eye positions are estimates from each car authored neutral pose, not eye markers.",
+    "All 51 defaults have offline geometry visual review; only unchanged S2000 has user desktop and headset acceptance.",
+    "Authored hand-pose mismatches remain recorded; visual height corrections do not qualify those animation poses.",
+    "This does not qualify cockpit mesh coverage, clipping or head-hiding behavior on other cars."
+  ]
+}
