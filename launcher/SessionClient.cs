@@ -24,7 +24,7 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public DrivingBinding? RecenterDevice { get; init; }
     public bool KeepHorizonLevel { get; init; } = true;
 }
-internal sealed record ContentItem(string Id, string Label, string? ClassId = null, string? ClassName = null)
+internal sealed record ContentItem(string Id, string Label, string? ClassId = null, string? ClassName = null, bool CockpitAvailable = true, bool Dlc = false)
 {
     public override string ToString() => Label;
 }
@@ -59,7 +59,7 @@ internal sealed class SessionClient(string root)
     public static void Validate(Choices value)
     {
         if (!Regex.IsMatch(value.Car, @"\A[a-z0-9_]+\z") ||
-            !Regex.IsMatch(value.Track, @"\A(circuits|cities|p2p)/[a-z0-9_]+/route_[0-9]+\z") ||
+            !Regex.IsMatch(value.Track, @"\A(circuits|cities|p2p|australia|europe)/[a-z0-9_]+/route_[0-9]+\z") ||
             value.Runtime is not ("VDXR" or "SteamVR")) throw new ArgumentException("Invalid session selection.");
         if (value.LaunchMode is not ("Practice" or "Race" or "Normal")) throw new ArgumentException("Choose Normal, Practice or Race.");
         if (value.Opponents is < 1 or > 7) throw new ArgumentException("Choose between 1 and 7 opponents.");
@@ -228,12 +228,27 @@ internal sealed class SessionClient(string root)
         if(AppPaths.Packaged(Root)) { info.Environment.Remove("PYTHONHOME");info.Environment.Remove("PYTHONPATH");info.Environment["PYTHONNOUSERSITE"]="1";info.Environment["PYTHONDONTWRITEBYTECODE"]="1"; }
         info.ArgumentList.Add(Path.Combine(Root, "tools", "session_config.py")); info.ArgumentList.Add("--game-root"); info.ArgumentList.Add(AppPaths.Game(Root)); info.ArgumentList.Add("catalog");
         using var doc = JsonDocument.Parse(await ReadCommand(info));
-        var cars = doc.RootElement.GetProperty("cars").EnumerateArray()
+        return ParseCatalog(doc.RootElement);
+    }
+
+    internal static (ContentItem[] Cars, ContentItem[] Tracks) ParseCatalog(JsonElement catalog)
+    {
+        static bool Flag(JsonElement item, string name, bool fallback) => item.TryGetProperty(name, out var value) ? value.GetBoolean() : fallback;
+        static string Label(JsonElement item, string fallback) => item.TryGetProperty("label", out var value) && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString()! : fallback;
+        var cars = catalog.GetProperty("cars").EnumerateArray()
             .Where(c => c.GetProperty("liveries").EnumerateArray().Any(l => l.GetString() == "user"))
-            .Select(c => new ContentItem(c.GetProperty("id").GetString()!, CarLabel(c.GetProperty("id").GetString()!),
-                c.GetProperty("classId").GetString(), c.GetProperty("className").GetString())).OrderBy(c => c.Label).ToArray();
-        var tracks = doc.RootElement.GetProperty("tracks").EnumerateArray().Select(t => t.GetProperty("id").GetString()!)
-            .Select(id => new ContentItem(id, TrackLabel(id))).OrderBy(t => t.Label).ToArray();
+            .Select(c =>
+            {
+                var id = c.GetProperty("id").GetString()!;
+                var dlc = Flag(c, "dlc", false);
+                return new ContentItem(id, Label(c, CarLabel(id)), c.GetProperty("classId").GetString(), c.GetProperty("className").GetString(),
+                    Flag(c, "cockpitAvailable", !dlc), dlc);
+            }).OrderBy(c => c.Label).ToArray();
+        var tracks = catalog.GetProperty("tracks").EnumerateArray().Select(t =>
+        {
+            var id = t.GetProperty("id").GetString()!;
+            return new ContentItem(id, Label(t, TrackLabel(id)), Dlc: Flag(t, "dlc", false));
+        }).OrderBy(t => t.Label).ToArray();
         return (cars, tracks);
     }
 

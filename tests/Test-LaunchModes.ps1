@@ -130,6 +130,7 @@ try {
     function Invoke-ModeTestPython {
         $script:pythonArguments=@($args)
         $global:LASTEXITCODE=0
+        return '{"carContent":{"dlc":false,"cockpitAvailable":true}}'
     }
     $python='Invoke-ModeTestPython'; $Car='z06'; $Track='cities/chicago/route_0'; $sessionLaps=20; $Opponents=7
     foreach($OpponentCars in @('same','mixed','class')) {
@@ -184,6 +185,38 @@ try {
     }
 
     $diagnostic=Read-TestAst 'Run-Diagnostic.ps1'
+    # Execute fallback and exposure routing using verified content metadata.
+    # No files are copied into a game and no process is launched.
+    $workerFallback=$start.Find({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and
+        $node.Clauses[0].Item1.Extent.Text -eq '$content.dlc -and !$content.cockpitAvailable'},$true)
+    if(!$workerFallback) { throw 'DLC worker camera fallback missing.' }
+    $workerFallback=[scriptblock]::Create($workerFallback.Extent.Text)
+    foreach($item in @(@{dlc=$false;cockpitAvailable=$true},@{dlc=$true;cockpitAvailable=$false})) {
+        $content=$item; $CockpitMode='HeadOnly'; $receipt=@{}
+        . $workerFallback
+        if(($CockpitMode -eq 'Off') -ne $content.dlc -or [bool]$receipt.cameraNote -ne $content.dlc) { throw 'DLC worker fallback differs.' }
+    }
+    foreach($name in @('Run-StereoProbe.ps1','Run-Diagnostic.ps1')) {
+        $ast=Read-TestAst $name
+        $fallback=$ast.Find({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and
+            $node.Clauses[0].Item1.Extent.Text -eq '$selectedSession.carContent.dlc -and !$selectedSession.carContent.cockpitAvailable'},$true)
+        if(!$fallback) { throw "DLC fallback missing: $name" }
+        $fallback=[scriptblock]::Create($fallback.Extent.Text)
+        foreach($item in @($null,@{dlc=$false;cockpitAvailable=$true},@{dlc=$true;cockpitAvailable=$false})) {
+            foreach($requested in @('Off','HeadOnly','HideDriver')) {
+                $selectedSession=if($item){@{carContent=$item}}else{$null}
+                $CockpitMode=$requested
+                . $fallback
+                $expected=if($item.dlc){'Off'}else{$requested}
+                if($CockpitMode -ne $expected) { throw "DLC fallback changed a supported or Normal camera: $name" }
+            }
+        }
+    }
+    $run=Join-Path $fixture 'dlc-camera'; [IO.Directory]::CreateDirectory($run) | Out-Null
+    $CockpitMode='Off'; $NativeCockpitExposure=$false
+    $exposure=Find-TestStatement $diagnostic "'cockpit-exposure.request'"
+    . $exposure
+    if(Test-Path -LiteralPath (Join-Path $run 'cockpit-exposure.request')) { throw 'Original DLC camera received a cockpit exposure override.' }
     $steam=$diagnostic.Find({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$steamArgumentLine'},$false)
     if(!$steam) { throw 'Steam route assignment missing.' }
     $steamRoute=[scriptblock]::Create($steam.Extent.Text)

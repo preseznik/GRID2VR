@@ -177,6 +177,8 @@ if($CockpitS2000 -ne 'Off') {
     $null=Get-CockpitCameraCandidate $root $CockpitS2000
 }
 $cockpitAssets=@()
+$cockpitModeRequested=$CockpitMode
+if($selectedSession.carContent.dlc -and !$selectedSession.carContent.cockpitAvailable) { $CockpitMode='Off' }
 if($CockpitMode -ne 'Off') {
     if(!$RuntimeSession -or (!$ExposureAudit -and (!$UntilExit -or !$XrProjection)) -or $PlayerControlOnly -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off') { throw 'Launcher cockpit assets require a VR user session or bounded exposure audit.' }
     $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch))
@@ -396,6 +398,8 @@ $receipt.nativeStartup=$nativeStartup
 $receipt.cockpitCamera=$cockpitCamera
 $receipt.cockpitAssets=$cockpitAssets
 $receipt.cockpitMode=$CockpitMode
+$receipt.cockpitModeRequested=$cockpitModeRequested
+$receipt.cockpitApplied=($cockpitAssets.Count -gt 0)
 $receipt.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
 $receipt.exposureAudit=[bool]$ExposureAudit
 $receipt.removeCinemaMatte=[bool]$RemoveCinemaMatte

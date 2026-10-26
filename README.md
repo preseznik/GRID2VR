@@ -12,10 +12,12 @@ You need **Windows 10/11 (64-bit)**, the **Steam version of GRID 2** (build 1.0.
 4. Connect your headset and select the matching VR runtime in the launcher. For direct VDXR, keep SteamVR closed.
 5. Choose **Normal** to use the game's menus, or **Practice / Race** to pick a car and track in the launcher. Click **Launch VR**.
 
+Supported installed DLC appears in the Practice / Race car and track lists. DLC cars currently use their original game cameras; custom VR cockpit views and seat alignment are available for calibrated cars only. The game's DLC ownership requirements still apply.
+
 ## While playing
 
 - **F10** recenters your view. Change it or bind a controller/wheel button under **Controls → VR**.
-- VR starts in cockpit view. Adjust your seating position per car under **Controls → Seat**.
+- Calibrated cars start VR in cockpit view. Adjust their seating position under **Controls → Seat**.
 - Adjust resolution, MSAA and the HUD under **Graphics**. The FPS/GPU display is under **Advanced**.
 - Finish with **Quit** in the game so the launcher can restore its temporary changes. After an interrupted session, use **Restore original files** before launching again.
 

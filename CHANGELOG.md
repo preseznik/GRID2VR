@@ -1,3 +1,11 @@
+# GRID2VR 0.1.4 — Experimental
+
+- Select supported installed DLC cars and tracks in Practice / Race, including Spa-Francorchamps and Bathurst.
+- Include DLC cars in Same car, Mixed and Same class opponent selections.
+- Show the current preparation step and elapsed time while launching desktop and VR sessions.
+
+DLC cars use their original game cameras; custom VR cockpit views and seat adjustments are not yet available for them. DLC ownership is required. Live DLC gameplay and headset checks are still pending.
+
 # GRID2VR 0.1.3 — Stable
 
 - Choose Same car, Mixed or Same class for Race opponents.

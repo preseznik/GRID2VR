@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 SUPPORTED_AVX_SHA256 = '519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502'
 SESSION_FILENAME = 'GRID2VR.session.xml'
 TOKEN = re.compile(r'[a-z0-9_]+\Z')
+DLC_MANIFEST = Path(__file__).parent/'data/dlc-content.json'
 # Shipped example_benchmark.xml uses eight cars, grids 0..7 and these opponent
 # presets. Opponent model choices retain those drivers and grid positions.
 RACE_DRIVERS = ('Average2_1', 'Average3_1', 'Ayala_1_1', 'Alvarez_1_1',
@@ -52,6 +53,26 @@ def regular(path):
     return plain_path(path).is_file()
 
 
+def installed_dlc(root):
+    """Recognize inspected DLC by full archive fingerprints, without extraction.
+
+    The manifest contains identifiers and hashes only. Steam/the game retain
+    ownership checks; detecting installed bytes does not grant a DLC license.
+    Split car packs require both their shared and model archives.
+    """
+    manifest = json.loads(plain_path(DLC_MANIFEST).read_text(encoding='utf-8'))
+    present = set()
+    for archive in manifest['archives']:
+        path = plain_path(root/archive['path'])
+        if not path.is_file() or path.stat().st_size != archive['bytes']:
+            continue
+        with path.open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() == archive['sha256']:
+                present.add(archive['path'])
+    return {kind: [row for row in manifest[kind] if set(row['archives']) <= present]
+            for kind in ('cars', 'tracks')}
+
+
 def catalog(game_root):
     root = plain_path(game_root)
     if not regular(root/'grid2_avx.exe'):
@@ -68,7 +89,7 @@ def catalog(game_root):
                     if p.name.startswith('livery_') and len(p.name) > len('livery_')]
         if liveries:
             group = classes.get(folder.name, {})
-            cars.append(dict(id=folder.name, liveries=liveries,
+            cars.append(dict(id=folder.name, liveries=liveries, dlc=False, cockpitAvailable=True,
                              classId=group.get('id'), className=group.get('label')))
     tracks = []
     for category in ('circuits', 'cities', 'p2p'):
@@ -80,8 +101,26 @@ def catalog(game_root):
                     continue
                 tracks.append(dict(id=f'{category}/{location.name}/{route.name}', country=category,
                                    name=location.name, route=route.name))
+    dlc = installed_dlc(root)
+    car_ids = {car['id'] for car in cars}
+    for car in dlc['cars']:
+        if car['id'] in car_ids:
+            continue
+        group = classes.get(car['id'], {})
+        cars.append(dict(id=car['id'], label=car['label'], liveries=car['liveries'],
+                         classId=group.get('id'), className=group.get('label'),
+                         dlc=True, cockpitAvailable=False, archives=car['archives']))
+        car_ids.add(car['id'])
+    track_ids = {track['id'] for track in tracks}
+    for track in dlc['tracks']:
+        if track['id'] in track_ids:
+            continue
+        category, location, route = track['id'].split('/')
+        tracks.append(dict(id=track['id'], country=category, name=location, route=route,
+                           dlc=True, archives=track['archives']))
+        track_ids.add(track['id'])
     return dict(schema=1, gameRoot=str(root), cars=cars, tracks=tracks,
-                limits='Loose installed content only; labels are game codes. Presence does not prove launch compatibility. Packaged-only DLC and player control are not inferred.')
+                limits='Loose content and fingerprint-verified installed DLC. Game ownership checks still apply. DLC cars use original cameras; custom cockpit calibration is unavailable. Presence does not prove gameplay or VR compatibility.')
 
 
 def configuration(installed, car, track, livery='user', mode='benchmark', lighting='day', weather='dry', laps=1, control='ai', cycle_camera=False, opponents=0, opponent_cars='same', opponent_seed=0):
@@ -136,6 +175,11 @@ def launch_flag(mode):
     return '-benchmarkAttract' if mode in ('attract', 'practice', 'race') else '-benchmark'
 
 
+def car_content(installed, car):
+    vehicle = next(v for v in installed['cars'] if v['id'] == car)
+    return dict(dlc=vehicle.get('dlc', False), cockpitAvailable=vehicle.get('cockpitAvailable', True))
+
+
 def check_practice_bundle(root, control, bundle):
     if control == 'human':
         if not isinstance(bundle, (str, Path)):
@@ -168,6 +212,7 @@ def prepare(game_root, output, practice_bundle=None, **selection):
     result = dict(schema=2, status='prepared_not_launched', gameRoot=str(root),
                   executableSha256=digest, configuration=str(path),
                   configurationSha256=hashlib.sha256(payload).hexdigest(), selection=selection,
+                  carContent=car_content(installed, selection['car']),
                   control=control, playerControlValidated=False,
                   steamArguments=['-applaunch', '44350', launch_flag(mode), SESSION_FILENAME],
                   limits='Generated configuration only. Selected-content loading and player-control handoff require runtime evidence.')
@@ -209,6 +254,9 @@ def verify(game_root, session):
         raise ValueError('Invalid prepared selection fields') from error
     if data['control'] != selection.get('control', 'ai'):
         raise ValueError('Prepared control differs from selection')
+    content = car_content(installed, selection['car'])
+    if data.get('carContent', dict(dlc=False, cockpitAvailable=True)) != content:
+        raise ValueError('Selected car content changed; regenerate the session')
     check_practice_bundle(root, data['control'], data.get('practiceBundle'))
     payload = config.read_bytes()
     flag = launch_flag(selection.get('mode', 'benchmark'))
@@ -251,6 +299,7 @@ def stage(game_root, session, run_directory):
             stream.write(flow_payload)
     result = dict(source=str(plain_path(session)), configuration=str(output),
                 configurationSha256=data['configurationSha256'], selection=data['selection'],
+                carContent=data.get('carContent', dict(dlc=False, cockpitAvailable=True)),
                 control=data['control'], playerControlValidated=False,
                 steamArguments=arguments, steamArgumentLine=command_line,
                 nativeConfigurationName=SESSION_FILENAME)

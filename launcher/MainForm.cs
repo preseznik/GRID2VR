@@ -144,7 +144,7 @@ internal sealed class MainForm : LauncherForm
         graphics.Controls.Add(cockpitExposure);
         graphics.Controls.Add(TextLabel("Keep the track's exposure ceiling in cockpit view so the dark interior cannot over-brighten the outside. Exposure still adapts below that limit. Applies on the next VR launch."));
         vrCockpit.CheckedChanged += (_, _) => seatAlignment.Enabled = cockpitExposure.Enabled = cockpitDriver.Enabled = vrCockpit.Enabled && vrCockpit.Checked;
-        graphics.Controls.Add(TextLabel("Start VR in the cockpit. Use your camera-cycle control to change views. Positions follow each car's seated driver; interiors vary. Applies to the next VR launch, including cars chosen through the game's menus."));
+        graphics.Controls.Add(TextLabel("Calibrated cars start VR in the cockpit. Use your camera-cycle control to change views. DLC cars without calibration keep their original cameras. Applies to the next VR launch, including cars chosen through the game's menus."));
         graphics.Controls.Add(HelpLink("VR cockpit"));
         graphics.Controls.Add(TextLabel("Adjust individual cars in Controls → Seat."));
         Section(graphics, "VR HUD");

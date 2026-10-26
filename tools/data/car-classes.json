@@ -1,10 +1,10 @@
 [
-  {"id": "hot_hatches", "label": "Hot hatches", "cars": ["foc", "giu", "gol"]},
-  {"id": "muscle", "label": "Muscle cars", "cars": ["bos", "cha", "crt", "css", "mac", "z28"]},
-  {"id": "road_sports", "label": "Road sports", "cars": ["190", "300", "37r", "a4c", "b1m", "bm3", "brz", "c63", "e30", "gen", "nsx", "rs5", "rx1", "s15", "s20", "sky", "ttr"]},
+  {"id": "hot_hatches", "label": "Hot hatches", "cars": ["foc", "giu", "go2", "gol"]},
+  {"id": "muscle", "label": "Muscle cars", "cars": ["bos", "cam", "cha", "cr2", "crt", "css", "ma2", "mac", "z22", "z28"]},
+  {"id": "road_sports", "label": "Road sports", "cars": ["190", "240", "300", "370", "37r", "a4c", "b12", "b1m", "bm3", "brz", "c63", "civ", "e30", "e32", "evx", "gen", "gtr", "nsx", "r32", "rs5", "rx1", "rx2", "s15", "s20", "sky", "ttr", "wrx"]},
   {"id": "grand_tourers", "label": "Grand tourers", "cars": ["a8c", "sl6", "slr", "van", "xkr", "zag"]},
   {"id": "supercars", "label": "Supercars", "cars": ["177", "bug", "koe", "mf1", "mp4", "pag", "vip", "z06", "zen"]},
-  {"id": "track_specials", "label": "Track specials", "cars": ["ato", "bac", "cat", "ktm"]},
-  {"id": "touring", "label": "Touring cars", "cars": ["320", "crz", "s60", "scr"]},
-  {"id": "gt_race", "label": "GT race cars", "cars": ["r8l", "sls"]}
+  {"id": "track_specials", "label": "Track specials", "cars": ["ato", "bac", "cat", "ind", "ktm"]},
+  {"id": "touring", "label": "Touring cars", "cars": ["320", "crz", "r3b", "s60", "scr", "srs", "utf"]},
+  {"id": "gt_race", "label": "GT race cars", "cars": ["722", "bz4", "ccg", "mpg", "r8l", "sls", "zig", "zon"]}
 ]

@@ -73,6 +73,7 @@ internal sealed class SeatAlignmentPanel : UserControl
     }
     public void LoadCars(ContentItem[] cars, string current, SeatAlignment value)
     {
+        cars = cars.Where(c => c.CockpitAvailable).ToArray();
         loading = true; settings = value; selected = null;
         try { car.Items.Clear(); car.Items.AddRange(cars); car.SelectedItem = cars.FirstOrDefault(c => c.Id == current) ?? cars.FirstOrDefault(); selected = (car.SelectedItem as ContentItem)?.Id; }
         finally { loading = false; }

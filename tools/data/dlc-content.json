@@ -1,0 +1,420 @@
+{
+  "schema": 1,
+  "archives": [
+    {
+      "path": "download/bathurst/bathurst.nefs",
+      "bytes": 119918127,
+      "sha256": "d4e42132829aecaae04fa2627e4ca386f9fe00d14e2baf44be0d148b410d55f1"
+    },
+    {
+      "path": "download/classic_grid/classic_grid.nefs",
+      "bytes": 23394983,
+      "sha256": "57f44d0261d4c4e5e042781cc0729c6e458685304ec9c00e915b3f2ddddbf8db"
+    },
+    {
+      "path": "download/drift/comp_drift.nefs",
+      "bytes": 21277749,
+      "sha256": "8963fb981cd177d5e2ea6ead52c0d3ca6aee47fca110bdd34051673bfb38ce3a"
+    },
+    {
+      "path": "download/drift/drift.nefs",
+      "bytes": 23226104,
+      "sha256": "f76cbcf7daef6a645777ac5b1c0ebdb0ba56f2db6286ecbc715b1567b2d505eb"
+    },
+    {
+      "path": "download/gtr_racing/gtr_racing.nefs",
+      "bytes": 68286265,
+      "sha256": "d6147e860f1dbce482cf647b29bfc2ba92ac1ee8323b8b0d0ea420e4c8c86ae6"
+    },
+    {
+      "path": "download/headstart/headstart.nefs",
+      "bytes": 8735718,
+      "sha256": "8e5027f812864771d7a4c9683e35373f42295d12e9809bd69c8d4fca23d693fc"
+    },
+    {
+      "path": "download/indycar/indycar.nefs",
+      "bytes": 55432239,
+      "sha256": "f77c52adce0654fcefafc819b1d252a5b31a1f2739fa4c76741bf799036033f1"
+    },
+    {
+      "path": "download/mclaren_racing/mclaren_racing.nefs",
+      "bytes": 32306880,
+      "sha256": "30a78523d3226bf84f349d3eafb050f28a5ad84537aff953a79e214f4d8b3ba5"
+    },
+    {
+      "path": "download/peak_performance/comp_peak_performance.nefs",
+      "bytes": 25574824,
+      "sha256": "fd5d0247f045b5353ebb8b5c52503d84f00dbec8cd7b121356aa7091db1e27bf"
+    },
+    {
+      "path": "download/peak_performance/peak_performance.nefs",
+      "bytes": 36380522,
+      "sha256": "f6631bf9ecbe02fa777a7a2f5653095ce22196295baf0063942cd62810f0aa35"
+    },
+    {
+      "path": "download/spa_francorchamps/spa_francorchamps.nefs",
+      "bytes": 144237775,
+      "sha256": "ae4c5e528a0dae12a8b5c8684b7ee870359c7a3ef12bd08b779d3a7cc56c450c"
+    },
+    {
+      "path": "download/super_modified/comp_super_modified.nefs",
+      "bytes": 19488052,
+      "sha256": "815dcd3416dff072b826f8a043c6b71d78e4cf9142ebce2b703025789358baf2"
+    },
+    {
+      "path": "download/super_modified/super_modified.nefs",
+      "bytes": 21440612,
+      "sha256": "1cff8d0031ebe297981cb57fd8f5a68e2cc98a7e1a3d3eafc1b73d0039b2cd8c"
+    }
+  ],
+  "cars": [
+    {
+      "id": "240",
+      "label": "Nissan Daijiro Yoshihara 240SX (S13)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/drift/comp_drift.nefs",
+        "download/drift/drift.nefs"
+      ]
+    },
+    {
+      "id": "370",
+      "label": "Nissan NOS Energy 370Z",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/drift/comp_drift.nefs",
+        "download/drift/drift.nefs"
+      ]
+    },
+    {
+      "id": "722",
+      "label": "Mercedes-Benz SLR McLaren 722 GT",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/headstart/headstart.nefs"
+      ]
+    },
+    {
+      "id": "b12",
+      "label": "BMW 1 Series M Coupe (Performance)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ]
+    },
+    {
+      "id": "bz4",
+      "label": "BMW Z4 GT3",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/spa_francorchamps/spa_francorchamps.nefs"
+      ]
+    },
+    {
+      "id": "cam",
+      "label": "Chevrolet Camaro (Drift)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/drift/comp_drift.nefs"
+      ]
+    },
+    {
+      "id": "ccg",
+      "label": "Koenigsegg CCGT",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/classic_grid/classic_grid.nefs"
+      ]
+    },
+    {
+      "id": "civ",
+      "label": "Honda 5Zigen Civic Super Modified",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/super_modified/comp_super_modified.nefs"
+      ]
+    },
+    {
+      "id": "cr2",
+      "label": "Dodge Charger (Performance)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ]
+    },
+    {
+      "id": "e32",
+      "label": "BMW E30 (Performance)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ]
+    },
+    {
+      "id": "evx",
+      "label": "Mitsubishi Team Orange Evo X",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/drift/comp_drift.nefs",
+        "download/drift/drift.nefs"
+      ]
+    },
+    {
+      "id": "go2",
+      "label": "Volkswagen Golf R (Performance)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs"
+      ]
+    },
+    {
+      "id": "gtr",
+      "label": "Nissan GT-R SpecV",
+      "liveries": [
+        "user"
+      ],
+      "archives": [
+        "download/gtr_racing/gtr_racing.nefs"
+      ]
+    },
+    {
+      "id": "ind",
+      "label": "Dallara IndyCar",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/indycar/indycar.nefs"
+      ]
+    },
+    {
+      "id": "ma2",
+      "label": "Ford Mustang Mach 1 (Performance)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ]
+    },
+    {
+      "id": "mpg",
+      "label": "McLaren MP4-12C GT3",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/mclaren_racing/mclaren_racing.nefs"
+      ]
+    },
+    {
+      "id": "r32",
+      "label": "Nissan Auto Gallery Skyline GT-R (R32)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/super_modified/comp_super_modified.nefs",
+        "download/super_modified/super_modified.nefs"
+      ]
+    },
+    {
+      "id": "r3b",
+      "label": "Nissan Skyline GT-R Group A (R32)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/bathurst/bathurst.nefs"
+      ]
+    },
+    {
+      "id": "rx2",
+      "label": "Mazda Panspeed RX7",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/super_modified/comp_super_modified.nefs",
+        "download/super_modified/super_modified.nefs"
+      ]
+    },
+    {
+      "id": "srs",
+      "label": "Ford Sierra RS500 (Group A)",
+      "liveries": [
+        "00",
+        "01",
+        "user"
+      ],
+      "archives": [
+        "download/bathurst/bathurst.nefs"
+      ]
+    },
+    {
+      "id": "utf",
+      "label": "Ford Racing Ute",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/bathurst/bathurst.nefs"
+      ]
+    },
+    {
+      "id": "wrx",
+      "label": "Subaru Tomei Cusco Impreza WRX STI",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/super_modified/comp_super_modified.nefs",
+        "download/super_modified/super_modified.nefs"
+      ]
+    },
+    {
+      "id": "z22",
+      "label": "Chevrolet Camaro Z28 (Performance)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ]
+    },
+    {
+      "id": "zig",
+      "label": "Aston Martin V12 Zagato (N24)",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/spa_francorchamps/spa_francorchamps.nefs"
+      ]
+    },
+    {
+      "id": "zon",
+      "label": "Pagani Zonda Revolución",
+      "liveries": [
+        "00",
+        "user"
+      ],
+      "archives": [
+        "download/classic_grid/classic_grid.nefs"
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "id": "australia/bathurst/route_0",
+      "archives": [
+        "download/bathurst/bathurst.nefs"
+      ]
+    },
+    {
+      "id": "australia/bathurst/route_1",
+      "archives": [
+        "download/bathurst/bathurst.nefs"
+      ]
+    },
+    {
+      "id": "circuits/indianapolis/route_4",
+      "archives": [
+        "download/indycar/indycar.nefs"
+      ]
+    },
+    {
+      "id": "circuits/indianapolis/route_7",
+      "archives": [
+        "download/indycar/indycar.nefs"
+      ]
+    },
+    {
+      "id": "circuits/brands_hatch/route_0",
+      "archives": [
+        "download/mclaren_racing/mclaren_racing.nefs"
+      ]
+    },
+    {
+      "id": "circuits/brands_hatch/route_1",
+      "archives": [
+        "download/mclaren_racing/mclaren_racing.nefs"
+      ]
+    },
+    {
+      "id": "europe/spa_francorchamps/route_0",
+      "archives": [
+        "download/spa_francorchamps/spa_francorchamps.nefs"
+      ]
+    },
+    {
+      "id": "europe/spa_francorchamps/route_1",
+      "archives": [
+        "download/spa_francorchamps/spa_francorchamps.nefs"
+      ]
+    },
+    {
+      "id": "europe/spa_francorchamps/route_2",
+      "archives": [
+        "download/spa_francorchamps/spa_francorchamps.nefs"
+      ]
+    },
+    {
+      "id": "europe/spa_francorchamps/route_3",
+      "archives": [
+        "download/spa_francorchamps/spa_francorchamps.nefs"
+      ]
+    }
+  ]
+}

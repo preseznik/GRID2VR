@@ -43,9 +43,11 @@ internal static class LauncherFeaturesTests
         Reject(() => new SeatOffset(51).Validate()); Reject(() => new SeatAlignment { Cars = new() { ["../"] = new() } }.Save(fixture));
         using (var panel = new SeatAlignmentPanel())
         {
-            panel.LoadCars([new("s20","Honda"),new("pag","Pagani")],"s20",seats);
+            panel.LoadCars([new("s20","Honda"),new("pag","Pagani"),new("ind","IndyCar",CockpitAvailable:false,Dlc:true)],"ind",seats);
             var car = (ComboBox)panel.Controls.Find("SeatCar",true).Single();
             var height = (ValueSlider)panel.Controls.Find("Seat height (cm)",true).Single();
+            Check(car.Items.Count == 2 && car.Items.Cast<ContentItem>().All(c => c.CockpitAvailable));
+            Check(((ContentItem)car.SelectedItem!).Id == "s20");
             Check(height.Value == -10); height.Value = -12; car.SelectedIndex = 1; Check(height.Value == -5);
             car.SelectedIndex = 0; Check(height.Value == -12); panel.Save(fixture); Check(SeatAlignment.Load(fixture).Cars["s20"].Height == -12);
         }

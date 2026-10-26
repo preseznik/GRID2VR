@@ -3,7 +3,7 @@ import argparse, ast, hashlib, json, shutil, sys, zipfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parent.parent
-DATA_FILES=['cockpit-assets.json','cockpit-cars.json','cockpit-defaults.json','car-classes.json']
+DATA_FILES=['cockpit-assets.json','cockpit-cars.json','cockpit-defaults.json','car-classes.json','dlc-content.json']
 SCRIPTS=['Paths','Setup-Package','Start-UserSession','Run-StereoProbe','Run-Diagnostic','Write-DiagnosticReceipt','Save-BenchmarkReports','User-Session','Session-Control','Finish-Diagnostic','Profiles','Cockpit-Camera','Cockpit-Assets','Recenter-Device','Recenter-Key','Headset-Settings','OpenXR-Runtime','Practice-Flow','Native-Startup','Startup-Movies','Cinema-Matte','Instance-Capacity','Driving-Controls','Flicker-Automation','Launcher-VrPreview']
 SCRIPTS += ['Borderless-Desktop']
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()

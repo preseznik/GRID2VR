@@ -90,6 +90,86 @@ class SessionConfigurationTests(unittest.TestCase):
         self.assertEqual([v['id'] for v in found['cars']], ['pag'])
         self.assertEqual([v['id'] for v in found['tracks']], ['p2p/okutama/route_1'])
 
+    def dlc_fixture(self):
+        archives = []
+        for name, payload in (('shared', b'camera fixture'), ('models', b'mesh fixture')):
+            path = self.root/f'download/fixture/{name}.nefs'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+            archives.append(dict(path=path.relative_to(self.root).as_posix(), bytes=len(payload),
+                                 sha256=hashlib.sha256(payload).hexdigest()))
+        manifest = Path(self.temp.name)/'dlc-content.json'
+        manifest.write_text(json.dumps(dict(schema=1, archives=archives,
+            cars=[dict(id='mpg', label='McLaren MP4-12C GT3', liveries=['user'],
+                       archives=[a['path'] for a in archives])],
+            tracks=[dict(id='europe/spa_francorchamps/route_0', archives=[archives[0]['path']])])))
+        self.enterContext(patch.object(sessions, 'DLC_MANIFEST', manifest))
+        return [self.root/a['path'] for a in archives]
+
+    def test_dlc_detection_requires_complete_matching_archives_and_preserves_loose_content(self):
+        shared, model = self.dlc_fixture()
+        before = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        installed = sessions.catalog(self.root)
+        dlc = next(c for c in installed['cars'] if c['id'] == 'mpg')
+        self.assertEqual((dlc['label'], dlc['classId']), ('McLaren MP4-12C GT3', 'gt_race'))
+        self.assertTrue(dlc['dlc']); self.assertFalse(dlc['cockpitAvailable'])
+        self.assertEqual(len(installed['tracks']), 3)
+        self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+        original = model.read_bytes()
+        for invalid in (b'', b'X' * len(original)):
+            model.write_bytes(invalid)
+            found = sessions.catalog(self.root)
+            self.assertEqual({c['id'] for c in found['cars']}, {'pag', 'z06'})
+            self.assertEqual(len(found['tracks']), 3)
+        model.unlink()
+        self.assertEqual(len(sessions.catalog(self.root)['cars']), 2)
+        model.write_bytes(original)
+        self.add_car('mpg')
+        car = [c for c in sessions.catalog(self.root)['cars'] if c['id'] == 'mpg']
+        self.assertEqual(len(car), 1)
+        self.assertFalse(car[0]['dlc'])
+        shared.unlink()
+        self.assertEqual(len(sessions.catalog(self.root)['tracks']), 2)
+
+    def test_dlc_practice_and_race_roundtrip_refuse_removed_content_or_forged_camera_capability(self):
+        shared, model = self.dlc_fixture()
+        bundle = self.practice_bundle()
+        for mode, count in (('practice', 0), ('race', 7)):
+            destination = Path(self.temp.name)/f'dlc {mode}'
+            record = self.prepare(destination, car='mpg', track='europe/spa_francorchamps/route_0',
+                mode=mode, control='human', opponents=count, practice_bundle=bundle)
+            self.assertEqual(record['carContent'], dict(dlc=True, cockpitAvailable=False))
+            route = ET.parse(destination/'session.xml').getroot().find('track')
+            self.assertEqual((route.get('country'), route.get('name')), ('europe', 'spa_francorchamps'))
+            self.assertEqual(len(route.findall('car')), count+1)
+            run = Path(self.temp.name)/f'dlc run {mode}'; run.mkdir()
+            with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
+                self.assertEqual(sessions.verify(self.root, destination), record)
+                sessions.stage(self.root, destination, run)
+                self.assertEqual((run/'session-config.xml').read_bytes(), (destination/'session.xml').read_bytes())
+                (destination/'session.json').write_text(json.dumps({**record, 'carContent': dict(dlc=False, cockpitAvailable=True)}))
+                with self.assertRaises(ValueError): sessions.verify(self.root, destination)
+                (destination/'session.json').write_text(json.dumps(record))
+                original = model.read_bytes(); model.unlink()
+                with self.assertRaises(ValueError): sessions.verify(self.root, destination)
+                model.write_bytes(original)
+        self.assertFalse((self.root/'cars/models/mpg').exists())
+
+    def test_dlc_mixed_opponents_and_manifest_dependencies(self):
+        manifest = json.loads(sessions.DLC_MANIFEST.read_text(encoding='utf-8'))
+        paths = {a['path'] for a in manifest['archives']}
+        self.assertEqual(len(paths), len(manifest['archives']))
+        for row in manifest['cars'] + manifest['tracks']:
+            self.assertTrue(row['archives'])
+            self.assertLessEqual(set(row['archives']), paths)
+        self.assertEqual(len({r['id'] for r in manifest['cars']}), len(manifest['cars']))
+        self.assertEqual(len({r['id'] for r in manifest['tracks']}), len(manifest['tracks']))
+        self.dlc_fixture()
+        installed = sessions.catalog(self.root)
+        payload = sessions.configuration(installed, 'z06', 'cities/chicago/route_0',
+            mode='race', control='human', opponents=7, opponent_cars='mixed', opponent_seed=1)
+        self.assertIn('mpg', {c.get('name') for c in ET.fromstring(payload).findall('track/car')[1:]})
+
     def test_camera_cycle_is_explicit_ai_only_and_revalidated(self):
         destination = Path(self.temp.name)/'cycling AI'
         result = self.prepare(destination, cycle_camera=True)
@@ -276,7 +356,8 @@ class SessionConfigurationTests(unittest.TestCase):
         groups = json.loads((Path(sessions.__file__).parent/'data/car-classes.json').read_text())
         mapped = [car for group in groups for car in group['cars']]
         labels = (Path(__file__).parents[1]/'launcher/CarNames.cs').read_text()
-        self.assertEqual(set(mapped), set(re.findall(r'\["([a-z0-9_]+)"\] =', labels)))
+        dlc = json.loads(sessions.DLC_MANIFEST.read_text(encoding='utf-8'))
+        self.assertEqual(set(mapped), set(re.findall(r'\["([a-z0-9_]+)"\] =', labels)) | {c['id'] for c in dlc['cars']})
         self.assertEqual(len(mapped), len(set(mapped)))
         self.assertEqual(len({group['id'] for group in groups}), 8)
         self.add_car('custom')

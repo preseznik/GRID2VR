@@ -72,6 +72,7 @@ try {
     $receipt.vrHud=@{enabled=($Mode -eq 'VR');distance=$HudDistance;followView=[bool]$HudFollowView;hiddenElements=$HudHiddenElements}
     $receipt.career=$career
     $receipt.cockpitS2000=$CockpitS2000
+    $receipt.cockpitModeRequested=$CockpitMode
     $receipt.cockpitMode=$CockpitMode
     $receipt.cockpitExposureLimit=($Mode -eq 'VR' -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
     $receipt.vrReplayCameras=[bool]$VrReplayCameras
@@ -109,9 +110,17 @@ try {
         $selectionArguments=@('--game-root',(Get-Grid2GameRoot $root),'prepare','--output',$selection,'--car',$Car,'--track',$Track,'--laps',$sessionLaps,
             '--mode',$LaunchMode.ToLowerInvariant(),'--control','human','--practice-bundle',$bundle)
         if($LaunchMode -eq 'Race') { $selectionArguments+=@('--opponents',$Opponents,'--opponent-cars',$OpponentCars.ToLowerInvariant()) }
-        & $python (Join-Path $PSScriptRoot 'session_config.py') @selectionArguments
+        $prepared=& $python (Join-Path $PSScriptRoot 'session_config.py') @selectionArguments
         if($LASTEXITCODE) { throw "$LaunchMode selection could not be prepared." }
+        $prepared | Write-Output
+        $content=($prepared | ConvertFrom-Json).carContent
+        if($content.dlc -and !$content.cockpitAvailable) {
+            $CockpitMode='Off'
+            $receipt.cameraNote='DLC car uses original game cameras; custom cockpit unavailable.'
+        }
     }
+    $receipt.cockpitMode=$CockpitMode
+    $receipt.cockpitExposureLimit=($Mode -eq 'VR' -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
     $hardware=Join-Path $selection 'hardware-settings.xml'
     $receipt.message='Preparing graphics settings...'
     Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt

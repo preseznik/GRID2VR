@@ -148,6 +148,8 @@ if($CockpitS2000 -ne 'Off') {
     $null=Get-CockpitCameraCandidate $root $CockpitS2000
 }
 $cockpitAssets=@()
+$cockpitModeRequested=$CockpitMode
+if($selectedSession.carContent.dlc -and !$selectedSession.carContent.cockpitAvailable) { $CockpitMode='Off' }
 if($CockpitMode -ne 'Off') {
     if($UntilExit -and $Mode -ne 'Preflight') { Write-Output 'GRID2VR_LAUNCH|Checking cockpit cameras and car assets...' }
     if(!$RuntimeSession -or (!$UntilExit -and !$ExposureAudit) -or $PlayerControlOnly -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off' -or (!$ExposureAudit -and $Mode -notin @('Preflight','Headset'))) { throw 'Launcher cockpit assets require a VR user session or bounded exposure audit.' }
@@ -179,6 +181,8 @@ $preflight.runtimeSession=[bool]$RuntimeSession
 $preflight.normalLaunch=[bool]$NormalLaunch
 $preflight.cockpitS2000=$CockpitS2000
 $preflight.cockpitMode=$CockpitMode
+$preflight.cockpitModeRequested=$cockpitModeRequested
+$preflight.cockpitApplied=($cockpitAssets.Count -gt 0)
 $preflight.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
 $preflight.exposureAudit=[bool]$ExposureAudit
 $preflight.cockpitAssets=$cockpitAssets

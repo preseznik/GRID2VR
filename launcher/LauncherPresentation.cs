@@ -38,7 +38,8 @@ internal static class LauncherPresentation
         if (car == null || track == null || runtime == null) return "Select a car, track and runtime.";
         var length = SessionClient.IsPointToPoint(track.Id) ? "point-to-point" : $"{laps} {(laps == 1 ? "lap" : "laps")}";
         var eventMode = mode == "Race" ? $"race · {opponents} AI {(opponents == 1 ? "opponent" : "opponents")} · {OpponentSelection(car, opponentCars)}" : "solo practice";
-        return $"{car.Label}\n{track.Label}\n{vr}\nDay / dry · {eventMode} · {length}";
+        var cockpit = car.CockpitAvailable ? "" : $"\n{(car.Dlc ? "DLC car" : "This car")} uses original cameras; custom VR cockpit and seat alignment are unavailable.";
+        return $"{car.Label}\n{track.Label}\n{vr}\nDay / dry · {eventMode} · {length}{cockpit}";
     }
 
     public static string MeasuredScene(JsonElement receipt, bool current)
@@ -95,7 +96,7 @@ internal static class LauncherPresentation
             "VR opens on the first game presentation. Loading and recognized menu screens use one level screen fixed in the VR room; it does not follow or tilt with your head. Your recenter shortcut places it in front of you again, including during startup. Driving uses tracked geometry stereo. A recognized pause transition suspends stereo history without closing VR, and resuming starts fresh history. The new fixed screen placement awaits a headset check.\n\n" +
             "Tracking loss can suspend the headset view until tracking returns. If the launcher reports a rendering guard failure, quit GRID 2 or use End session; a new launch is required.\n\n" +
             "Advanced → 3D replays keeps recorded replay cameras in geometry stereo. Advanced → 3D menus does the same for the garage. Both start on to retain the working behavior. Turn either off to use the stationary VR screen for that scene; racing remains in 3D. Loading and ordinary flat menus always use the screen. Field-of-view controls are not yet available."),
-        new("VR cockpit", "Cockpit view starts enabled for VR launches. It uses each car's seated driver position and replaces the bonnet camera; your normal camera-cycle control still selects other views. Desktop launches retain their original cameras.\n\n" +
+        new("VR cockpit", "Cockpit view starts enabled for VR launches. For calibrated cars, it uses the seated driver position and replaces the bonnet camera; your normal camera-cycle control still selects other views. Installed DLC cars without calibration use their original cameras in every launch mode. Custom cockpit and seat alignment are unavailable for those cars. Desktop launches retain their original cameras.\n\n" +
             "Per-car alignment\nChoose the car under Controls → Seat → Align car. Height, forward/back and right/left are centimetres relative to its calibrated cockpit position. Negative height lowers the view. Zero preserves the current placement; Reset this car changes only that car. Save settings or launch to apply on the next session. Normal mode also applies saved adjustments to cars selected in-game.\n\n" +
             "Hide head keeps the driver's body and arms. Hide entire driver is available if a particular interior has obstructions. Cars chosen from the game's menus also receive their own camera position.\n\n" +
             "The S2000 camera has passed desktop and headset checks. Other installed cars have offline asset validation and still need visual checks for seating, interior detail and visibility. Camera changes do not alter render resolution, headset texture scale, MSAA or head tracking. Save settings or launch to keep this choice."),
