@@ -234,7 +234,11 @@ internal sealed class SessionClient(string root)
     internal static (ContentItem[] Cars, ContentItem[] Tracks) ParseCatalog(JsonElement catalog)
     {
         static bool Flag(JsonElement item, string name, bool fallback) => item.TryGetProperty(name, out var value) ? value.GetBoolean() : fallback;
-        static string Label(JsonElement item, string fallback) => item.TryGetProperty("label", out var value) && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString()! : fallback;
+        static string Label(JsonElement item, string fallback)
+        {
+            var label = item.TryGetProperty("label", out var value) && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString()! : fallback;
+            return Flag(item, "dlc", false) ? label + " (DLC)" : label;
+        }
         var cars = catalog.GetProperty("cars").EnumerateArray()
             .Where(c => c.GetProperty("liveries").EnumerateArray().Any(l => l.GetString() == "user"))
             .Select(c =>

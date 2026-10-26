@@ -27,11 +27,11 @@ internal static class CockpitTests
         var stock = content.Cars.Single(c => c.Id == "s20");
         var dlc = content.Cars.Single(c => c.Id == "ind");
         Check(stock.CockpitAvailable && !stock.Dlc && stock.Label == SessionClient.CarLabel("s20"));
-        Check(dlc.Dlc && !dlc.CockpitAvailable && dlc.Label == "Dallara IndyCar" && dlc.ClassId == "open_wheel");
-        Check(!content.Cars.Single(c => c.Id == "b12").CockpitAvailable && content.Cars.Single(c => c.Id == "b12").Label == SessionClient.CarLabel("b12"));
+        Check(dlc.Dlc && !dlc.CockpitAvailable && dlc.Label == "Dallara IndyCar (DLC)" && dlc.ClassId == "open_wheel");
+        Check(!content.Cars.Single(c => c.Id == "b12").CockpitAvailable && content.Cars.Single(c => c.Id == "b12").Label == SessionClient.CarLabel("b12") + " (DLC)");
         Check(content.Cars.Single(c => c.Id == "240").CockpitAvailable);
         var track = content.Tracks.Single(t => t.Dlc);
-        Check(track.Id == "europe/spa_francorchamps/route_0" && track.Label == "Spa-Francorchamps — Grand Prix");
+        Check(track.Id == "europe/spa_francorchamps/route_0" && track.Label == "Spa-Francorchamps — Grand Prix (DLC)");
         Check(content.Tracks.Single(t => !t.Dlc).Label == "Brands Hatch — Route 2");
         Check(LauncherPresentation.FilterCars(content.Cars, "IndyCar").Single() == dlc);
         foreach (var route in new[] { "australia/bathurst/route_0", "australia/bathurst/route_1", "europe/spa_francorchamps/route_3" })
