@@ -34,8 +34,9 @@ InfoBeforeFile={#Stage}\GRID2VR\ReleaseNotes.txt
 
 [Files]
 Source: "{#Stage}\GRID2VR.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Stage}\GRID2VR\payload\dotnet\*"; DestDir: "{app}\GRID2VR\payload\dotnet"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\Start-GRID2VR.cmd"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#Stage}\GRID2VR\*"; DestDir: "{app}\GRID2VR"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#Stage}\GRID2VR\*"; DestDir: "{app}\GRID2VR"; Excludes: "payload\dotnet\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\GRID2VR\payload\prerequisites\vc_redist.x86.exe"; Flags: dontcopy
 Source: "{#Stage}\GRID2VR\payload\prerequisites\vc_redist.x64.exe"; Flags: dontcopy
 
@@ -49,6 +50,10 @@ Filename: "{app}\GRID2VR.exe"; Description: "Open GRID2VR"; Flags: nowait postin
 
 [Code]
 var SuggestedGame: String;
+function InstallHelper(): String;
+begin
+  Result := ExpandConstant('{tmp}\') + '{app}\GRID2VR.exe';
+end;
 function DefaultGameDir(Param: String): String;
 begin
   if SuggestedGame <> '' then Result := SuggestedGame
@@ -58,10 +63,12 @@ procedure InitializeWizard();
 var ResultCode, I: Integer; Discovered: AnsiString; ExplicitDir: Boolean;
 begin
   WizardForm.SelectDirLabel.Caption := 'Select the existing GRID 2 folder containing grid2.exe and grid2_avx.exe. No game files or saves are included.';
-  ExtractTemporaryFile('GRID2VR.exe');
+  // Preserve the app-relative private runtime layout before any game files are installed.
+  ExtractTemporaryFiles('{app}\GRID2VR.exe');
+  ExtractTemporaryFiles('{app}\GRID2VR\payload\dotnet\*');
   ExplicitDir := False;
   for I := 1 to ParamCount do if CompareText(Copy(ParamStr(I),1,5),'/DIR=')=0 then ExplicitDir:=True;
-  if Exec(ExpandConstant('{tmp}\GRID2VR.exe'), '--discover "'+ExpandConstant('{tmp}\grid2-path.txt')+'"','',SW_HIDE,ewWaitUntilTerminated,ResultCode) and (ResultCode=0) then
+  if Exec(InstallHelper(), '--discover "'+ExpandConstant('{tmp}\grid2-path.txt')+'"','',SW_HIDE,ewWaitUntilTerminated,ResultCode) and (ResultCode=0) then
     if LoadStringFromFile(ExpandConstant('{tmp}\grid2-path.txt'),Discovered) then begin
       SuggestedGame:=UTF8Decode(Discovered);
       if not ExplicitDir and (SuggestedGame<>'') then WizardForm.DirEdit.Text:=SuggestedGame;
@@ -82,7 +89,7 @@ var ResultCode: Integer; ErrorText: AnsiString;
 begin
   Result:='';
   if CheckForMutexes('Global\GRID2VR.Session') then begin Result:='Finish the GRID2VR session before installing.';exit;end;
-  if not Exec(ExpandConstant('{tmp}\GRID2VR.exe'),'--check-install --game "'+WizardDirValue()+'" --error-log "'+ExpandConstant('{tmp}\grid2-install-error.txt')+'"','',SW_HIDE,ewWaitUntilTerminated,ResultCode) or (ResultCode<>0) then begin
+  if not Exec(InstallHelper(),'--check-install --game "'+WizardDirValue()+'" --error-log "'+ExpandConstant('{tmp}\grid2-install-error.txt')+'"','',SW_HIDE,ewWaitUntilTerminated,ResultCode) or (ResultCode<>0) then begin
     Result:='Game-folder validation failed. No package files were installed.';
     if LoadStringFromFile(ExpandConstant('{tmp}\grid2-install-error.txt'),ErrorText) then Result:=Result+#13#10+UTF8Decode(ErrorText);
     exit;

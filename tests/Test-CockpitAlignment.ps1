@@ -10,13 +10,20 @@ try {
     foreach($dir in @('tools/data','build/win32','game/cars/models/s20','game/cars/models/pag','game/cutscene','run','artifacts/cockpit-cameras/s20','artifacts/cockpit-cameras/pag')) {
         [IO.Directory]::CreateDirectory((Join-Path $fixture $dir)) | Out-Null
     }
-    foreach($name in @('cockpit_alignment.py','session_config.py')) { Copy-Item -LiteralPath (Join-Path $root "tools/$name") -Destination (Join-Path $fixture "tools/$name") }
+    foreach($name in @('cockpit_alignment.py','session_config.py','game_executable.py')) { Copy-Item -LiteralPath (Join-Path $root "tools/$name") -Destination (Join-Path $fixture "tools/$name") }
     Copy-Item -LiteralPath (Join-Path $root 'build/win32/CMakeCache.txt') -Destination (Join-Path $fixture 'build/win32/CMakeCache.txt')
     $catalog=Read-CockpitAssetCatalog $root
     $catalog.cars=@($catalog.cars | Where-Object car -In @('s20','pag'))
     $game=Join-Path $fixture 'game';$run=Join-Path $fixture 'run'
     [IO.File]::WriteAllText((Join-Path $game 'grid2_avx.exe'),'fixture executable')
     $script:CockpitCameraExecutableHash=Hash (Join-Path $game 'grid2_avx.exe')
+# Fixture-only executable validator; preserves the transaction's changed-file checks.
+function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
+    $actual=(Get-FileHash -LiteralPath $Path -ErrorAction Stop).Hash.ToLowerInvariant()
+    if($actual -ne $script:CockpitCameraExecutableHash) { throw 'Changed fixture executable.' }
+    return $actual
+}
+
     foreach($car in $catalog.cars) {
         $installed=Join-Path $game "cars/models/$($car.car)/cameras.xml"
         [IO.File]::WriteAllText($installed,"original $($car.car)");$car.originalSha256=Hash $installed

@@ -115,12 +115,10 @@ if (Test-Path -LiteralPath (Join-Path $artifacts 'steamvr-theater-pending.json')
 foreach($name in @('d3d11.dll','dxgi.dll','GRID2VR.diagnostic-session','GRID2VR.session.xml')) {
     if(Test-Path -LiteralPath (Join-Path $game $name)) { throw "Existing $name retained; preflight refused." }
 }
+. (Join-Path $PSScriptRoot 'Game-Executable.ps1')
 $expected=@{
-    'grid2_avx.exe'='519CD994D2FF92A2A7A2A784856854183F53E359B83F8B9563CC09A0AE91E502'
-    'grid2.exe'='F92C2E1134B5D6D61404131224B41C182089BF563D28731EEF0FAA7D8096AB4C'
-}
-foreach($name in $expected.Keys) {
-    if((Get-FileHash -LiteralPath (Join-Path $game $name)).Hash -ne $expected[$name]) { throw "Unsupported $name." }
+    'grid2_avx.exe'=(Get-Grid2ExecutableHash (Join-Path $game 'grid2_avx.exe') 'Avx')
+    'grid2.exe'=(Get-Grid2ExecutableHash (Join-Path $game 'grid2.exe') 'Regular')
 }
 # Desktop runs need no installed headset runtime. Preflight validates the selection.
 if($UntilExit -and $Mode -eq 'Headset') { Write-Output 'GRID2VR_LAUNCH|Checking the selected OpenXR runtime...' }

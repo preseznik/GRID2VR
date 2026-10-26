@@ -1,4 +1,5 @@
 #include "profile_storage.h"
+#include "game_executable.h"
 #include "startup_movies.h"
 #include "profile_setup.h"
 #include <windows.h>
@@ -356,7 +357,7 @@ bool __fastcall Folder(void*,void*,char* output,std::int32_t size){if(!localStor
 BOOL CALLBACK Initialize(PINIT_ONCE,void*,void**) {
     try{
         wchar_t host[32768]{},steam[32768]{};GetModuleFileNameW(nullptr,host,32768);GetModuleFileNameW(reinterpret_cast<HMODULE>(steamBase),steam,32768);
-        if(!hostLayout || HashFile(host)!=hostLayout->hash ||
+        if(!hostLayout || grid2vr::gameexe::Validate(host,hostLayout==&avxLayout).empty() ||
            HashFile(steam)!="abfedd473b3f4a9597bbdc90d20f4b6f696bb2ebb937a03177461df695430ad6")Refuse("unsupported_binary");
         char text[8193]{};DWORD size{};Request request;
         if(!ReadSmall(requestFile,text,sizeof(text),size)||!ParseRequest(std::string_view(text,size),request))Refuse("invalid_request");

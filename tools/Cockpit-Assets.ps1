@@ -61,7 +61,7 @@ function Invoke-CockpitAlignment([string]$Root,$Entry,[string]$BaseHash,[string]
 }
 
 function Get-CockpitAssetSelection([string]$Root,[string]$Game,[ValidateSet('HeadOnly','HideDriver')][string]$Mode,[string]$Car,[bool]$NormalLaunch) {
-    Assert-CockpitCameraHash (Join-Path $Game 'grid2_avx.exe') $script:CockpitCameraExecutableHash
+    $null=Get-Grid2ExecutableHash (Join-Path $Game 'grid2_avx.exe')
     $catalog=Read-CockpitAssetCatalog $Root
     $alignments=Read-SeatAlignments $Root
     $cars=@($catalog.cars | Where-Object {$NormalLaunch -or $_.car -ceq $Car})
@@ -159,7 +159,7 @@ function New-CockpitAssetsDeployment([string]$Game,[string]$Run,[string]$Root,$E
 function Install-CockpitAssets([string]$Game,[string]$Run,$Entries) {
     Assert-CockpitAssetEntries $Entries
     if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Existing GRID 2 process retained.' }
-    Assert-CockpitCameraHash (Join-Path $Game 'grid2_avx.exe') $script:CockpitCameraExecutableHash
+    $null=Get-Grid2ExecutableHash (Join-Path $Game 'grid2_avx.exe')
     # Validate the entire set before the first installed write.
     foreach($entry in $Entries) {
         $paths=Get-CockpitAssetPaths $Game $Run $entry

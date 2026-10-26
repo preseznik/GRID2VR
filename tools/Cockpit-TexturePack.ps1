@@ -30,7 +30,7 @@ function Assert-Pack([string]$Directory) {
     }
 }
 Assert-CockpitCameraPlainPath $target
-Assert-CockpitCameraHash (Join-Path $game 'grid2_avx.exe') $script:CockpitCameraExecutableHash
+$null=Get-Grid2ExecutableHash (Join-Path $game 'grid2_avx.exe')
 # Require a core installation: a pack alone must not create an unowned GRID2VR
 # folder that blocks the core installer on the next run.
 if(!(Test-Path -LiteralPath (Join-Path $mod 'package.json') -PathType Leaf)) { throw 'Install the GRID2VR core before installing this optional pack.' }

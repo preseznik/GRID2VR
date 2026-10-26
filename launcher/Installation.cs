@@ -13,13 +13,10 @@ internal static class Installation
     internal static void ValidateGame(string game)
     {
         Updates.PlainPath(game);
-        foreach (var (name, hash) in new[] {
-            ("grid2.exe", "f92c2e1134b5d6d61404131224b41c182089bf563d28731eef0faa7d8096ab4c"),
-            ("grid2_avx.exe", "519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502") })
+        foreach (var name in new[] { "grid2.exe", "grid2_avx.exe" })
         {
             var path=Path.Combine(game,name); Updates.PlainPath(path);
-            using var input=File.OpenRead(path);
-            if(Convert.ToHexStringLower(SHA256.HashData(input))!=hash) throw new IOException("Select the supported GRID 2 installation (1.0.85.8679). Changed executable: "+name);
+            GameExecutable.Validate(path, name == "grid2_avx.exe");
         }
     }
     internal static void RequireIdle(string root)

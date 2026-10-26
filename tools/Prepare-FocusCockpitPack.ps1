@@ -21,7 +21,7 @@ $relative='cars/models/foc/livery_user/textures_high/foc_tex_high_user.pssg'
 $source=Join-Path $game $relative
 $sourceHash='bbddfc40e7cfccb7f8d75ed545df1714abe7af949bae4c444d1279cb368298f7'
 $libraryHash='b27a45447cd08a8e46423f16151a9d375a179a374ab83475b8029749ff528d98'
-Assert-CockpitCameraHash (Join-Path $game 'grid2_avx.exe') $script:CockpitCameraExecutableHash
+$null=Get-Grid2ExecutableHash (Join-Path $game 'grid2_avx.exe')
 Assert-CockpitCameraHash $source $sourceHash
 Assert-CockpitCameraHash $libraryPath $libraryHash
 $manifestPath=Join-Path $pack 'pack.json'

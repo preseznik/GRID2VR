@@ -5,6 +5,7 @@ is retained; only its choice of the recorded cutscene is redirected to the
 existing normal start sequence. Startup skip uses the matching normal route.
 Run deployment must back up and recover flow.bin.
 """
+from game_executable import validate_avx
 import argparse
 import copy
 import hashlib
@@ -80,7 +81,7 @@ def prepare(game_root, output, converter):
         raise ValueError('Use a new output directory outside the game')
     if digest(converter) != CONVERTER_SHA256:
         raise ValueError('Unsupported converter fingerprint')
-    for file, expected in [('grid2_avx.exe', SUPPORTED_AVX_SHA256),
+    for file, expected in [('grid2_avx.exe', validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256)),
                            ('system/flow.bin', FLOW_SHA256), ('system/states.bin', STATES_SHA256)]:
         if digest(game / file) != expected:
             raise ValueError(f'Unsupported installed file: {file}')
@@ -98,7 +99,7 @@ def prepare(game_root, output, converter):
     verify_roundtrip(expected, ET.parse(output/'roundtrip-flow.xml').getroot())
     if digest(output/'flow.bin') != PRACTICE_SHA256:
         raise ValueError('Practice flow differs from the expected two-edge build')
-    result = dict(schema=2, gameRoot=str(game), executableSha256=SUPPORTED_AVX_SHA256,
+    result = dict(schema=2, gameRoot=str(game), executableSha256=validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256),
                   originalFlowSha256=FLOW_SHA256, statesSha256=STATES_SHA256,
                   modifiedFlowSha256=digest(output/'flow.bin'), converterSha256=digest(converter),
                   changes=CHANGES,
@@ -114,14 +115,14 @@ def verify(game_root, bundle):
     if folder.is_relative_to(game) or metadata.stat().st_size > 32768:
         raise ValueError('Invalid practice bundle location or size')
     data = json.loads(metadata.read_text(encoding='utf-8'))
-    expected = dict(schema=2, gameRoot=str(game), executableSha256=SUPPORTED_AVX_SHA256,
+    expected = dict(schema=2, gameRoot=str(game), executableSha256=validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256),
                     originalFlowSha256=FLOW_SHA256, statesSha256=STATES_SHA256,
                     modifiedFlowSha256=PRACTICE_SHA256, converterSha256=CONVERTER_SHA256,
                     changes=CHANGES, semanticRoundtrip=True, installed=False,
                     playerControlValidated=False)
     if data != expected:
         raise ValueError('Practice manifest differs; regenerate the bundle')
-    for path, sha256 in ((game/'grid2_avx.exe', SUPPORTED_AVX_SHA256),
+    for path, sha256 in ((game/'grid2_avx.exe', expected['executableSha256']),
                          (game/'system/flow.bin', FLOW_SHA256),
                          (game/'system/states.bin', STATES_SHA256),
                          (folder/'flow.bin', PRACTICE_SHA256)):

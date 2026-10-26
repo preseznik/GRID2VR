@@ -3,6 +3,7 @@
 Preparation never launches the game or edits the installation. Human practice
 and race require the exact guarded flow bundle; benchmark/attract retain AI/demo control.
 """
+from game_executable import validate_avx
 import argparse
 import hashlib
 import json
@@ -198,9 +199,7 @@ def prepare(game_root, output, practice_bundle=None, **selection):
     if destination.is_relative_to(root):
         raise ValueError('Session output must be outside the installed game')
     executable = root/'grid2_avx.exe'
-    digest = hashlib.sha256(executable.read_bytes()).hexdigest()
-    if digest != SUPPORTED_AVX_SHA256:
-        raise ValueError('Unsupported GRID 2 AVX fingerprint')
+    digest = validate_avx(executable, SUPPORTED_AVX_SHA256)
     if selection.get('mode') == 'race' and selection.get('opponent_cars', 'same') in ('mixed', 'class'):
         # Persist once: verification/staging must reconstruct the very same grid.
         selection.setdefault('opponent_seed', secrets.randbits(64))
@@ -242,8 +241,8 @@ def verify(game_root, session):
     if folder.is_relative_to(root) or Path(data['gameRoot']) != root or Path(data['configuration']) != config:
         raise ValueError('Prepared session belongs to a different installation or directory')
     installed = catalog(root)
-    digest = hashlib.sha256((root/'grid2_avx.exe').read_bytes()).hexdigest()
-    if digest != SUPPORTED_AVX_SHA256 or digest != data.get('executableSha256'):
+    digest = validate_avx(root/'grid2_avx.exe', SUPPORTED_AVX_SHA256)
+    if digest != data.get('executableSha256'):
         raise ValueError('Prepared executable fingerprint differs')
     selection = data.get('selection')
     if not isinstance(selection, dict):

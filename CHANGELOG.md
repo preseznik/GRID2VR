@@ -1,3 +1,11 @@
+# GRID2VR 0.1.6 — Experimental
+
+- Fix installation and launch checks rejecting valid Steam copies of the supported GRID 2 version because their executable hashes differ.
+- Reduce installer size by about one third while keeping all required runtimes bundled.
+- Add Old / New cockpit texture choices for desktop and VR. The optional texture pack covers 75 cars; the Caterham SP/300.R retains its original texture.
+
+New cockpit textures require the separate optional pack. Headset visual acceptance for this preview remains pending.
+
 # GRID2VR 0.1.5 — Experimental
 
 - Automatically check for updates at startup and show New version available beside ? when an update is found.

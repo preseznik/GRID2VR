@@ -3,6 +3,7 @@
 The native factory copies main_scene to lane 14 and conditionally lane 1 too.
 Those aliases remain native. Only the high style's XML main_scene value changes.
 """
+from game_executable import validate_avx
 import argparse
 import copy
 import hashlib
@@ -69,8 +70,7 @@ def prepare(game_root, output, converter):
     if output.is_relative_to(game) or output.exists():
         raise ValueError('Use a new output directory outside the game')
     source = plain_path(game / RELATIVE_PATH)
-    if digest(game / 'grid2_avx.exe') != SUPPORTED_AVX_SHA256:
-        raise ValueError('Unsupported GRID 2 executable')
+    executable_hash = validate_avx(game / 'grid2_avx.exe', SUPPORTED_AVX_SHA256)
     if source.stat().st_size != 5972 or digest(source) != ORIGINAL_SHA256:
         raise ValueError('Installed ornament settings differ from the supported baseline')
     if digest(converter) != CONVERTER_SHA256:
@@ -104,7 +104,7 @@ def prepare(game_root, output, converter):
     if digest(source) != ORIGINAL_SHA256:
         raise ValueError('Installed ornament settings changed during preparation')
     result = dict(schema=1, gameRoot=str(game), relativePath=RELATIVE_PATH.as_posix(),
-                  executableSha256=SUPPORTED_AVX_SHA256, originalSha256=ORIGINAL_SHA256,
+                  executableSha256=executable_hash, originalSha256=ORIGINAL_SHA256,
                   modifiedSha256=digest(target), converterSha256=CONVERTER_SHA256,
                   changes=changes, semanticRoundtrip=True, installed=False,
                   nativeAliases='Factory also copies main_scene to lane14 and conditionally lane1; unchanged native behavior.')

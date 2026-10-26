@@ -19,6 +19,13 @@ try {
         $expected[$name]=(Get-FileHash -LiteralPath $path).Hash
     }
     $script:StartupExecutableHash=$expected['grid2_avx.exe']
+# Fixture-only executable validator; preserves the transaction's changed-file checks.
+function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
+    $actual=(Get-FileHash -LiteralPath $Path -ErrorAction Stop).Hash.ToLowerInvariant()
+    if($actual -ne $script:StartupExecutableHash) { throw 'Changed fixture executable.' }
+    return $actual
+}
+
     $script:StartupBinkHash=$expected['bink2w32.dll']
     $script:StartupOriginalHash=$expected['system/states.bin']
     $script:StartupFlowHash=$expected['system/flow.bin']

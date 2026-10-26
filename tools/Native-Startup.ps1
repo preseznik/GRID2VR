@@ -5,7 +5,7 @@ $script:StartupBinkHash='03f9c695d4c45186d7b43ab64926fcb0933ca9a02eed43fd67cd877
 $script:StartupFlowHash='8b2f7fce029ed2fe2e82d837d0e180f14347e14737f71566b0a318c46bd32894'
 
 function Assert-NativeStartup([string]$Game) {
-    Assert-StartupHash (Join-Path $Game 'grid2_avx.exe') $script:StartupExecutableHash
+    $null=Get-Grid2ExecutableHash (Join-Path $Game 'grid2_avx.exe')
     Assert-StartupHash (Join-Path $Game 'bink2w32.dll') $script:StartupBinkHash
     Assert-StartupHash (Join-Path $Game 'system/states.bin') $script:StartupOriginalHash
     Assert-StartupHash (Join-Path $Game 'system/flow.bin') $script:StartupFlowHash

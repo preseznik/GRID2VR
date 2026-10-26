@@ -4,6 +4,7 @@ Requires an active, owned diagnostic run. No process writes, remote calls,
 hooks, input or window APIs. Raw heap blocks are searched in memory and discarded.
 The bounded receipt describes candidates, never a proven human-control handoff.
 """
+from game_executable import validate_avx
 import argparse
 import ctypes as C
 from ctypes import wintypes as W
@@ -192,8 +193,7 @@ def observe(pid, run):
         exe, created = process.identity()
         if exe != game/'grid2_avx.exe' or created < marker.stat().st_ctime - 1:
             raise ValueError('Process does not belong to this diagnostic')
-        if hashlib.sha256(exe.read_bytes()).hexdigest() != SUPPORTED_AVX_SHA256:
-            raise ValueError('Unsupported executable')
+        executable_hash = validate_avx(exe, SUPPORTED_AVX_SHA256)
         base = process.base()
         if process.read(base+UPDATE, len(UPDATE_BYTES)) != guarded_update(base):
             raise ValueError('Controller update instruction mismatch')
@@ -211,7 +211,7 @@ def observe(pid, run):
             samples.append(dict(index=index, candidates=rows))
             if index < 2:
                 time.sleep(.25)
-        return dict(schema=1, pid=pid, base=hex(base), executableSha256=SUPPORTED_AVX_SHA256,
+        return dict(schema=1, pid=pid, base=hex(base), executableSha256=executable_hash,
                     scannedBytes=scanned, candidates=len(objects), rejected=rejected, samples=samples,
                     processWrites=False, inputInjected=False, playerControlValidated=False,
                     limits='Read-only candidate observations. Sampling is not atomic; object semantics and human control remain unproven.')

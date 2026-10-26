@@ -49,6 +49,13 @@ $script:CinemaModifiedHash=Hash-Bytes $modified
 $script:CinemaIndexOnlyHash=Hash-Bytes $indexOnly
 $script:CinemaVerticesOnlyHash=Hash-Bytes $verticesOnly
 $script:CinemaExecutableHash=Hash-Bytes $executable
+# Fixture-only executable validator; preserves the transaction's changed-file checks.
+function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
+    $actual=(Get-FileHash -LiteralPath $Path -ErrorAction Stop).Hash.ToLowerInvariant()
+    if($actual -ne $script:CinemaExecutableHash) { throw 'Changed fixture executable.' }
+    return $actual
+}
+
 function New-Case([string]$Name) {
     $game=Join-Path $fixture "$Name\game"
     $run=Join-Path $fixture "$Name\run"

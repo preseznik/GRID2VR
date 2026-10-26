@@ -1,4 +1,5 @@
 """Prepare GRID 2's guarded logo/race-intro skip without editing its installation."""
+from game_executable import validate_avx
 import argparse
 import copy
 import json
@@ -73,7 +74,7 @@ def verify_roundtrip(expected, actual):
 
 
 def manifest(game):
-    return dict(schema=2, gameRoot=str(game), executableSha256=SUPPORTED_AVX_SHA256,
+    return dict(schema=2, gameRoot=str(game), executableSha256=validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256),
                 originalStatesSha256=STATES_SHA256, modifiedStatesSha256=MODIFIED_SHA256,
                 flowSha256=FLOW_SHA256, converterSha256=CONVERTER_SHA256,
                 skippedStartupMovies=MOVIES, skippedRaceCutscenes=RACE_CUTSCENES,
@@ -86,7 +87,7 @@ def prepare(game_root, output, converter):
         raise ValueError('Use a new output directory outside the game')
     if digest(converter) != CONVERTER_SHA256:
         raise ValueError('Unsupported converter fingerprint')
-    for path, expected in (('grid2_avx.exe', SUPPORTED_AVX_SHA256), ('system/flow.bin', FLOW_SHA256),
+    for path, expected in (('grid2_avx.exe', validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256)), ('system/flow.bin', FLOW_SHA256),
                            ('system/states.bin', STATES_SHA256)):
         if digest(game/path) != expected:
             raise ValueError(f'Unsupported installed file: {path}')
@@ -116,7 +117,7 @@ def verify(game_root, bundle):
     data = json.loads(metadata.read_text(encoding='utf-8'))
     if data != manifest(game):
         raise ValueError('Startup manifest differs; regenerate the bundle')
-    for path, sha256 in ((game/'grid2_avx.exe', SUPPORTED_AVX_SHA256), (game/'system/flow.bin', FLOW_SHA256),
+    for path, sha256 in ((game/'grid2_avx.exe', data['executableSha256']), (game/'system/flow.bin', FLOW_SHA256),
                          (game/'system/states.bin', STATES_SHA256), (folder/'states.bin', MODIFIED_SHA256)):
         if digest(path) != sha256:
             raise ValueError(f'Startup input changed: {path}')

@@ -228,8 +228,8 @@ if ($IsolateReplayShadowSampler -and !$TraceReplayWork) { throw 'IsolateReplaySh
 if (Test-Path -LiteralPath $journalPath) { throw 'A recovery journal exists. Run -Action Restore first.' }
 if (Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Close the existing GRID 2 session first.' }
 if (((Get-Item -LiteralPath $game).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Linked game root is not supported.' }
-$expected='519CD994D2FF92A2A7A2A784856854183F53E359B83F8B9563CC09A0AE91E502'
-if ((Get-FileHash -LiteralPath (Join-Path $game 'grid2_avx.exe')).Hash -ne $expected) { throw 'Unsupported AVX executable.' }
+. (Join-Path $PSScriptRoot 'Game-Executable.ps1')
+$expected=Get-Grid2ExecutableHash (Join-Path $game 'grid2_avx.exe')
 foreach ($name in $allowed + 'dxgi.dll') { if (Test-Path -LiteralPath (Join-Path $game $name)) { throw "Existing $name will not be overwritten." } }
 $proxy=Get-Grid2Proxy $root
 if($DiagnosticProxy) {
@@ -392,7 +392,7 @@ if($InstanceCapacity -eq 'Expand') {
     $instanceDeployment=New-InstanceCapacityDeployment $game $run
 }
 @{gameRoot=$game;run=$run;files=$entries;practiceFlow=$practiceFlow;startupMovies=$startupMovies;cinemaMatte=$cinemaMatte;cockpitCamera=$cockpitCamera;cockpitAssets=$cockpitAssets;instanceCapacity=$instanceDeployment} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $journalPath
-$receipt=[ordered]@{startedUtc=[DateTime]::UtcNow.ToString('o');runKind=$RunKind;timeoutSeconds=$TimeoutSeconds;captureAfterSeconds=$CaptureAfterSeconds;proxyMode=$ProxyMode;engineTrace=[bool]$EngineTrace;captureStageTargets=[bool]$CaptureStageTargets;traceSceneBoundary=[bool]$TraceSceneBoundary;replayOnce=[bool]$ReplayOnce;executableSha256=$expected;proxySha256=$entries[0].sha256;processes=@();terminatedOwnedProcessIds=@();result='prepared';uiAutomation=$false}
+$receipt=[ordered]@{startedUtc=[DateTime]::UtcNow.ToString('o');runKind=$RunKind;timeoutSeconds=$TimeoutSeconds;captureAfterSeconds=$CaptureAfterSeconds;proxyMode=$ProxyMode;engineTrace=[bool]$EngineTrace;captureStageTargets=[bool]$CaptureStageTargets;traceSceneBoundary=[bool]$TraceSceneBoundary;replayOnce=[bool]$ReplayOnce;executableSha256=$expected;executableBuild='grid2-avx-1.0.85.8679';proxySha256=$entries[0].sha256;processes=@();terminatedOwnedProcessIds=@();result='prepared';uiAutomation=$false}
 $receipt.vrHud=@{enabled=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly);distance=$HudDistance;followView=[bool]$HudFollowView;hiddenElements=$HudHiddenElements}
 $receipt.performanceDisplay=[bool]$PerformanceDisplay
 $receipt.performanceFollowView=[bool]$PerformanceFollowView

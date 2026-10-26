@@ -8,13 +8,14 @@
     <Nullable>enable</Nullable>
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>GRID2VR</AssemblyName>
-    <Version>0.1.5</Version>
+    <Version>0.1.6</Version>
     <ReleaseChannel Condition="'$(ReleaseChannel)' == ''">Stable</ReleaseChannel>
     <BuildUtc Condition="'$(BuildUtc)' == ''">Development build</BuildUtc>
     <BuildRevision Condition="'$(BuildRevision)' == ''">local</BuildRevision>
     <ApplicationIcon>assets\GRID2VR.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\tools\GameExecutable.cs" Link="GameExecutable.cs" />
     <AssemblyMetadata Include="ReleaseChannel" Value="$(ReleaseChannel)" />
     <AssemblyMetadata Include="BuildUtc" Value="$(BuildUtc)" />
     <AssemblyMetadata Include="BuildRevision" Value="$(BuildRevision)" />

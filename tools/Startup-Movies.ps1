@@ -3,7 +3,7 @@
 $script:StartupOriginalHash='07e593b3891171a7c4caa67b0b2e0ee1a9c166fc2d4bd25814ad695c439d9adc'
 $script:StartupLegacyModifiedHash='764651b98b6aa4ce8fe4ce6b5c9f48705d3a67b78a427628c3329c7ff9abdc0b'
 $script:StartupModifiedHash='39d145561efaadce27df1e26a57ababdb383860b83cdf03b378daa48f2a819e0'
-$script:StartupExecutableHash='519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502'
+. (Join-Path $PSScriptRoot 'Game-Executable.ps1')
 
 function Assert-StartupPlainPath([string]$Path) {
     $current=[IO.Path]::GetFullPath($Path)
@@ -49,7 +49,7 @@ function New-StartupMoviesDeployment([string]$Game,[string]$Run,[string]$Bundle=
     if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Close GRID 2 before preparing startup movie deployment.' }
     if((Test-Path -LiteralPath $paths.temporary) -or (Test-Path -LiteralPath $paths.backup)) { throw 'Existing startup recovery file retained.' }
     Assert-StartupHash $paths.target $script:StartupOriginalHash
-    Assert-StartupHash $paths.executable $script:StartupExecutableHash
+    $null=Get-Grid2ExecutableHash $paths.executable
     if($Bundle) {
         $source=Join-Path ([IO.Path]::GetFullPath($Bundle)) 'states.bin'
         Assert-StartupHash $source $script:StartupModifiedHash
@@ -76,7 +76,7 @@ function Install-StartupMovies([string]$Game,[string]$Run,$Entry) {
     Assert-StartupMoviesEntry $Entry
     $paths=Get-StartupMoviesPaths $Game $Run
     if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Existing GRID 2 process retained.' }
-    Assert-StartupHash $paths.executable $script:StartupExecutableHash
+    $null=Get-Grid2ExecutableHash $paths.executable
     Assert-StartupHash $paths.target $script:StartupOriginalHash
     Assert-StartupHash $paths.backup $script:StartupOriginalHash
     Assert-StartupHash $paths.source $script:StartupModifiedHash

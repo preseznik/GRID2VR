@@ -1,4 +1,5 @@
 #include "diagnostics.h"
+#include "game_executable.h"
 #include "foreground_hold.h"
 #include "garage_presentation.h"
 #include "pixels.h"
@@ -135,24 +136,6 @@ void RecordStartupPhase(unsigned phase,uint64_t sceneFrame) {
         else receipt << "null";
     }
     receipt << "}\n";
-}
-
-std::string HostHash(const std::filesystem::path& path) {
-    std::ifstream input(path,std::ios::binary);
-    BCRYPT_ALG_HANDLE algorithm{}; BCRYPT_HASH_HANDLE hash{};
-    if (!input || BCryptOpenAlgorithmProvider(&algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)<0) return {};
-    if (BCryptCreateHash(algorithm,&hash,nullptr,0,nullptr,0,0)<0) { BCryptCloseAlgorithmProvider(algorithm,0); return {}; }
-    std::array<char,65536> block{}; bool ok=true;
-    while (input) {
-        input.read(block.data(),block.size());
-        if (BCryptHashData(hash,reinterpret_cast<PUCHAR>(block.data()),static_cast<ULONG>(input.gcount()),0)<0) ok=false;
-    }
-    std::array<UCHAR,32> digest{};
-    ok=ok && !input.bad() && BCryptFinishHash(hash,digest.data(),static_cast<ULONG>(digest.size()),0)>=0;
-    BCryptDestroyHash(hash); BCryptCloseAlgorithmProvider(algorithm,0);
-    char text[65]{};
-    if (ok) for (unsigned i=0;i<32;++i) sprintf_s(text+i*2,3,"%02x",digest[i]);
-    return text;
 }
 
 void Stack(const char* label) {
@@ -1642,7 +1625,7 @@ bool Active() {
                 if (!std::getline(marker,header) || header!="GRID2VR_DIAGNOSTIC_V1" || !std::getline(marker,folder)) return false;
                 output=std::filesystem::path(std::u8string(folder.begin(),folder.end()));
             }
-            if (!output.is_absolute() || HostHash(host)!="519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502") return false;
+            if (!output.is_absolute() || gameexe::Validate(host.c_str(),true).empty()) return false;
             std::filesystem::create_directories(output);
             runtimeSession=std::filesystem::exists(output/L"runtime-session.request");
             focusCockpit.Configure(host.parent_path(),output);

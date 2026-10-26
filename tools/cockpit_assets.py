@@ -1,4 +1,5 @@
 """Build the bounded per-car cockpit asset bank without editing the game."""
+from game_executable import validate_avx
 import argparse
 import hashlib
 import json
@@ -50,8 +51,7 @@ def profiles(path):
 
 
 def inputs(game, converter, rows):
-    if digest(game/'grid2_avx.exe',128*1024*1024) != SUPPORTED_AVX_SHA256:
-        raise ValueError('Unsupported game executable')
+    validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256)
     if digest(converter,32*1024*1024) != CONVERTER_SHA256:
         raise ValueError('Unsupported XML converter')
     if digest(game/INTRO_PATH) != INTRO_SHA256:
@@ -98,7 +98,7 @@ def build(game_root, converter, catalog_path, output, progress=None):
     intro = output/'intro.xml'
     intro.write_bytes(patch_intro(read_file(game/INTRO_PATH)))
     manifest=dict(schema=1,cars=records,calibrationSha256=digest(catalog_path),
-        executableSha256=SUPPORTED_AVX_SHA256,converterSha256=CONVERTER_SHA256,
+        executableSha256=validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256),converterSha256=CONVERTER_SHA256,
         startView='bonnet',nearPlaneMetres=.02,intro=dict(name=INTRO_PATH,originalSha256=INTRO_SHA256,sha256=digest(intro)),
         semanticRoundtrip=True,installed=False)
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')

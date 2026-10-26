@@ -9,7 +9,7 @@ $script:CinemaModifiedHash='7fbd21a429036c1b7887195c085810ebacbd1878dcf4e7908f90
 # Superseded diagnostic candidate: recovery only, never a new deployment.
 $script:CinemaIndexOnlyHash='f74624a4fb810548c049369f4624925158dc4f485c2a0707c04feb7e75a58d6d'
 $script:CinemaVerticesOnlyHash='5b79662d0dce087ec17c71abca1c72225cf50ff9ec9fc8f7d2e69b770074e14f'
-$script:CinemaExecutableHash='519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502'
+. (Join-Path $PSScriptRoot 'Game-Executable.ps1')
 
 function Assert-CinemaPlainPath([string]$Path) {
     $current=[IO.Path]::GetFullPath($Path)
@@ -52,7 +52,7 @@ function Assert-CinemaHash([string]$Path,[string]$Expected) {
 
 function Assert-CinemaMatteOriginal([string]$Game) {
     Assert-CinemaHash (Join-Path $Game 'frontend\databases\overlayPersistent.pssg') $script:CinemaOriginalHash
-    Assert-CinemaHash (Join-Path $Game 'grid2_avx.exe') $script:CinemaExecutableHash
+    $null=Get-Grid2ExecutableHash (Join-Path $Game 'grid2_avx.exe')
 }
 
 function New-CinemaMatteDeployment([string]$Game,[string]$Run) {
@@ -114,7 +114,7 @@ function Install-CinemaMatte([string]$Game,[string]$Run,$Entry) {
     Assert-CinemaMatteEntry $Entry
     $paths=Get-CinemaMattePaths $Game $Run
     if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Existing GRID 2 process retained.' }
-    Assert-CinemaHash $paths.executable $script:CinemaExecutableHash
+    $null=Get-Grid2ExecutableHash $paths.executable
     Assert-CinemaHash $paths.target $script:CinemaOriginalHash
     Assert-CinemaHash $paths.backup $script:CinemaOriginalHash
     Assert-CinemaHash $paths.source $script:CinemaModifiedHash

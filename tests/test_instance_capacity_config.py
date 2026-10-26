@@ -81,7 +81,8 @@ class InstanceCapacityConfigTests(unittest.TestCase):
             source.write_bytes(b'x' * 5972)
             output = root / 'prepared'
             converter = root / 'converter.exe'
-            with patch.object(capacity, 'digest', side_effect=[capacity.SUPPORTED_AVX_SHA256, 'changed']):
+            with patch.object(capacity, 'validate_avx', return_value=capacity.SUPPORTED_AVX_SHA256), \
+                 patch.object(capacity, 'digest', return_value='changed'):
                 with self.assertRaisesRegex(ValueError, 'baseline'):
                     capacity.prepare(game, output, converter)
             self.assertFalse(output.exists())

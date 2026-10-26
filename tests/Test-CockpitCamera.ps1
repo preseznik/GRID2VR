@@ -10,6 +10,13 @@ $driver=[Text.Encoding]::ASCII.GetBytes('whole-driver-hidden seated camera fixtu
 $executable=[Text.Encoding]::ASCII.GetBytes('supported executable fixture')
 $script:CockpitCameraOriginalHash=Hash-Bytes $original
 $script:CockpitCameraExecutableHash=Hash-Bytes $executable
+# Fixture-only executable validator; preserves the transaction's changed-file checks.
+function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
+    $actual=(Get-FileHash -LiteralPath $Path -ErrorAction Stop).Hash.ToLowerInvariant()
+    if($actual -ne $script:CockpitCameraExecutableHash) { throw 'Changed fixture executable.' }
+    return $actual
+}
+
 $script:CockpitCameraHashes=@{HeadOnly=(Hash-Bytes $head);HideDriver=(Hash-Bytes $driver)}
 $script:gameRunning=$false
 function Get-Process { if($script:gameRunning) { return [pscustomobject]@{Id=42;ProcessName='grid2_avx'} } }

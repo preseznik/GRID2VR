@@ -14,6 +14,13 @@ function Get-Process { if($script:running) { [pscustomobject]@{Id=42} } }
 try {
     [IO.File]::WriteAllText((Join-Path $game 'grid2_avx.exe'),'supported executable fixture')
     $script:CockpitCameraExecutableHash=Hash (Join-Path $game 'grid2_avx.exe')
+# Fixture-only executable validator; preserves the transaction's changed-file checks.
+function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
+    $actual=(Get-FileHash -LiteralPath $Path -ErrorAction Stop).Hash.ToLowerInvariant()
+    if($actual -ne $script:CockpitCameraExecutableHash) { throw 'Changed fixture executable.' }
+    return $actual
+}
+
     $cars=@()
     foreach($car in @('s20','pag')) {
         $installed=Join-Path $game "cars/models/$car/cameras.xml"

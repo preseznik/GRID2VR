@@ -1,7 +1,7 @@
 # Opt-in S2000 camera asset only. The native stereo renderer is unchanged.
 # Applied hashes identify the two offline round-tripped, fixed-position presets.
 $script:CockpitCameraOriginalHash='cc6883b9277ca1053e6ac8653f03c8ece95d2ddd5b871a448ef2665447ea24df'
-$script:CockpitCameraExecutableHash='519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502'
+. (Join-Path $PSScriptRoot 'Game-Executable.ps1')
 $script:CockpitCameraHashes=@{HeadOnly='367d0c7ab431455f1dded395dd311aee18600844e272d8d9b51fd597a2645b97';HideDriver='89872e642926e462481a1c7cfb50d75358893d11696ed7638de1e55842514584'}
 $script:CockpitCameraFolders=@{HeadOnly='head-only';HideDriver='hide-driver'}
 
@@ -45,7 +45,7 @@ function Get-CockpitCameraCandidate([string]$Root,[ValidateSet('HeadOnly','HideD
 }
 
 function Assert-CockpitCameraOriginal([string]$Game) {
-    Assert-CockpitCameraHash (Join-Path $Game 'grid2_avx.exe') $script:CockpitCameraExecutableHash
+    $null=Get-Grid2ExecutableHash (Join-Path $Game 'grid2_avx.exe')
     Assert-CockpitCameraHash (Join-Path $Game 'cars/models/s20/cameras.xml') $script:CockpitCameraOriginalHash
 }
 
@@ -86,7 +86,7 @@ function Install-CockpitCamera([string]$Game,[string]$Run,$Entry) {
     Assert-CockpitCameraEntry $Entry
     $paths=Get-CockpitCameraPaths $Game $Run
     if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Existing GRID 2 process retained.' }
-    Assert-CockpitCameraHash $paths.executable $script:CockpitCameraExecutableHash
+    $null=Get-Grid2ExecutableHash $paths.executable
     Assert-CockpitCameraHash $paths.target $script:CockpitCameraOriginalHash
     Assert-CockpitCameraHash $paths.backup $script:CockpitCameraOriginalHash
     Assert-CockpitCameraHash $paths.source $Entry.sha256

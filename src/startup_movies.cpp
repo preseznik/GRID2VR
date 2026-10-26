@@ -1,4 +1,5 @@
 #include "startup_movies.h"
+#include "game_executable.h"
 #include <windows.h>
 #include <bcrypt.h>
 #include <cstring>
@@ -163,7 +164,7 @@ bool HashEquals(const wchar_t* path,const char* expected){
 }
 BOOL CALLBACK Verify(PINIT_ONCE,void*,void**){
     wchar_t binkFile[1024]{},gameRoot[1024]{},path[1200]{};
-    if(!GetModuleFileNameW(binkModule,binkFile,1024)||!HashEquals(hostFile,hostLayout->hash)||!HashEquals(binkFile,binkHash)){
+    if(!GetModuleFileNameW(binkModule,binkFile,1024)||gameexe::Validate(hostFile,hostLayout==&avx).empty()||!HashEquals(binkFile,binkHash)){
         Failed("unsupported_binary");Receipt("refused");return TRUE;}
     wcscpy_s(gameRoot,hostFile);auto slash=wcsrchr(gameRoot,L'\\');if(!slash){Failed("invalid_game_path");Receipt("refused");return TRUE;}*slash=0;
     // Leave save checks intact and refuse to seek when a legacy state-file

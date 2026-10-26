@@ -150,6 +150,13 @@ function Hash-Bytes([byte[]]$Bytes) { return [Convert]::ToHexString([Security.Cr
 $script:StartupOriginalHash=Hash-Bytes $original
 $script:StartupModifiedHash=Hash-Bytes $modified
 $script:StartupExecutableHash=Hash-Bytes $executable
+# Fixture-only executable validator; preserves the transaction's changed-file checks.
+function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
+    $actual=(Get-FileHash -LiteralPath $Path -ErrorAction Stop).Hash.ToLowerInvariant()
+    if($actual -ne $script:StartupExecutableHash) { throw 'Changed fixture executable.' }
+    return $actual
+}
+
 $legacy=[Text.Encoding]::UTF8.GetBytes('old logo-only startup fixture')
 $script:StartupLegacyModifiedHash=Hash-Bytes $legacy
 function New-Case([string]$Name) {

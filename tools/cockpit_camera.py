@@ -5,6 +5,7 @@ car-local seat position replaces their origins, without changing headset pose,
 stereo rendering or graphics settings. Interior quality and head hiding still
 need an in-game check; a successful asset roundtrip does not establish either.
 """
+from game_executable import validate_avx
 import argparse
 import copy
 import hashlib
@@ -154,8 +155,7 @@ def verify_roundtrip(expected, actual):
 
 
 def guarded_inputs(game, converter):
-    if digest(game/'grid2_avx.exe', 128 * 1024 * 1024) != SUPPORTED_AVX_SHA256:
-        raise ValueError('Unsupported GRID 2 executable fingerprint')
+    validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256)
     if digest(game/SOURCE_PATH) != SOURCE_SHA256:
         raise ValueError('Unsupported installed S2000 camera fingerprint')
     if digest(converter, 32 * 1024 * 1024) != CONVERTER_SHA256:
@@ -173,7 +173,7 @@ def convert(converter, mode, source, target):
 
 def manifest(game, folder, position, mode, changes):
     return dict(schema=1, car='s20', gameRoot=str(game), target=SOURCE_PATH,
-                executableSha256=SUPPORTED_AVX_SHA256, originalSha256=SOURCE_SHA256,
+                executableSha256=validate_avx(game/'grid2_avx.exe', SUPPORTED_AVX_SHA256), originalSha256=SOURCE_SHA256,
                 modifiedSha256=digest(folder/'cameras.xml'), converterSha256=CONVERTER_SHA256,
                 sourceSemanticSha256=SOURCE_SEMANTIC_SHA256, position=seat_position(position),
                 mode=mode, views=list(VIEWS), changes=changes,
