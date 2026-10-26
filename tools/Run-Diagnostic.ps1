@@ -37,6 +37,7 @@ param(
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
+    [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [string]$CareerProfile='current',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
     [ValidateSet(0,1)][int]$HudFollowView=0,
@@ -232,7 +233,7 @@ if ((Get-FileHash -LiteralPath (Join-Path $game 'grid2_avx.exe')).Hash -ne $expe
 foreach ($name in $allowed + 'dxgi.dll') { if (Test-Path -LiteralPath (Join-Path $game $name)) { throw "Existing $name will not be overwritten." } }
 $proxy=Get-Grid2Proxy $root
 if($DiagnosticProxy) {
-    if(!$FlickerDiagnostic) { throw 'A diagnostic proxy override requires FlickerDiagnostic.' }
+    if(!$FlickerDiagnostic -and $CockpitTextures -eq 'Off') { throw 'A diagnostic proxy override requires FlickerDiagnostic or CockpitTextures.' }
     $proxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path
 }
 if($FlickerDiagnostic -and (!$RuntimeSession -or !$ReplayStereo)) { throw 'Flicker capture requires the stereo runtime.' }
@@ -246,6 +247,11 @@ if($career.id -ne 'current') {
     $proxy=Get-CareerProfileProxy -Root $root -BaseProxy $proxy
     $binary=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($proxy))
     if(!$binary.Contains('GRID2VR_PROFILE_STORAGE_V1')) { throw 'This native build does not support separate careers. Rebuild before launching.' }
+}
+if($CockpitTextures -ne 'Off') {
+    if($ProxyMode -ne 'Active') { throw 'Cockpit texture diagnostics require the active proxy.' }
+    $focusBinary=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($proxy))
+    if(!$focusBinary.Contains('GRID2VR_COCKPIT_TEXTURES_V1')) { throw 'This native build does not support the Cockpit texture pack. Rebuild before launching.' }
 }
 $run=Join-Path (Get-Grid2DataRoot $root) ('diagnostic-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 New-Item -ItemType Directory -Path $run | Out-Null
@@ -261,6 +267,7 @@ if ($selectedSession) {
     $selectedSession | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'selected-session.json') -Encoding utf8
 }
 if ($RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'runtime-session.request'),'Sustained same-frame stereo with explicit suspension and bounded logs; guarded experimental runtime.') }
+if($CockpitTextures -ne 'Off') { [IO.File]::WriteAllText((Join-Path $run 'cockpit-textures.request'),$CockpitTextures,[Text.Encoding]::ASCII) }
 if ($DiagnosticLogging -or !$UntilExit) { [IO.File]::WriteAllText((Join-Path $run 'diagnostic-logging.request'),'Enable additional bounded troubleshooting details; never disable recovery receipts.') }
 if($NormalLaunch) { [IO.File]::WriteAllText((Join-Path $run 'normal-launch.request'),'Native menus; no selected-session flow or configuration.') }
 if($selectedSession -and $selectedSession.selection.mode -eq 'race') { [IO.File]::WriteAllText((Join-Path $run 'race-launch.request'),'Selected human race with AI opponents.') }
@@ -398,6 +405,7 @@ $receipt.nativeStartup=$nativeStartup
 $receipt.cockpitCamera=$cockpitCamera
 $receipt.cockpitAssets=$cockpitAssets
 $receipt.cockpitMode=$CockpitMode
+$receipt.cockpitTextures=$CockpitTextures
 $receipt.cockpitModeRequested=$cockpitModeRequested
 $receipt.cockpitApplied=($cockpitAssets.Count -gt 0)
 $receipt.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)

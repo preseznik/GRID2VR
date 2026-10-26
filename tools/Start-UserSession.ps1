@@ -27,6 +27,7 @@ param(
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
+    [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
     [ValidateSet(0,1)][int]$HudFollowView=0,
     [ValidateSet(0,1)][int]$VrReplayCameras=1,
@@ -74,6 +75,7 @@ try {
     $receipt.cockpitS2000=$CockpitS2000
     $receipt.cockpitModeRequested=$CockpitMode
     $receipt.cockpitMode=$CockpitMode
+    $receipt.cockpitTextures=$CockpitTextures
     $receipt.cockpitExposureLimit=($Mode -eq 'VR' -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
     $receipt.vrReplayCameras=[bool]$VrReplayCameras
     $receipt.vrGarageMenus=[bool]$VrGarageMenus
@@ -85,6 +87,7 @@ try {
         $receipt.message='Checking the VR renderer...'
         Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
         . (Join-Path $PSScriptRoot 'Launcher-VrPreview.ps1')
+        # Texture comparisons must use the same verified renderer in every mode.
         $DiagnosticProxy=Get-LauncherVrPreviewProxy -Root $root
         $HeadsetVisibilityCandidate=$true; $FlickerDiagnostic=$true
         $receipt.proxySha256=(Get-FileHash -LiteralPath $DiagnosticProxy).Hash.ToLowerInvariant()
@@ -151,6 +154,7 @@ try {
     $parameters.CockpitS2000=$CockpitS2000
     $parameters.CockpitMode=$CockpitMode
     $parameters.NativeCockpitExposure=[bool]$NativeCockpitExposure
+    $parameters.CockpitTextures=$CockpitTextures
     if($Mode -eq 'VR') { $parameters.RecenterDeviceBase64=$RecenterDeviceBase64; $parameters.RecenterTilt=[bool]$RecenterTilt }
     $parameters.CareerProfile=$career.id
     # The worker owns its log; closing the launcher cannot close a redirected pipe

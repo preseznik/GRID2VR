@@ -21,6 +21,7 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public bool VrCockpit { get; init; } = true;
     public string CockpitDriver { get; init; } = "HeadOnly";
     public bool CockpitExposureLimit { get; init; } = true;
+    public string CockpitTextures { get; init; } = "Off";
     public DrivingBinding? RecenterDevice { get; init; }
     public bool KeepHorizonLevel { get; init; } = true;
 }
@@ -65,6 +66,7 @@ internal sealed class SessionClient(string root)
         if (value.Opponents is < 1 or > 7) throw new ArgumentException("Choose between 1 and 7 opponents.");
         if (value.OpponentCars is not ("same" or "mixed" or "class")) throw new ArgumentException("Choose Same car, Mixed or Same class.");
         if (value.CockpitDriver is not ("HeadOnly" or "HideDriver")) throw new ArgumentException("Choose a cockpit driver visibility option.");
+        if (value.CockpitTextures is not ("Off" or "Replace")) throw new ArgumentException("Choose old or new cockpit textures.");
         if (!RecenterShortcut.Valid(value.RecenterKey, value.RecenterModifiers)) throw new ArgumentException("Invalid recenter shortcut; system shortcuts are reserved.");
         if (value.Laps is < 1 or > 20) throw new ArgumentException("Choose between 1 and 20 circuit laps.");
         if (value.Graphics == null) throw new ArgumentException("Graphics settings are missing.");
@@ -76,12 +78,23 @@ internal sealed class SessionClient(string root)
     {
         if (!File.Exists(SettingsPath)) return new();
         if (new FileInfo(SettingsPath).Length > 8192) throw new IOException("Launcher settings exceed their size limit.");
-        var text = File.ReadAllText(SettingsPath);
+        return ParseChoices(File.ReadAllText(SettingsPath));
+    }
+
+    internal static Choices ParseChoices(string text)
+    {
         var value = JsonSerializer.Deserialize<Choices>(text, Json) ?? throw new IOException("Invalid launcher settings.");
         using var document = JsonDocument.Parse(text);
         // Match DiRT2VR: existing installations keep Classic; fresh settings use Modern.
         if (!document.RootElement.EnumerateObject().Any(p => p.Name.Equals("ModernInterface", StringComparison.OrdinalIgnoreCase)))
             value = value with { ModernInterface = false };
+        // Retain the accepted Focus preview choice when upgrading old settings.
+        if (!document.RootElement.EnumerateObject().Any(p => p.Name.Equals("CockpitTextures", StringComparison.OrdinalIgnoreCase)))
+        {
+            var legacy = document.RootElement.EnumerateObject().FirstOrDefault(p => p.Name.Equals("FocusCockpit", StringComparison.OrdinalIgnoreCase));
+            if (legacy.Value.ValueKind == JsonValueKind.String)
+                value = value with { CockpitTextures = legacy.Value.GetString() == "Replace" ? "Replace" : "Off" };
+        }
         Validate(value);
         return value;
     }
@@ -178,6 +191,7 @@ internal sealed class SessionClient(string root)
         if (vr && value.RecenterDevice is not null) { command.ArgumentList.Add("-RecenterDeviceBase64"); command.ArgumentList.Add(DeviceRecenter.Encode(value.RecenterDevice)); }
         if (value.SkipIntro) command.ArgumentList.Add("-SkipIntro");
         if (value.DiagnosticLogging) command.ArgumentList.Add("-DiagnosticLogging");
+        if (value.CockpitTextures != "Off") { command.ArgumentList.Add("-CockpitTextures"); command.ArgumentList.Add(value.CockpitTextures); }
         if (vr && (value.PreviewVrFixes || AppPaths.Packaged(Root))) command.ArgumentList.Add("-PreviewVrFixes");
         return command;
     }

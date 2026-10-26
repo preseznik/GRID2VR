@@ -1,0 +1,2 @@
+# The optional pack catalog is hash pinned; preserve its exact bytes.
+/tools/data/cockpit-texture-pack.json -text whitespace=cr-at-eol

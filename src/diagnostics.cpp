@@ -12,6 +12,7 @@
 #include "screen_ui.h"
 #include "msaa_readback.h"
 #include "msaa_audit.h"
+#include "focus_cockpit.h"
 #include "replay_profile.h"
 #include "bounded_log.h"
 #include "flicker_capture.h"
@@ -73,6 +74,7 @@ bool retainEyeTextures{};
 bool runtimeSession{},runtimeStopped{};
 bool diagnosticLogging{true};
 StopReceipt stopReceipt;
+FocusCockpit focusCockpit;
 EyeTextures eyeTextures;
 EyeMirror eyeMirror;
 PreviewFrame previewFrame;
@@ -169,6 +171,7 @@ void Stack(const char* label) {
 }
 
 const char* BeforeGameExit() {
+    focusCockpit.Summary();
     // ExitProcess can bypass the next Present entirely. Stop at this verified
     // owning-thread boundary, but never attempt to unwind an incomplete eye pair.
     if(engine::Continuous() && !runtimeStopped && !engine::StopSession()) {
@@ -1034,7 +1037,12 @@ using Texture2DFn=HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*,const D3D11_TEXTURE2
 Texture2DFn realTexture2D{};
 HRESULT STDMETHODCALLTYPE CreateTexture2D(ID3D11Device* device,const D3D11_TEXTURE2D_DESC* desc,const D3D11_SUBRESOURCE_DATA* data,ID3D11Texture2D** texture) {
     const auto hr=realTexture2D(device,desc,data,texture);
+    if(SUCCEEDED(hr) && texture)focusCockpit.TextureCreated(device,desc,data,*texture,realTexture2D,uintptr_t(_ReturnAddress())-gameBase);
     msaaaudit::TextureCreated(desc,hr,SUCCEEDED(hr) && texture?*texture:nullptr,uintptr_t(_ReturnAddress()));return hr;
+}
+FocusCockpit::ViewFn realResourceView{};
+HRESULT STDMETHODCALLTYPE CreateResourceView(ID3D11Device* device,ID3D11Resource* resource,const D3D11_SHADER_RESOURCE_VIEW_DESC* desc,ID3D11ShaderResourceView** view) {
+    return focusCockpit.CreateView(device,resource,desc,view,realResourceView);
 }
 HRESULT STDMETHODCALLTYPE CreateBuffer(ID3D11Device* device,const D3D11_BUFFER_DESC* desc,const D3D11_SUBRESOURCE_DATA* data,ID3D11Buffer** buffer) {
     const auto hr=realBuffer(device,desc,data,buffer);
@@ -1637,6 +1645,7 @@ bool Active() {
             if (!output.is_absolute() || HostHash(host)!="519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502") return false;
             std::filesystem::create_directories(output);
             runtimeSession=std::filesystem::exists(output/L"runtime-session.request");
+            focusCockpit.Configure(host.parent_path(),output);
             exposureaudit::Configure(output);
             diagnosticLogging=!runtimeSession || std::filesystem::exists(output/L"diagnostic-logging.request");
             unattendedStereo=runtimeSession && std::filesystem::is_regular_file(output/L"flicker-diagnostic.request") &&
@@ -1669,7 +1678,12 @@ void Attach(ID3D11Device* device,ID3D11DeviceContext* context,IDXGISwapChain* ch
     static const bool initialized=[] { const auto s=MH_Initialize(); return s==MH_OK || s==MH_ERROR_ALREADY_INITIALIZED; }();
     if (!initialized) return;
     if(!msaaaudit::Install(gameBase,output)) {Log("MSAA audit startup hook refused");return;}
-    if(msaaaudit::Enabled() && !Hook(device,5,reinterpret_cast<void*>(CreateTexture2D),realTexture2D)) {Log("MSAA texture audit refused");return;}
+    if((msaaaudit::Enabled() || focusCockpit.Enabled()) && !Hook(device,5,reinterpret_cast<void*>(CreateTexture2D),realTexture2D)) {
+        focusCockpit.HookFailed();Log("texture observation hook refused");if(msaaaudit::Enabled())return;
+    }
+    if(focusCockpit.Enabled() && !Hook(device,7,reinterpret_cast<void*>(CreateResourceView),realResourceView)) {
+        focusCockpit.HookFailed();Log("Focus cockpit view hook refused; stock retained");
+    }
     if(!instancecapacity::Install(gameBase,output)) {Log("instance capacity startup hook refused");return;}
     if(instancecapacity::Enabled() && !Hook(device,3,reinterpret_cast<void*>(CreateBuffer),realBuffer)) {instancecapacity::Disable();Log("instance capacity buffer observation refused");return;}
     Log("session device=%p feature_level=0x%x",device,device->GetFeatureLevel());

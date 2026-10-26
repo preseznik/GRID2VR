@@ -16,6 +16,7 @@ param(
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
+    [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [string]$CareerProfile='current',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
     [ValidateSet(0,1)][int]$HudFollowView=0,
@@ -93,7 +94,7 @@ $steam=Get-Grid2SteamRoot
 $runtime=Get-Grid2VrRuntimeManifest $XrRuntime
 $proxy=Get-Grid2Proxy $root
 if($DiagnosticProxy) {
-    if(!$FlickerDiagnostic) { throw 'A diagnostic proxy override requires FlickerDiagnostic.' }
+    if(!$FlickerDiagnostic -and $CockpitTextures -eq 'Off') { throw 'A diagnostic proxy override requires FlickerDiagnostic or CockpitTextures.' }
     $proxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path
 }
 if($FlickerDiagnostic -and (!$RuntimeSession -or $PlayerControlOnly)) { throw 'Flicker capture requires the stereo runtime.' }
@@ -181,6 +182,7 @@ $preflight.runtimeSession=[bool]$RuntimeSession
 $preflight.normalLaunch=[bool]$NormalLaunch
 $preflight.cockpitS2000=$CockpitS2000
 $preflight.cockpitMode=$CockpitMode
+$preflight.cockpitTextures=$CockpitTextures
 $preflight.cockpitModeRequested=$cockpitModeRequested
 $preflight.cockpitApplied=($cockpitAssets.Count -gt 0)
 $preflight.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
@@ -344,6 +346,9 @@ try {
         }
     }
     $parameters.CareerProfile=$career.id
+    $parameters.CockpitTextures=$CockpitTextures
+    # The non-rendering desktop branch also needs the explicitly selected DLL.
+    if($CockpitTextures -ne 'Off') { $parameters.DiagnosticProxy=$DiagnosticProxy }
     & (Join-Path $PSScriptRoot 'Run-Diagnostic.ps1') @parameters | ForEach-Object {
         $output.Add($_)
         if ($UntilExit -and $_ -is [string] -and $_ -like 'Diagnostic evidence: *') {

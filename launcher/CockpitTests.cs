@@ -9,6 +9,23 @@ internal static class CockpitTests
         static void Check(bool ok, [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
         { if (!ok) throw new InvalidOperationException($"Cockpit launcher regression at line {line}."); }
         var original = client.Load();
+        Check(new Choices().CockpitTextures == "Off" && JsonSerializer.Deserialize<Choices>("{}")!.CockpitTextures == "Off");
+        Check(SessionClient.ParseChoices("""{"FocusCockpit":"Replace"}""").CockpitTextures == "Replace");
+        Check(SessionClient.ParseChoices("""{"focuscockpit":"Observe"}""").CockpitTextures == "Off");
+        Check(SessionClient.ParseChoices("""{"FocusCockpit":"Replace","CockpitTextures":"Off"}""").CockpitTextures == "Off");
+        foreach (var textureMode in new[] { "Off", "Replace" })
+            foreach (var vrMode in new[] { false, true })
+                foreach (var launch in new[] { "Normal", "Practice", "Race" })
+                {
+                    var selected = original with { CockpitTextures = textureMode, LaunchMode = launch };
+                    client.Save(selected); Check(client.Load() == selected);
+                    var args = client.LaunchCommand(selected, vrMode).ArgumentList;
+                    Check(args.Contains("-CockpitTextures") == (textureMode != "Off"));
+                    if (textureMode != "Off") Check(args[args.IndexOf("-CockpitTextures") + 1] == textureMode);
+                }
+        var textureRejected = false;
+        try { client.Save(original with { CockpitTextures = "Replace; bad" }); } catch (ArgumentException) { textureRejected = true; }
+        Check(textureRejected); client.Save(original);
         Check(new Choices().VrCockpit && new Choices().CockpitDriver == "HeadOnly");
         using var source = JsonDocument.Parse("""
             {"cars":[

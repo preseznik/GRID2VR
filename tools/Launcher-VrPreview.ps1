@@ -4,7 +4,9 @@
 function Get-LauncherVrPreviewProxy {
     param([string]$Root)
     if(Test-Grid2Package $Root) { return Get-Grid2Proxy $Root }
-    $expectedProxy='9fe9e76f825b34650b64d962fc2e115d4fe09c9190eef0decc90362fbd46fe22'
+    $expectedProxy='cdd6e68abcd6e53ee15876f86f952b0e808b2fe515fd443ad80fb05f24fa5da8'
+    $focusProxy='fa75274d189e5121cc0e35ccbbc2e2df38b1fee3ef3d5dec3a6b73f559c47495'
+    $performanceProxy='9fe9e76f825b34650b64d962fc2e115d4fe09c9190eef0decc90362fbd46fe22'
     $instanceProxy='1d3eb5326182bf5e76309fbb2163f8aac98c7546117701ff9486296d09bd978d'
     $exposureProxy='0ec3e7df3dfaf0d01c8f6850b756aa819647cb255e1ab51321bb0517728c3410'
     $recenterProxy='fb4aea9a5f3ea23a981396bd30f7582ae4edef0f6e7e0845b44bbbe392250608'
@@ -43,6 +45,8 @@ function Get-LauncherVrPreviewProxy {
     $exposure=$manifest.cockpitExposure
     $instanceBuffers=$manifest.instanceBufferOwnership
     $performancePlacement=$manifest.performancePlacement
+    $focusCockpit=$manifest.focusCockpitLoader
+    $cockpitTextures=$manifest.cockpitTexturesLoader
     if($manifest.schema -ne 1 -or $manifest.offlineQualified -ne $true -or $fix.offlineVerified -ne $true -or
        $fix.previousProxySha256 -ne $headsetProxy -or $fix.proxySha256 -ne $receiptProxy -or
        $lifecycle.offlineVerified -ne $true -or $lifecycle.previousProxySha256 -ne $receiptProxy -or $lifecycle.proxySha256 -ne $lifecycleProxy -or
@@ -59,7 +63,9 @@ function Get-LauncherVrPreviewProxy {
        $recenter.offlineVerified -ne $true -or $recenter.previousProxySha256 -ne $transitionProxy -or $recenter.proxySha256 -ne $recenterProxy -or
        $exposure.offlineVerified -ne $true -or $exposure.previousProxySha256 -ne $recenterProxy -or $exposure.proxySha256 -ne $exposureProxy -or
        $instanceBuffers.offlineVerified -ne $true -or $instanceBuffers.previousProxySha256 -ne $exposureProxy -or $instanceBuffers.proxySha256 -ne $instanceProxy -or
-       $performancePlacement.offlineVerified -ne $true -or $performancePlacement.previousProxySha256 -ne $instanceProxy -or $performancePlacement.proxySha256 -ne $expectedProxy -or
+       $performancePlacement.offlineVerified -ne $true -or $performancePlacement.previousProxySha256 -ne $instanceProxy -or $performancePlacement.proxySha256 -ne $performanceProxy -or
+       $focusCockpit.offlineVerified -ne $true -or $focusCockpit.previousProxySha256 -ne $performanceProxy -or $focusCockpit.proxySha256 -ne $focusProxy -or
+       $cockpitTextures.offlineVerified -ne $true -or $cockpitTextures.previousProxySha256 -ne $focusProxy -or $cockpitTextures.proxySha256 -ne $expectedProxy -or
        $manifest.proxySha256 -ne $expectedProxy -or (Get-FileHash -LiteralPath $proxy -ErrorAction Stop).Hash -ne $expectedProxy) {
         throw 'Preview VR fixes bundle changed or lacks qualification.'
     }
@@ -70,8 +76,8 @@ function Get-LauncherVrPreviewProxy {
         if($name -notin @($manifest.supportFiles.path)) { throw 'Preview VR fixes support manifest is incomplete.' }
     }
     # Historical headset results document coverage; they do not restrict selections.
-    if(!$fix.evidence -or !$lifecycle.evidence -or !$presentation.evidence -or !$playability.evidence -or !$hud.evidence -or !$replay.evidence -or !$continuity.evidence -or !$modes.evidence -or !$garage.evidence -or !$inputStartup.evidence -or !$frostedUi.evidence -or !$transition.evidence -or !$recenter.evidence -or !$exposure.evidence -or !$instanceBuffers.evidence -or !$performancePlacement.evidence) { throw 'Preview VR fixes qualification evidence is missing.' }
-    foreach($entry in @($manifest.supportFiles)+@($fix.evidence)+@($lifecycle.evidence)+@($presentation.evidence)+@($playability.evidence)+@($hud.evidence)+@($replay.evidence)+@($continuity.evidence)+@($modes.evidence)+@($garage.evidence)+@($inputStartup.evidence)+@($frostedUi.evidence)+@($transition.evidence)+@($recenter.evidence)+@($exposure.evidence)+@($instanceBuffers.evidence)+@($performancePlacement.evidence)) {
+    if(!$fix.evidence -or !$lifecycle.evidence -or !$presentation.evidence -or !$playability.evidence -or !$hud.evidence -or !$replay.evidence -or !$continuity.evidence -or !$modes.evidence -or !$garage.evidence -or !$inputStartup.evidence -or !$frostedUi.evidence -or !$transition.evidence -or !$recenter.evidence -or !$exposure.evidence -or !$instanceBuffers.evidence -or !$performancePlacement.evidence -or !$focusCockpit.evidence -or !$cockpitTextures.evidence) { throw 'Preview VR fixes qualification evidence is missing.' }
+    foreach($entry in @($manifest.supportFiles)+@($fix.evidence)+@($lifecycle.evidence)+@($presentation.evidence)+@($playability.evidence)+@($hud.evidence)+@($replay.evidence)+@($continuity.evidence)+@($modes.evidence)+@($garage.evidence)+@($inputStartup.evidence)+@($frostedUi.evidence)+@($transition.evidence)+@($recenter.evidence)+@($exposure.evidence)+@($instanceBuffers.evidence)+@($performancePlacement.evidence)+@($focusCockpit.evidence)+@($cockpitTextures.evidence)) {
         if(!$entry.path -or $entry.sha256 -notmatch '^[0-9a-f]{64}$') { throw 'Invalid preview VR fixes file record.' }
         $path=[IO.Path]::GetFullPath((Join-Path $Root $entry.path))
         if(!$path.StartsWith($Root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or
@@ -141,8 +147,16 @@ function Get-LauncherVrPreviewProxy {
         throw 'Preview VR fixes lack matching instance-buffer qualification.'
     }
     $current=Get-Content -LiteralPath (Join-Path $Root $performancePlacement.evidence.path) -Raw | ConvertFrom-Json
-    if($current.passed -ne $true -or $current.previousProxySha256 -ne $instanceProxy -or $current.proxySha256 -ne $expectedProxy) {
+    if($current.passed -ne $true -or $current.previousProxySha256 -ne $instanceProxy -or $current.proxySha256 -ne $performanceProxy) {
         throw 'Preview VR fixes lack matching performance-placement qualification.'
+    }
+    $current=Get-Content -LiteralPath (Join-Path $Root $focusCockpit.evidence.path) -Raw | ConvertFrom-Json
+    if($current.passed -ne $true -or $current.previousProxySha256 -ne $performanceProxy -or $current.proxySha256 -ne $focusProxy) {
+        throw 'Preview VR fixes lack matching Focus cockpit qualification.'
+    }
+    $current=Get-Content -LiteralPath (Join-Path $Root $cockpitTextures.evidence.path) -Raw | ConvertFrom-Json
+    if($current.passed -ne $true -or $current.previousProxySha256 -ne $focusProxy -or $current.proxySha256 -ne $expectedProxy) {
+        throw 'Preview VR fixes lack matching cockpit textures qualification.'
     }
     return $proxy
 }

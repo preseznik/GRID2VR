@@ -10,6 +10,22 @@ function Refuses([scriptblock]$action) {
 }
 try {
     New-Item -ItemType Directory -Path $temp | Out-Null
+    # Texture selection must not force managed careers back to an older renderer.
+    $legacy=Join-Path $root 'build/profile-storage-candidate/GRID2VR.dll'
+    $preview=Join-Path $root 'build/visibility-headset-candidate/GRID2VR.dll'
+    foreach($renderer in @($legacy,$preview)) {
+        Check ((Get-CareerProfileProxy -Root $temp -BaseProxy $renderer) -eq $renderer) 'Managed career changed the verified renderer.'
+    }
+    $foreign=Join-Path $temp 'foreign.dll';[IO.File]::WriteAllText($foreign,'foreign')
+    Refuses { Get-CareerProfileProxy -Root $temp -BaseProxy $foreign }
+    $payload=Join-Path $temp 'payload';New-Item -ItemType Directory -Path $payload | Out-Null
+    $installed=Join-Path $payload 'd3d11.dll';Copy-Item -LiteralPath $preview -Destination $installed
+    Write-SessionJson (Join-Path $temp 'package.json') @{schema=1;files=@{'GRID2VR/payload/d3d11.dll'=(Get-FileHash -LiteralPath $installed).Hash.ToLowerInvariant()}}
+    Check ((Get-CareerProfileProxy -Root $temp -BaseProxy $preview) -eq $installed) 'Packaged career ignored the verified core file.'
+    Refuses { Get-CareerProfileProxy -Root $temp -BaseProxy $legacy }
+    [IO.File]::WriteAllText($installed,'tampered')
+    Refuses { Get-CareerProfileProxy -Root $temp -BaseProxy $preview }
+    [IO.File]::Delete((Join-Path $temp 'package.json'))
     Check ((Get-LaunchProfile $temp).id -ceq 'current') 'Default must keep current career.'
     $id=[Guid]::NewGuid().ToString('N')
     $profile=Join-Path $temp "artifacts/profiles/$id"

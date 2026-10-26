@@ -38,6 +38,7 @@ internal sealed class MainForm : LauncherForm
     private readonly CheckBox garage3d = new() { Name = "VrGarageMenus", AccessibleName = "3D menus", Text = "On", Checked = true, AutoSize = true };
     private readonly CheckBox vrCockpit = new() { Name = "VrCockpit", AccessibleName = "Cockpit view in VR", Text = "On (default)", Checked = true, AutoSize = true };
     private readonly ComboBox cockpitDriver = Choice("CockpitDriver");
+    private readonly ComboBox cockpitTextures = Choice("CockpitTextures");
     private readonly CheckBox cockpitExposure = new() { Name = "CockpitExposureLimit", Text = "Limit cockpit exposure", Checked = true, AutoSize = true };
     private readonly SeatAlignmentPanel seatAlignment = new();
     private readonly Button drivingControls = Button("Driving bindings…", "DrivingControls");
@@ -150,6 +151,11 @@ internal sealed class MainForm : LauncherForm
         graphics.Controls.Add(TextLabel("Calibrated cars start VR in the cockpit. Use your camera-cycle control to change views. DLC cars without calibration keep their original cameras. Applies to the next VR launch, including cars chosen through the game's menus."));
         graphics.Controls.Add(HelpLink("VR cockpit"));
         graphics.Controls.Add(TextLabel("Adjust individual cars in Controls → Seat."));
+        Section(graphics, "Cockpit textures");
+        cockpitTextures.Items.AddRange(new ContentItem[] { new("Off", "Old cockpit textures"), new("Replace", "New cockpit textures") });
+        cockpitTextures.SelectedIndex = 0;
+        Field(graphics, "Cockpit textures", cockpitTextures);
+        graphics.Controls.Add(TextLabel("Choose the original artwork or the optional new texture pack for all cars, in desktop and VR. Install the pack under GRID2VR first. Applies on the next launch; missing textures use the originals."));
         Section(graphics, "VR HUD");
         Field(graphics, "Distance", hudDistance); Field(graphics, "Follow view", hudFollow);
         graphics.Controls.Add(TextLabel("Distance and Follow view apply to the HUD and results text in stereo VR. Individual HUD elements cannot be hidden yet."));
@@ -162,7 +168,7 @@ internal sealed class MainForm : LauncherForm
         graphics.Controls.Add(TextLabel("Defaults reproduce the working profile exactly. Other settings need game/headset checks. Changes apply to the next launch; original game settings are restored afterward."));
         renderScale.ValueChanged += (_, _) => UpdateSceneResolution();
         headsetScale.SelectedIndexChanged += (_, _) => UpdateHeadsetResolution();
-        graphicsDefaults.Click += (_, _) => { ApplyGraphics(new()); vrCockpit.Checked = true; cockpitExposure.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
+        graphicsDefaults.Click += (_, _) => { ApplyGraphics(new()); vrCockpit.Checked = true; cockpitExposure.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
         ApplyGraphics(new());
         graphics.Controls.Add(HelpLink("VR rendering"));
         var controlPage = new TabPage("Controls") { Padding = new Padding(8) };
@@ -367,6 +373,7 @@ internal sealed class MainForm : LauncherForm
         SelectChoice(cockpitDriver, choices.CockpitDriver);
         cockpitDriver.Enabled = choices.VrCockpit;
         cockpitExposure.Checked = choices.CockpitExposureLimit;
+        SelectChoice(cockpitTextures, choices.CockpitTextures);
         cockpitExposure.Enabled = choices.VrCockpit;
         recenterKey = choices.RecenterKey; recenterModifiers = choices.RecenterModifiers; UpdateRecenterLabel();
         recenterDevice = choices.RecenterDevice; UpdateDeviceRecenter();
@@ -401,7 +408,7 @@ internal sealed class MainForm : LauncherForm
         Graphics = CurrentGraphics(), ModernInterface = modernInterface.Checked, PreviewVrFixes = previewVrFixes.Checked,
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked,
-        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
+        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
     };
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
     private static void SelectChoice(ComboBox box, string id) => box.SelectedItem = box.Items.Cast<ContentItem>().Single(x => x.Id == id);
@@ -556,7 +563,7 @@ internal sealed class MainForm : LauncherForm
         bindRecenterDevice.Enabled = clearRecenterDevice.Enabled = loaded && idle && !capturingRecenter;
         defaults.Enabled = loaded && idle && !capturingRecenter;
         foreach (var control in new Control[] { renderScale, headsetScale, modernInterface, previewVrFixes, skipIntro, diagnosticLogging, performanceDisplay, replay3d, garage3d, vrCockpit, keepHorizonLevel,
-            hudDistance, hudFollow, desktopVSync, desktopMsaa, vrMsaa, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
+            cockpitTextures, hudDistance, hudFollow, desktopVSync, desktopMsaa, vrMsaa, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
             control.Enabled = loaded && idle && !capturingRecenter;
         performanceFollowView.Enabled = performanceDisplay.Enabled && performanceDisplay.Checked;
         cockpitDriver.Enabled = vrCockpit.Enabled && vrCockpit.Checked;

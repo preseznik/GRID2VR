@@ -31,7 +31,7 @@ try {
         [IO.File]::WriteAllText($path,'fixture only')
         $manifest.supportFiles+=@{path=$relative;sha256=(Get-FileHash -LiteralPath $path).Hash}
     }
-    foreach($item in @($manifest.shutdownReceiptFix.evidence)+@($manifest.launcherLifecycleFix.evidence)+@($manifest.vrPresentationFix.evidence)+@($manifest.vrPlayabilityFix.evidence)+@($manifest.vrHudFix.evidence)+@($manifest.replayPresentationFix.evidence)+@($manifest.replayUiContinuityFix.evidence)+@($manifest.launchModesControls.evidence)+@($manifest.garageMenuPresentation.evidence)+@($manifest.inputStartupRepair.evidence)+@($manifest.garageFrostedUi.evidence)+@($manifest.normalTransitionRepair.evidence)+@($manifest.cockpitRecenter.evidence)+@($manifest.cockpitExposure.evidence)+@($manifest.instanceBufferOwnership.evidence)+@($manifest.performancePlacement.evidence)) {
+    foreach($item in @($manifest.shutdownReceiptFix.evidence)+@($manifest.launcherLifecycleFix.evidence)+@($manifest.vrPresentationFix.evidence)+@($manifest.vrPlayabilityFix.evidence)+@($manifest.vrHudFix.evidence)+@($manifest.replayPresentationFix.evidence)+@($manifest.replayUiContinuityFix.evidence)+@($manifest.launchModesControls.evidence)+@($manifest.garageMenuPresentation.evidence)+@($manifest.inputStartupRepair.evidence)+@($manifest.garageFrostedUi.evidence)+@($manifest.normalTransitionRepair.evidence)+@($manifest.cockpitRecenter.evidence)+@($manifest.cockpitExposure.evidence)+@($manifest.instanceBufferOwnership.evidence)+@($manifest.performancePlacement.evidence)+@($manifest.focusCockpitLoader.evidence)+@($manifest.cockpitTexturesLoader.evidence)) {
         $destination=Join-Path $fixture $item.path
         New-Item -ItemType Directory -Force -Path (Split-Path $destination -Parent) | Out-Null
         Copy-Item -LiteralPath (Join-Path $root $item.path) -Destination $destination
@@ -108,6 +108,31 @@ try {
     $manifest.performancePlacement.offlineVerified=$false; Write-Manifest
     Reject { Get-LauncherVrPreviewProxy @request } '*lacks qualification*'
     $manifest.performancePlacement.offlineVerified=$true
+    $manifest.focusCockpitLoader.offlineVerified=$false; Write-Manifest
+    Reject { Get-LauncherVrPreviewProxy @request } '*lacks qualification*'
+    $manifest.focusCockpitLoader.offlineVerified=$true; Write-Manifest
+    $focusPath=Join-Path $fixture $manifest.focusCockpitLoader.evidence.path
+    $focusProof=Get-Content -LiteralPath $focusPath -Raw | ConvertFrom-Json
+    $focusProof.proxySha256='0'*64
+    $focusProof | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $focusPath -Encoding utf8
+    Reject { Get-LauncherVrPreviewProxy @request } '*files changed*'
+    $manifest.focusCockpitLoader.evidence.sha256=(Get-FileHash -LiteralPath $focusPath).Hash; Write-Manifest
+    Reject { Get-LauncherVrPreviewProxy @request } '*Focus cockpit qualification*'
+    Copy-Item -LiteralPath (Join-Path $root $manifest.focusCockpitLoader.evidence.path) -Destination $focusPath -Force
+    $manifest.focusCockpitLoader.evidence.sha256=(Get-FileHash -LiteralPath $focusPath).Hash
+    Write-Manifest
+    $manifest.cockpitTexturesLoader.offlineVerified=$false; Write-Manifest
+    Reject { Get-LauncherVrPreviewProxy @request } '*lacks qualification*'
+    $manifest.cockpitTexturesLoader.offlineVerified=$true; Write-Manifest
+    $cockpitPath=Join-Path $fixture $manifest.cockpitTexturesLoader.evidence.path
+    $cockpitProof=Get-Content -LiteralPath $cockpitPath -Raw | ConvertFrom-Json
+    $cockpitProof.previousProxySha256='0'*64
+    $cockpitProof | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $cockpitPath -Encoding utf8
+    Reject { Get-LauncherVrPreviewProxy @request } '*files changed*'
+    $manifest.cockpitTexturesLoader.evidence.sha256=(Get-FileHash -LiteralPath $cockpitPath).Hash; Write-Manifest
+    Reject { Get-LauncherVrPreviewProxy @request } '*cockpit textures qualification*'
+    Copy-Item -LiteralPath (Join-Path $root $manifest.cockpitTexturesLoader.evidence.path) -Destination $cockpitPath -Force
+    $manifest.cockpitTexturesLoader.evidence.sha256=(Get-FileHash -LiteralPath $cockpitPath).Hash; Write-Manifest
     $performancePath=Join-Path $fixture $manifest.performancePlacement.evidence.path
     $performanceProof=Get-Content -LiteralPath $performancePath -Raw | ConvertFrom-Json
     $performanceProof.previousProxySha256='0'*64
