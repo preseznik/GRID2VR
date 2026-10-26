@@ -119,7 +119,7 @@ internal sealed class Updates(HttpClient http)
     public async Task<string> Download(ReleaseInstaller asset, string root, IProgress<int>? progress, CancellationToken cancellation)
     {
         if (asset.Size is <= 0 or > MaxInstaller || Path.GetFileName(asset.Name) != asset.Name || !Regex.IsMatch(asset.Sha256, @"\A[0-9a-f]{64}\z") ||
-            !asset.Url.AbsoluteUri.StartsWith(Repository + "/releases/download/", StringComparison.Ordinal)) throw new IOException("Invalid installer metadata.");
+            !asset.Url.AbsoluteUri.StartsWith(Repository + "/releases/download/", StringComparison.Ordinal)) throw new IOException("Invalid download metadata.");
         var folder = Path.Combine(AppPaths.Data(root), "updates"); PlainPath(folder); Directory.CreateDirectory(folder);
         var target = Path.Combine(folder, asset.Name); PlainPath(target);
         var partial = target + "." + Guid.NewGuid().ToString("N") + ".part";
@@ -128,7 +128,7 @@ internal sealed class Updates(HttpClient http)
             using var request = Request(asset.Url);
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation);
             response.EnsureSuccessStatusCode();
-            if (response.Content.Headers.ContentLength is long length && length != asset.Size) throw new IOException("Installer size differs from release metadata.");
+            if (response.Content.Headers.ContentLength is long length && length != asset.Size) throw new IOException("Download size differs from release metadata.");
             await using (var source = await response.Content.ReadAsStreamAsync(cancellation))
             await using (var output = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, true))
             using (var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
@@ -136,11 +136,11 @@ internal sealed class Updates(HttpClient http)
                 var buffer = new byte[65536]; long total = 0; int count;
                 while ((count = await source.ReadAsync(buffer, cancellation)) != 0)
                 {
-                    total += count; if (total > asset.Size) throw new IOException("Installer download exceeds its declared size.");
+                    total += count; if (total > asset.Size) throw new IOException("Download exceeds its declared size.");
                     hash.AppendData(buffer, 0, count); await output.WriteAsync(buffer.AsMemory(0, count), cancellation);
                     progress?.Report((int)(100 * total / asset.Size));
                 }
-                if (total != asset.Size || Convert.ToHexStringLower(hash.GetHashAndReset()) != asset.Sha256) throw new IOException("Installer verification failed; download discarded.");
+                if (total != asset.Size || Convert.ToHexStringLower(hash.GetHashAndReset()) != asset.Sha256) throw new IOException("Download verification failed; download discarded.");
                 await output.FlushAsync(cancellation);
             }
             cancellation.ThrowIfCancellationRequested(); File.Move(partial, target, true); return target;

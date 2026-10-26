@@ -155,7 +155,14 @@ internal sealed class MainForm : LauncherForm
         cockpitTextures.Items.AddRange(new ContentItem[] { new("Off", "Old cockpit textures"), new("Replace", "New cockpit textures") });
         cockpitTextures.SelectedIndex = 0;
         Field(graphics, "Cockpit textures", cockpitTextures);
-        graphics.Controls.Add(TextLabel("Choose the original artwork or the optional new texture pack for all cars, in desktop and VR. Install the pack under GRID2VR first. Applies on the next launch; missing textures use the originals."));
+        graphics.Controls.Add(TextLabel("Choose New cockpit textures to download and install the optional pack automatically (123 MB, once). Applies to the next desktop or VR launch. Old cockpit textures restores the original artwork."));
+        cockpitTextures.SelectionChangeCommitted += async (_, _) => await Act(() =>
+        {
+            if (EnsureCockpitTextures()) notice.Text = ChoiceId(cockpitTextures) == "Replace"
+                ? "New cockpit textures are ready. Save settings or launch to use them."
+                : "Original cockpit textures selected. Save settings or launch to use them.";
+            return Task.CompletedTask;
+        });
         Section(graphics, "VR HUD");
         Field(graphics, "Distance", hudDistance); Field(graphics, "Follow view", hudFollow);
         graphics.Controls.Add(TextLabel("Distance and Follow view apply to the HUD and results text in stereo VR. Individual HUD elements cannot be hidden yet."));
@@ -279,7 +286,7 @@ internal sealed class MainForm : LauncherForm
 
         desktop.Click += async (_, _) => await Act(() => Launch(false));
         vr.Click += async (_, _) => await Act(() => Launch(true));
-        save.Click += async (_, _) => await Act(() => { seatAlignment.Save(client.Root); client.Save(Current()); notice.Text = "Settings saved. Changes apply to the next session."; return Task.CompletedTask; });
+        save.Click += async (_, _) => await Act(() => { if (EnsureCockpitTextures()) { seatAlignment.Save(client.Root); client.Save(Current()); notice.Text = "Settings saved. Changes apply to the next session."; } return Task.CompletedTask; });
         drivingControls.Click += async (_, _) => await Act(() => { using var dialog = new DrivingControlsForm(client.Root); dialog.ShowDialog(this); return Task.CompletedTask; });
         recenter.Click += (_, _) => { capturingRecenter = true; recenter.Text = "Press a key…"; EnableActions(); };
         bindRecenterDevice.Click += (_, _) =>
@@ -465,8 +472,21 @@ internal sealed class MainForm : LauncherForm
         if (capturingRecenter) { capturingRecenter = false; UpdateRecenterLabel(); EnableActions(); }
         base.OnDeactivate(e);
     }
+    private bool EnsureCockpitTextures()
+    {
+        if (ChoiceId(cockpitTextures) != "Replace") return true;
+        using var dialog = new CockpitTextureForm(client);
+        LauncherAppearance.Apply(dialog);
+        if (dialog.ShowDialog(this) == DialogResult.OK) return true;
+        SelectChoice(cockpitTextures, "Off");
+        notice.Text = "Cockpit texture setup did not finish. Original textures selected; choose New cockpit textures to retry.";
+        if (dialog.Failure is not null) MessageBox.Show(this, dialog.Failure.Message, "Cockpit textures", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        return false;
+    }
+
     private async Task Launch(bool inVr)
     {
+        if (!EnsureCockpitTextures()) return;
         launchProgress?.Dispose();
         launchProgress = new LaunchProgressForm(inVr);
         launchProgress.Show(this);

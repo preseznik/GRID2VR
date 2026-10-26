@@ -1,3 +1,11 @@
+# GRID2VR 0.1.7 — Experimental
+
+- Select **Graphics → Cockpit textures → New cockpit textures** to download, verify and install the optional artwork inside the launcher.
+- Show download progress and allow cancellation. Reuse an already installed pack after verification, and check it before launching with new textures.
+- Keep the core installer compact and self-contained. The optional 123 MB pack downloads once, when selected; no separate download or commands are needed.
+
+Save settings or launch after selecting the textures. **Old cockpit textures** switches back to the original artwork. This release retains the Steam compatibility fixes from 0.1.6. Per-car headset visual acceptance for the texture preview remains pending.
+
 # GRID2VR 0.1.6 — Experimental
 
 - Fix installation and launch checks rejecting valid Steam copies of the supported GRID 2 version because their executable hashes differ.

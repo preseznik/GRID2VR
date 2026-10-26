@@ -297,6 +297,7 @@ internal static class SelfTests
             LaunchProgressTests.Run(root);
             DesktopWindowTests.Run(fixture);
             CockpitTests.Run(client);
+            CockpitTexturePackTests.Run(root, fixture);
             LauncherFeaturesTests.Run(fixture);
             UpdateNotificationTests.Run(root, client);
             InstallationTests.Run(fixture);

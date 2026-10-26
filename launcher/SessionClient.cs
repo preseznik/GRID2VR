@@ -48,7 +48,7 @@ internal sealed class SessionClient(string root)
 
     public ProcessStartInfo Command(string script, params string[] arguments)
     {
-        if (script is not ("Start-UserSession.ps1" or "Session-Control.ps1")) throw new ArgumentException("Unknown command.");
+        if (script is not ("Start-UserSession.ps1" or "Session-Control.ps1" or "Cockpit-TexturePack.ps1")) throw new ArgumentException("Unknown command.");
         var shell = AppPaths.Shell(Root);
         if (!File.Exists(shell)) throw new IOException("PowerShell 7 is required for this workspace prototype.");
         var info = new ProcessStartInfo(shell) { WorkingDirectory = Root, UseShellExecute = false, CreateNoWindow = true };

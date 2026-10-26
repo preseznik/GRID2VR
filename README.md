@@ -23,6 +23,8 @@ Supported installed DLC appears in the Practice / Race car and track lists. DLC 
 
 ## Updates and help
 
+For the optional cockpit artwork, open **Graphics → Cockpit textures → New cockpit textures**. The launcher downloads (123 MB), verifies and installs the pack automatically, with download progress and cancellation. Save settings or launch to use it. **Old cockpit textures** switches back to the original artwork. The pack works in desktop and VR; no separate download or commands are needed. Its per-car headset visual checks are still pending.
+
 Use **Help / About** to check for updates and read the instructions. Updates preserve your settings and careers.
 
 Having trouble? [Report an issue](https://github.com/preseznik/GRID2VR/issues) with your headset/runtime, what happened, and the latest session logs from **Open logs**.
