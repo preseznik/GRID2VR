@@ -28,7 +28,7 @@ internal sealed class UpdatesPanel : UserControl
     private readonly string root;
     private readonly CheckBox startup = new() { Text = "Check for updates at startup", AutoSize = true };
     private readonly CheckBox experimental = new() { Text = "Include experimental releases", AutoSize = true };
-    private readonly Label status = new() { Text = "Check GitHub for a newer release.", AutoSize = true };
+    private readonly Label status = new() { Name = "UpdateStatus", Text = "Check GitHub for a newer release.", AutoSize = true };
     private readonly Button check = new() { Text = "Check for updates", AutoSize = true };
     private readonly Button install = new() { Text = "Download and install…", AutoSize = true, Enabled = false };
     private readonly Button cancel = new() { Text = "Cancel download", AutoSize = true, Visible = false };
@@ -36,13 +36,16 @@ internal sealed class UpdatesPanel : UserControl
     private readonly Button stable = new() { Text = "Return to stable…", AutoSize = true, Visible = BuildInfo.Channel == "Experimental" };
     private readonly ProgressBar progress = new() { Dock = DockStyle.Top, Visible = false };
     private readonly HttpClient http = Updates.CreateClient();
+    private readonly Func<bool, CancellationToken, Task<AppRelease?>> checkForRelease;
     private CancellationTokenSource? operation;
     private AppRelease? release;
     private bool sessionIdle;
-    public event Action<string>? UpdateAvailable;
+    public event Action<AppRelease?>? UpdateAvailable;
+    public AppRelease? AvailableUpdate => returningStable ? null : release;
     private bool returningStable;
-    public UpdatesPanel(string path, bool about = false)
+    public UpdatesPanel(string path, bool about = false, Func<bool, CancellationToken, Task<AppRelease?>>? releaseCheck = null)
     {
+        checkForRelease = releaseCheck ?? ((preview, token) => new Updates(http).Check(preview, token));
         root = path; AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink; Dock = DockStyle.Top; Name = "Updates";
         var layout = new VerticalStack(); Controls.Add(layout);
         if (!about)
@@ -63,17 +66,23 @@ internal sealed class UpdatesPanel : UserControl
         notes.Click+=(_,_)=>{if(release is not null)Process.Start(new ProcessStartInfo(release.Page.AbsoluteUri){UseShellExecute=true});};
         stable.Click+=async (_,_)=>await ReturnStable();
         startup.CheckedChanged += (_, _) => Save();
-        experimental.CheckedChanged += (_, _) => { release = null; Enable(); Save(); };
+        experimental.CheckedChanged += async (_, _) =>
+        {
+            if (initializing) return;
+            SetRelease(null); Save(); await Check();
+        };
     }
-    public async Task Start(bool checkAtStartup = true)
+    public async Task Start(bool checkAtStartup = true, bool forceCheck = false)
     {
         try
         {
             var prefs = UpdatePreferences.Load(root);
-            initializing = true; startup.Checked = prefs.CheckAtStartup; experimental.Checked = prefs.Experimental; initializing = false;
-            if (checkAtStartup && startup.Checked) await Check();
+            initializing = true;
+            try { startup.Checked = prefs.CheckAtStartup; experimental.Checked = prefs.Experimental; }
+            finally { initializing = false; }
+            if (forceCheck || checkAtStartup && startup.Checked) await Check();
         }
-        catch (Exception ex) { status.Text = ex.Message; }
+        catch (Exception ex) { if (!IsDisposed) status.Text = ex.Message; }
     }
     private bool initializing;
     private void Save()
@@ -83,6 +92,13 @@ internal sealed class UpdatesPanel : UserControl
         catch (Exception ex) { status.Text = ex.Message; }
     }
     public void SetIdle(bool idle) { sessionIdle = idle; Enable(); }
+    internal void SetRelease(AppRelease? value)
+    {
+        if (IsDisposed) return;
+        release = value; returningStable = false;
+        status.Text = release is null ? "You have the latest available release." : $"Update available: {release.Tag}" + (release.Installer is null ? ". No verified installer is attached; open GitHub releases." : ". Ready to download.");
+        Enable(); UpdateAvailable?.Invoke(release);
+    }
     private void Enable()
     {
         check.Enabled = experimental.Enabled = operation is null;
@@ -92,16 +108,19 @@ internal sealed class UpdatesPanel : UserControl
     }
     private async Task Check()
     {
-        if (operation is not null) return;
+        if (IsDisposed || operation is not null) return;
         operation = new(); Enable(); status.Text = "Checking GitHub…";
+        var token = operation.Token;
+        var includeExperimental = experimental.Checked;
         returningStable=false;
         try
         {
-            release = await new Updates(http).Check(experimental.Checked, operation.Token);
-            if (!IsDisposed) status.Text = release is null ? "You have the latest available release." : $"Update available: {release.Tag}" + (release.Installer is null ? ". No verified installer is attached; open GitHub releases." : ". Ready to download.");
-            if (!IsDisposed && release is not null) UpdateAvailable?.Invoke(release.Tag);
+            var result = await checkForRelease(includeExperimental, token);
+            if (IsDisposed || token.IsCancellationRequested || UpdatePreferences.Load(root).Experimental != includeExperimental) return;
+            SetRelease(result);
         }
-        catch (Exception ex) { release = null; if (!IsDisposed) status.Text = "Update check failed: " + ex.Message; }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex) { if (!IsDisposed) { SetRelease(null); status.Text = "Update check failed: " + ex.Message; } }
         finally { operation.Dispose(); operation = null; if (!IsDisposed) Enable(); }
     }
     private async Task ReturnStable()

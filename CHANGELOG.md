@@ -1,3 +1,11 @@
+# GRID2VR 0.1.5 — Experimental
+
+- Automatically check for updates at startup and show New version available beside ? when an update is found.
+- Check for updates automatically when Help / About opens or the experimental-release preference changes.
+- Mark DLC cars and tracks with (DLC) in the selection lists and session summary.
+
+Startup checks respect your saved setting. Experimental updates remain optional; installation starts only when you choose Download and install.
+
 # GRID2VR 0.1.4 — Experimental
 
 - Select supported installed DLC cars and tracks in Practice / Race, including Spa-Francorchamps and Bathurst.

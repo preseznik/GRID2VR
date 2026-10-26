@@ -2,7 +2,11 @@ namespace GRID2VR;
 
 internal sealed class AboutForm : LauncherForm
 {
-    public AboutForm(string root, int recenterKey, int recenterModifiers, string? topic = null, bool sessionIdle = true)
+    private readonly UpdatesPanel updates;
+    public AppRelease? AvailableUpdate => updates.AvailableUpdate;
+    public event Action<AppRelease?>? UpdateAvailable;
+    public AboutForm(string root, int recenterKey, int recenterModifiers, string? topic = null, bool sessionIdle = true,
+        AppRelease? knownUpdate = null, Func<bool, CancellationToken, Task<AppRelease?>>? releaseCheck = null)
     {
         Text = "GRID2VR — Help / About";
         Font = new Font("Segoe UI", 10);
@@ -36,8 +40,10 @@ internal sealed class AboutForm : LauncherForm
         };
         links.Controls.Add(readme);
         Link("GitHub / report an issue",Updates.Repository+"/issues"); Link("Releases",Updates.Repository+"/releases");content.Controls.Add(links);
-        var updates=new UpdatesPanel(root,about:true);content.Controls.Add(updates);
-        Shown+=async (_,_)=>{updates.SetIdle(sessionIdle);await updates.Start(checkAtStartup:false);};
+        updates=new UpdatesPanel(root,about:true,releaseCheck:releaseCheck);content.Controls.Add(updates);
+        updates.UpdateAvailable += result => UpdateAvailable?.Invoke(result);
+        if (knownUpdate is not null) updates.SetRelease(knownUpdate);
+        Shown+=async (_,_)=>{updates.SetIdle(sessionIdle);await updates.Start(forceCheck:true);};
 
         var instructionLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         instructionLayout.ColumnStyles.Add(new(SizeType.Percent, 100));

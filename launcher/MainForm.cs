@@ -9,6 +9,8 @@ internal sealed class MainForm : LauncherForm
     private readonly SessionClient client;
     private readonly ProfilePanel profiles;
     private readonly UpdatesPanel updates;
+    private readonly Button updateNotice = new() { Text = "New version available", Name = "UpdateAvailable", AutoSize = true, Visible = false, Anchor = AnchorStyles.Right };
+    private AppRelease? availableUpdate;
     private readonly ComboBox car = Choice("PracticeCar"), track = Choice("PracticeTrack"), eventChoice = Choice("PracticeEvent"), runtime = Choice("Runtime");
     private readonly ComboBox launchMode = Choice("LaunchMode"), opponentCars = Choice("OpponentCars");
     private readonly Label opponentHint = TextLabel("");
@@ -67,11 +69,11 @@ internal sealed class MainForm : LauncherForm
     private LauncherWindow window = new();
     private bool windowLoaded;
 
-    public MainForm(SessionClient value, ProfileStore? profileStore = null)
+    public MainForm(SessionClient value, ProfileStore? profileStore = null, Func<bool, CancellationToken, Task<AppRelease?>>? releaseCheck = null)
     {
         client = value;
-        updates = new UpdatesPanel(client.Root);
-        updates.UpdateAvailable += version => { if (!active && !pending) notice.Text = $"GRID2VR {version} is available. Open Settings → Updates to download it."; };
+        updates = new UpdatesPanel(client.Root, releaseCheck: releaseCheck);
+        updates.UpdateAvailable += ShowUpdateNotice;
         profiles = new ProfilePanel(profileStore ?? ProfileService.Open(client.Root));
         Text = "GRID2VR — " + BuildInfo.Channel; Font = new Font("Segoe UI", 10);
         previewVrFixes.Visible = !AppPaths.Packaged(client.Root);
@@ -82,12 +84,13 @@ internal sealed class MainForm : LauncherForm
         layout.ColumnStyles.Add(new(SizeType.Percent, 100));
         foreach (var size in new[] { SizeType.AutoSize, SizeType.AutoSize, SizeType.Percent, SizeType.AutoSize, SizeType.AutoSize })
             layout.RowStyles.Add(new(size, size == SizeType.Percent ? 100 : 0));
-        var header = new TableLayoutPanel { ColumnCount = 3, Dock = DockStyle.Fill, AutoSize = true };
-        header.ColumnStyles.Add(new(SizeType.AutoSize)); header.ColumnStyles.Add(new(SizeType.Percent, 100)); header.ColumnStyles.Add(new(SizeType.AutoSize));
+        var header = new TableLayoutPanel { ColumnCount = 4, Dock = DockStyle.Fill, AutoSize = true };
+        header.ColumnStyles.Add(new(SizeType.AutoSize)); header.ColumnStyles.Add(new(SizeType.Percent, 100)); header.ColumnStyles.Add(new(SizeType.AutoSize)); header.ColumnStyles.Add(new(SizeType.AutoSize));
         var title = TextLabel("GRID 2 VR"); title.Font = new Font(Font.FontFamily, 20, FontStyle.Bold);
         var help = new Button { Text = "?", Name = "HelpAbout", AccessibleName = "Help / About", Size = new Size(36, 36), Anchor = AnchorStyles.Right };
         help.Click += (_, _) => ShowAbout();
-        header.Controls.Add(Branding.Logo(64)); header.Controls.Add(title); header.Controls.Add(help);
+        updateNotice.Click += (_, _) => ShowAbout();
+        header.Controls.Add(Branding.Logo(64)); header.Controls.Add(title); header.Controls.Add(updateNotice); header.Controls.Add(help);
         HelpRequested += (_, e) => { e.Handled = true; ShowAbout(); };
         layout.Controls.Add(header); state.Margin = new Padding(0, 8, 0, 16); layout.Controls.Add(state);
         var tabs = new ModernTabs { Name = "LauncherTabs", Dock = DockStyle.Fill };
@@ -305,6 +308,7 @@ internal sealed class MainForm : LauncherForm
         };
         Shown += async (_, _) =>
         {
+            var updateCheck = updates.Start();
             RestoreWindow();
             profiles.Reload();
             await Act(async () =>
@@ -320,7 +324,7 @@ internal sealed class MainForm : LauncherForm
                 if (!loaded) throw new IOException("No compatible installed practice content found.");
             });
             await RefreshStatus(); timer.Start();
-            await updates.Start();
+            await updateCheck;
         };
         ConfigureTooltips(help, logs);
         UpdateRequestedSession();
@@ -563,9 +567,22 @@ internal sealed class MainForm : LauncherForm
     }
     private async void ShowAbout(string? topic = null)
     {
-        using var dialog = new AboutForm(client.Root, recenterKey, recenterModifiers, topic, sessionIdle: !active && !pending && !busy);
+        using var dialog = new AboutForm(client.Root, recenterKey, recenterModifiers, topic, sessionIdle: !active && !pending && !busy, knownUpdate: availableUpdate);
+        dialog.UpdateAvailable += ShowUpdateNotice;
         dialog.ShowDialog(this);
-        if(!IsDisposed) await updates.Start(checkAtStartup:false);
+        if (!IsDisposed)
+        {
+            await updates.Start(checkAtStartup:false);
+            updates.SetRelease(dialog.AvailableUpdate);
+        }
+    }
+    private void ShowUpdateNotice(AppRelease? result)
+    {
+        if (IsDisposed) return;
+        availableUpdate = result;
+        updateNotice.Visible = result is not null;
+        updateNotice.AccessibleDescription = result is null ? "" : $"Version {result.Tag} is available. Open Help / About to review and install.";
+        tips.SetToolTip(updateNotice, updateNotice.AccessibleDescription);
     }
     private LinkLabel HelpLink(string topic)
     {

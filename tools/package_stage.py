@@ -36,6 +36,9 @@ def stage(a):
         copy(ROOT/'tools'/name,mod/'tools'/name)
     for name in DATA_FILES:copy(ROOT/'tools/data'/name,mod/'tools/data'/name)
     copy(ROOT/'README.md',mod/'README.md');copy(ROOT/'CHANGELOG.md',mod/'CHANGELOG.md')
+    notes=(ROOT/'CHANGELOG.md').read_text(encoding='utf-8-sig').split('\n# ',1)[0].removeprefix('# ').strip()+'\n'
+    (mod/'ReleaseNotes.txt').write_text(notes,encoding='utf-8-sig')
+    (out/'ReleaseNotes.md').write_text(notes.split('\n',1)[1].lstrip(),encoding='utf-8')
     tree(ROOT/'licenses',mod/'licenses')
     tree(Path('C:/Program Files/PowerShell/7'),payload/'powershell',('*.pdb','*.xml','ref','SDK','en-US'))
     py=a.python.parent

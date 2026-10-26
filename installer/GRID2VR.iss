@@ -30,6 +30,7 @@ CloseApplications=no
 AppMutex=Global\GRID2VR.Session
 SetupLogging=yes
 SetupIconFile=..\launcher\assets\GRID2VR.ico
+InfoBeforeFile={#Stage}\GRID2VR\ReleaseNotes.txt
 
 [Files]
 Source: "{#Stage}\GRID2VR.exe"; DestDir: "{app}"; Flags: ignoreversion
