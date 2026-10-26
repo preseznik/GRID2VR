@@ -122,6 +122,7 @@ foreach($name in $expected.Keys) {
     if((Get-FileHash -LiteralPath (Join-Path $game $name)).Hash -ne $expected[$name]) { throw "Unsupported $name." }
 }
 # Desktop runs need no installed headset runtime. Preflight validates the selection.
+if($UntilExit -and $Mode -eq 'Headset') { Write-Output 'GRID2VR_LAUNCH|Checking the selected OpenXR runtime...' }
 $runtimeInfo=if($Mode -ne 'Desktop'){Resolve-Grid2VrRuntime $runtime}else{$null}
 $suppressTheater=$Mode -eq 'Headset' -and $runtimeInfo.theaterSuppression
 if(!(Test-Grid2Package $root)) {
@@ -148,6 +149,7 @@ if($CockpitS2000 -ne 'Off') {
 }
 $cockpitAssets=@()
 if($CockpitMode -ne 'Off') {
+    if($UntilExit -and $Mode -ne 'Preflight') { Write-Output 'GRID2VR_LAUNCH|Checking cockpit cameras and car assets...' }
     if(!$RuntimeSession -or (!$UntilExit -and !$ExposureAudit) -or $PlayerControlOnly -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off' -or (!$ExposureAudit -and $Mode -notin @('Preflight','Headset'))) { throw 'Launcher cockpit assets require a VR user session or bounded exposure audit.' }
     . (Join-Path $PSScriptRoot 'Cockpit-Assets.ps1')
     $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch))
@@ -248,6 +250,7 @@ $backup=Join-Path $artifacts ('stereo-probe-'+(Get-Date -Format 'yyyyMMdd-HHmmss
 New-Item -ItemType Directory -Path $backup | Out-Null
 $preflight | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $backup 'preflight.json')
 $files=@(); $i=0
+if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|Backing up original settings and protected files...' }
 foreach($path in $protectedPaths) {
     $target=Join-Path $backup ("protected-"+($i++)+'.bin')
     [IO.File]::Copy($path,$target,$false)
@@ -269,6 +272,7 @@ if($Mode -eq 'Desktop' -and !$RecordedViewsFile -and !$PlayerControlOnly) {
 }
 $output=[Collections.Generic.List[object]]::new()
 try {
+    if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|Applying temporary launch settings...' }
     if($suppressTheater) {
         & $PythonPath (Join-Path $PSScriptRoot 'steamvr_theater.py') begin --receipt (Join-Path $backup 'theater-begin.json')
         if($LASTEXITCODE) { throw 'SteamVR automatic-theater suppression failed; game not launched.' }

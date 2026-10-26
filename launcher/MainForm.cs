@@ -61,6 +61,9 @@ internal sealed class MainForm : LauncherForm
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 2000 };
     private bool loaded, busy, polling, pending, active, headset, rendering, stopped, known;
     private DateTime launchGrace;
+    private Process? launchWorker;
+    private LaunchProgressForm? launchProgress;
+    private bool launchingVr;
     private LauncherWindow window = new();
     private bool windowLoaded;
 
@@ -287,7 +290,7 @@ internal sealed class MainForm : LauncherForm
         recover.Click += async (_, _) => await Send("Recover", "Original files restored. User save progress retained.");
         logs.Click += async (_, _) => await Act(() => { Process.Start(new ProcessStartInfo(client.LogsFolder()) { UseShellExecute = true }); return Task.CompletedTask; });
         timer.Tick += async (_, _) => await RefreshStatus();
-        FormClosed += (_, _) => { timer.Stop(); timer.Dispose(); tips.Dispose(); };
+        FormClosed += (_, _) => { timer.Stop(); timer.Dispose(); tips.Dispose(); launchProgress?.Dispose(); launchWorker?.Dispose(); launchWorker = null; };
         SizeChanged += (_, _) =>
         {
             if (!windowLoaded || WindowState == FormWindowState.Minimized) return;
@@ -451,13 +454,34 @@ internal sealed class MainForm : LauncherForm
         if (capturingRecenter) { capturingRecenter = false; UpdateRecenterLabel(); EnableActions(); }
         base.OnDeactivate(e);
     }
-    private Task Launch(bool inVr)
+    private async Task Launch(bool inVr)
     {
-        seatAlignment.Save(client.Root);
-        client.Launch(Current(), inVr); launchGrace = DateTime.UtcNow.AddSeconds(10);
-        state.Text = "Starting session…"; notice.Text = "Select GRID 2 while it loads. VR starts once the game and tracking are ready." +
-            (inVr ? $" Press {RecenterShortcut.Label(recenterKey, recenterModifiers)} in the game to recenter." : "");
-        return Task.CompletedTask;
+        launchProgress?.Dispose();
+        launchProgress = new LaunchProgressForm(inVr);
+        launchProgress.Show(this);
+        await Task.Yield();
+        if (IsDisposed) return;
+        try
+        {
+            seatAlignment.Save(client.Root);
+            launchWorker = client.Launch(Current(), inVr); launchingVr = inVr;
+            launchGrace = DateTime.UtcNow.AddSeconds(10);
+            launchProgress.DisplayProgress(new("Starting the launch worker…"));
+            state.Text = "Starting session…";
+            notice.Text = inVr ? $"Select GRID 2 while it loads. VR starts once the game and tracking are ready. Press {RecenterShortcut.Label(recenterKey, recenterModifiers)} in the game to recenter."
+                : "GRID 2 is starting. The progress window will close when the game window opens.";
+        }
+        catch (Exception error) { launchProgress.DisplayProgress(new(error.Message, Failed: true)); throw; }
+    }
+
+    private void UpdateLaunchProgress(JsonElement data)
+    {
+        if (launchWorker is null) return;
+        var update = LaunchProgress.Read(data, launchWorker.Id, launchWorker.StartTime.ToUniversalTime().Ticks, launchingVr, launchWorker.HasExited);
+        launchProgress?.DisplayProgress(update);
+        if (!update.Finished && !update.Failed) return;
+        if (update.Failed) notice.Text = update.Message;
+        launchWorker.Dispose(); launchWorker = null; launchGrace = default;
     }
     private Task Send(string action, string message) => Act(async () => { await client.Control(action); if (!IsDisposed) notice.Text = message; });
     private async Task Act(Func<Task> action)
@@ -472,10 +496,12 @@ internal sealed class MainForm : LauncherForm
     {
         if (polling || busy || IsDisposed) return;
         polling = true;
+        var polledWorker = launchWorker;
         try
         {
             var data = await client.Control("Status");
             if (IsDisposed) return;
+            if (ReferenceEquals(polledWorker, launchWorker)) UpdateLaunchProgress(data);
             var session = Child(data, "session"); var last = Child(data, "last"); var status = Child(data, "status");
             pending = Flag(data, "pending"); active = Flag(session, "workerAlive") || (Flag(last, "workerAlive") && TextValue(last, "state") == "starting");
             measuredScene.Text = LauncherPresentation.MeasuredScene(Child(data, "resolution"), pending || active);
@@ -491,12 +517,24 @@ internal sealed class MainForm : LauncherForm
             else state.Text = TextValue(last, "message", "Ready. Select a car and track, then Launch or Launch VR.");
             details.Text = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
         }
-        catch (Exception error) { if (!IsDisposed) { known = false; state.Text = "Session status unavailable: " + error.Message; measuredScene.Text = "Measurement unavailable: session status could not be read."; } }
+        catch (Exception error)
+        {
+            if (!IsDisposed)
+            {
+                known = false; state.Text = "Session status unavailable: " + error.Message;
+                measuredScene.Text = "Measurement unavailable: session status could not be read.";
+                if (launchWorker is not null)
+                {
+                    if (launchWorker.HasExited) UpdateLaunchProgress(default);
+                    else launchProgress?.DisplayProgress(new("Waiting for launch status. Loading continues…"));
+                }
+            }
+        }
         finally { polling = false; if (!IsDisposed) EnableActions(); }
     }
     private void EnableActions()
     {
-        var idle = known && !pending && !active && DateTime.UtcNow >= launchGrace && !busy;
+        var idle = known && !pending && !active && launchWorker is null && DateTime.UtcNow >= launchGrace && !busy;
         profiles.SetIdle(idle);
         updates.SetIdle(idle);
         var selected = loaded && car.SelectedItem != null && track.SelectedItem != null && runtime.SelectedItem != null;

@@ -456,6 +456,7 @@ $timer=[Diagnostics.Stopwatch]::StartNew()
 $seen=@{}; $handles=@{}; $captureTimes=if($RunKind -eq 'Probe'){@($CaptureAfterSeconds)}else{@($CaptureAfterSeconds,($CaptureAfterSeconds+30),($CaptureAfterSeconds+60))}; $requested=@{}
 try {
     Write-Output "Diagnostic evidence: $run"
+    if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|Installing temporary session files...' }
     if($practiceFlow) { Install-PracticeFlow $game $run $practiceFlow }
     if($cockpitCamera) { Install-CockpitCamera $game $run $cockpitCamera }
     if($cockpitAssets.Count) { Install-CockpitAssets $game $run $cockpitAssets }
@@ -467,7 +468,9 @@ try {
         if ((Get-FileHash -LiteralPath (Join-Path $game $entry.name)).Hash -ne $entry.sha256) { throw "Deployed file changed before launch: $($entry.name)" }
     }
     if ($selectedSession -and (Get-FileHash -LiteralPath $selectedSession.configuration).Hash -ne $selectedSession.configurationSha256) { throw 'Staged session changed before launch.' }
+    if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|Starting GRID 2 through Steam...' }
     Start-Process -FilePath (Join-Path (Get-Grid2SteamRoot) 'steam.exe') -ArgumentList $steamArgumentLine -WindowStyle Hidden | Out-Null
+    $gameWindowReported=$false
     $stereoReadyReported=$false
     $captureCompleteAt=$null
     while ($UntilExit -or $timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
@@ -490,6 +493,21 @@ try {
                     catch { [IO.File]::WriteAllText((Join-Path $run 'recenter-controller.json'),(@{result=$_.Exception.Message;requests=0} | ConvertTo-Json)); Write-Warning "Device recenter unavailable: $_" }
                 }
                 Write-Output "Observed $($p.Name), PID $($p.ProcessId)"
+                if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|GRID 2 is running; waiting for its window...' }
+            }
+        }
+        if($UntilExit -and !$gameWindowReported) {
+            # Passive observation of retained, owned process handles only. Never
+            # activate a window or make the game wait for the progress popup.
+            foreach($owned in $handles.Values) {
+                try {
+                    $owned.Refresh()
+                    if(!$owned.HasExited -and $owned.MainWindowHandle -ne [IntPtr]::Zero) {
+                        $gameWindowReported=$true
+                        Write-Output 'GRID2VR_GAME_WINDOW_READY'
+                        break
+                    }
+                } catch { } # An exiting process must not turn progress observation into a session failure.
             }
         }
         if($career.id -ne 'current' -and (Test-Path -LiteralPath (Join-Path $run 'profile-storage.json'))) {

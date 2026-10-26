@@ -294,6 +294,7 @@ internal static class SelfTests
             using var invalidSize = JsonDocument.Parse("{\"scene\":{\"width\":\"3840\",\"height\":2160},\"sceneObserved\":true}");
             Check(LauncherPresentation.MeasuredScene(invalidSize.RootElement, true) == "Current session: scene not yet measured.");
             LaunchModeTests.Run(client);
+            LaunchProgressTests.Run(root);
             DesktopWindowTests.Run(fixture);
             CockpitTests.Run(client);
             LauncherFeaturesTests.Run(fixture);

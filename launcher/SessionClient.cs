@@ -194,12 +194,12 @@ internal sealed class SessionClient(string root)
         return command;
     }
 
-    public void Launch(Choices value, bool vr)
+    public Process Launch(Choices value, bool vr)
     {
         var command = PrepareLaunchCommand(value, vr);
         Save(value);
         // No redirected streams: the independent worker survives closing this UI.
-        using var process = Process.Start(command) ?? throw new IOException("Could not start the session worker.");
+        return Process.Start(command) ?? throw new IOException("Could not start the session worker.");
     }
 
     internal string? ExportDrivingControls()

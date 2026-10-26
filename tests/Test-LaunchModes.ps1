@@ -32,6 +32,40 @@ foreach($invalid in @(@{LaunchMode='Replay'},@{Opponents=0},@{Opponents=8},@{Opp
 $fixture=Join-Path $root ('build/launch-mode-test-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 try {
+    # Exercise the launch progress transport with fixture receipts and fake owned
+    # processes. No live window or game is inspected or controlled.
+    $progressStatements=@($start.FindAll({param($node)
+        $node -is [Management.Automation.Language.IfStatementAst] -and
+        ($node.Clauses[0].Item1.Extent.Text.Contains("StartsWith('GRID2VR_LAUNCH|'") -or
+         $node.Clauses[0].Item1.Extent.Text.Contains("-ceq 'GRID2VR_GAME_WINDOW_READY'"))
+    },$true))
+    if($progressStatements.Count -ne 2) { throw 'Launch progress receiver missing.' }
+    $receive=[scriptblock]::Create(($progressStatements.Extent.Text -join "`n"))
+    & {
+        param($Receiver,$Directory)
+        function Get-Grid2DataRoot { return $Directory }
+        function Write-SessionJson($Path,$Value) { [IO.File]::WriteAllText($Path,($Value | ConvertTo-Json)) }
+        foreach($Mode in @('Desktop','VR')) {
+            $receipt=@{state='starting'}
+            $_='GRID2VR_LAUNCH|Backing up original files...'; . $Receiver
+            $saved=Get-Content -LiteralPath (Join-Path $Directory 'user-session-last.json') -Raw | ConvertFrom-Json
+            if($saved.message -ne 'Backing up original files...' -or $saved.state -ne 'starting' -or $saved.gameWindowReady) { throw 'Progress lost or changed session state.' }
+            $_='unrelated worker output'; . $Receiver
+            if($receipt.message -ne $saved.message) { throw 'Ordinary output changed progress.' }
+            $_='GRID2VR_GAME_WINDOW_READY'; . $Receiver
+            if(!$receipt.gameWindowReady -or $receipt.state -ne 'starting') { throw 'Game window observation was not recorded.' }
+        }
+    } $receive $fixture
+    $diagnostic=Read-TestAst 'Run-Diagnostic.ps1'
+    $windowProgress=Find-TestStatement $diagnostic 'if($UntilExit -and !$gameWindowReported)'
+    foreach($case in @('no-process','hidden','visible','exited','read-failed','already-reported','bounded')) {
+        $UntilExit=$case -ne 'bounded'; $gameWindowReported=$case -eq 'already-reported'; $handles=@{}
+        $owned=[pscustomobject]@{HasExited=($case -eq 'exited');MainWindowHandle=[IntPtr]$(if($case -eq 'hidden'){0}else{1})}
+        $owned | Add-Member ScriptMethod Refresh $(if($case -eq 'read-failed'){{throw 'Fixture process exited.'}}else{{}})
+        if($case -ne 'no-process') { $handles[123]=$owned }
+        $output=@(. $windowProgress)
+        if(($output -contains 'GRID2VR_GAME_WINDOW_READY') -ne ($case -eq 'visible')) { throw "Incorrect game-window progress for $case." }
+    }
     # Execute the real post-recovery decisions without launching or deploying.
     # Missing activation is only a note for a clean Normal headset session.
     $completion=Find-TestStatement (Read-TestAst 'Run-StereoProbe.ps1') 'Background play guards did not pass'

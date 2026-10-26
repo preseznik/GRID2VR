@@ -81,6 +81,8 @@ try {
     $receipt.removeCinemaMatte=($Mode -eq 'VR')
     Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
     if($PreviewVrFixes) {
+        $receipt.message='Checking the VR renderer...'
+        Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
         . (Join-Path $PSScriptRoot 'Launcher-VrPreview.ps1')
         $DiagnosticProxy=Get-LauncherVrPreviewProxy -Root $root
         $HeadsetVisibilityCandidate=$true; $FlickerDiagnostic=$true
@@ -88,6 +90,8 @@ try {
         Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
     }
     if($career.id -ne 'current') {
+        $receipt.message='Preparing the selected career profile...'
+        Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
         $baseProxy=if($DiagnosticProxy){$DiagnosticProxy}else{Get-Grid2Proxy $root}
         $profileProxy=Get-CareerProfileProxy -Root $root -BaseProxy $baseProxy
         $receipt.proxySha256=(Get-FileHash -LiteralPath $profileProxy).Hash.ToLowerInvariant()
@@ -95,6 +99,8 @@ try {
     }
     $python=Get-SessionPython $root
     $selection=Join-Path (Get-Grid2DataRoot $root) ('user-selection-'+[guid]::NewGuid().ToString('N'))
+    $receipt.message=if($LaunchMode -eq 'Normal'){'Preparing the game menus...'}else{'Preparing the selected car, track and race options...'}
+    Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
     if($LaunchMode -eq 'Normal') {
         # Own only graphics files; Normal uses native menus and no selected flow.
         New-Item -ItemType Directory -Path $selection -ErrorAction Stop | Out-Null
@@ -107,6 +113,8 @@ try {
         if($LASTEXITCODE) { throw "$LaunchMode selection could not be prepared." }
     }
     $hardware=Join-Path $selection 'hardware-settings.xml'
+    $receipt.message='Preparing graphics settings...'
+    Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
     $graphics=& $python (Join-Path $PSScriptRoot 'graphics_profile.py') --output $hardware --game-root (Get-Grid2GameRoot $root) --mode $Mode --render-scale $RenderScale --desktop-vsync $DesktopVSync --desktop-msaa $DesktopMsaa --vr-msaa $VrMsaa --tree-detail $TreeDetail --object-detail $ObjectDetail --crowd-detail $CrowdDetail --texture-filtering $TextureFiltering
     if($LASTEXITCODE) { throw 'Graphics profile could not be prepared; nothing deployed.' }
     $receipt.graphics=$graphics | ConvertFrom-Json
@@ -138,7 +146,18 @@ try {
     $parameters.CareerProfile=$career.id
     # The worker owns its log; closing the launcher cannot close a redirected pipe
     # under a running session. Bound the log even for a user-run session.
+    $receipt.message='Checking game files and launch requirements...'
+    Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
     & (Join-Path $PSScriptRoot 'Run-StereoProbe.ps1') @parameters | ForEach-Object {
+        if($_ -is [string] -and $_.StartsWith('GRID2VR_LAUNCH|',[StringComparison]::Ordinal)) {
+            $receipt.message=$_.Substring('GRID2VR_LAUNCH|'.Length)
+            Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+        }
+        if($_ -ceq 'GRID2VR_GAME_WINDOW_READY') {
+            $receipt.gameWindowReady=$true
+            $receipt.message=if($Mode -eq 'VR'){'Game window open; waiting for the scene and headset...'}else{'GRID 2 window is open.'}
+            Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+        }
         if($_ -is [string] -and $_ -like 'Diagnostic evidence: *') {
             $receipt.run=Get-SessionChild (Get-Grid2DataRoot $root) $_.Substring('Diagnostic evidence: '.Length) '^diagnostic-[0-9-]+$'
         }
