@@ -1,15 +1,16 @@
 # GRID2VR 0.1.9 — Experimental
 
+- Add cockpit views and per-car seat adjustment for the 25 supported DLC cars. You still need to own the corresponding DLC.
+- Start VR Practice and Race in cockpit view when **VR cockpit** is enabled.
 - Fix SteamVR launch preparation failing in installed copies of GRID2VR.
-- Restore temporary changes and release the launcher for retry after a failed launch.
-- Restore files and unlock the launcher automatically after game exit when GRID 2 refreshes its detected memory or display modes.
-- Automatically clear untouched interrupted launches when reopening the launcher or upgrading. Changed files and unfinished restorations retain their recovery safeguards.
-- Support hardware settings in OneDrive Documents folders.
-- Make Open Logs find early startup failures and include the underlying error details.
-- Keep each launch's logs, diagnostics and recovery backups together in its own dated folder.
-- Start VR Practice and Race in cockpit view when VR cockpit is enabled.
-- Add cockpit views and per-car seat adjustment for the 25 supported DLC cars, while retaining the selected career and original game archives.
-- Apply DLC cockpit settings after the race world is ready, avoiding the early startup code hook associated with the reported crash.
+- Restore temporary changes and unlock the launcher after a failed launch or normal game exit, including when GRID 2 refreshes its detected memory or display modes.
+- Recover untouched interrupted launches automatically when reopening the launcher or upgrading. Changed files still require recovery checks.
+- Support game hardware settings stored in OneDrive Documents folders.
+- Make **Open Logs** find early startup failures and show the underlying error. Each launch keeps its logs, diagnostics and recovery backups in a separate dated folder.
+
+For sharper cockpit artwork, select **Graphics → Cockpit textures → New cockpit textures**. The optional 123 MB pack downloads and installs through the launcher; **Old cockpit textures** switches back to the originals. This option was introduced in 0.1.7 and remains available in 0.1.9.
+
+This is an Experimental pre-release. DLC startup, cockpit placement and headset checks with this build are still pending.
 
 # GRID2VR 0.1.7 — Experimental
 
