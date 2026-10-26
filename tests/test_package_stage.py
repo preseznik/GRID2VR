@@ -58,6 +58,8 @@ class PackageDependencies(unittest.TestCase):
             root = Path(temporary)
             copy(ROOT/'tools/session_config.py', root/'tools/session_config.py')
             copy(ROOT/'tools/game_executable.py', root/'tools/game_executable.py')
+            copy(ROOT/'tools/cockpit_dlc.py', root/'tools/cockpit_dlc.py')
+            copy(ROOT/'tools/data/cockpit-dlc.json', root/'tools/data/cockpit-dlc.json')
             for name in DATA_FILES: copy(ROOT/'tools/data'/name, root/'tools/data'/name)
             car = root/'game/cars/models/foc'
             (car/'livery_user').mkdir(parents=True)

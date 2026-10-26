@@ -45,6 +45,7 @@ try {
         param($Receiver,$Directory)
         function Get-Grid2DataRoot { return $Directory }
         function Write-SessionJson($Path,$Value) { [IO.File]::WriteAllText($Path,($Value | ConvertTo-Json)) }
+        function Write-UserSessionStatus($Root,$Value) { Write-SessionJson (Join-Path $Directory 'user-session-last.json') $Value }
         foreach($Mode in @('Desktop','VR')) {
             $receipt=@{state='starting'}
             $_='GRID2VR_LAUNCH|Backing up original files...'; . $Receiver
