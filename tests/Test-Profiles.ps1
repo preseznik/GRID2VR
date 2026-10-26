@@ -23,7 +23,13 @@ try {
     Write-SessionJson (Join-Path $temp 'package.json') @{schema=1;files=@{'GRID2VR/payload/d3d11.dll'=(Get-FileHash -LiteralPath $installed).Hash.ToLowerInvariant()}}
     Check ((Get-CareerProfileProxy -Root $temp -BaseProxy $preview) -eq $installed) 'Packaged career ignored the verified core file.'
     Refuses { Get-CareerProfileProxy -Root $temp -BaseProxy $legacy }
+    # A rebuilt release is qualified by the package manifest, not stale dev pins.
+    [IO.File]::WriteAllText($installed,'new release renderer fixture')
+    Write-SessionJson (Join-Path $temp 'package.json') @{schema=1;files=@{'GRID2VR/payload/d3d11.dll'=(Get-FileHash -LiteralPath $installed).Hash.ToLowerInvariant()}}
+    Check ((Get-CareerProfileProxy -Root $temp -BaseProxy $installed) -eq $installed) 'New manifest-verified release renderer was rejected.'
+    Refuses { Get-CareerProfileProxy -Root $temp -BaseProxy $preview }
     [IO.File]::WriteAllText($installed,'tampered')
+    Refuses { Get-CareerProfileProxy -Root $temp -BaseProxy $installed }
     Refuses { Get-CareerProfileProxy -Root $temp -BaseProxy $preview }
     [IO.File]::Delete((Join-Path $temp 'package.json'))
     Check ((Get-LaunchProfile $temp).id -ceq 'current') 'Default must keep current career.'

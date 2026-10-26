@@ -23,11 +23,39 @@ int main(int argc,char** argv){
         const std::string id="0123456789abcdef0123456789abcdef";
         const auto remote=root/"artifacts"/"profiles"/id/"remote";fs::create_directories(remote);
         Request request;Check(ParseRequest(RequestText(remote,id),request),"valid request");
+        const auto data=root/"artifacts";
+        const auto legacyRun=data/"diagnostic-20261026-212549-730";
+        const auto groupedRun=data/"logs"/"20261026-212549-730";
+        Check(MatchesRunDataRoot(legacyRun,data),"legacy run owns managed career data");
+        Check(MatchesRunDataRoot(groupedRun,data),"grouped run owns same managed career data");
+        Check(!MatchesRunDataRoot(groupedRun,root/"other"/"artifacts"),"different career data root refused");
+        Check(!MatchesRunDataRoot(legacyRun,root/"other"/"artifacts"),"legacy data root mismatch refused");
+        for(const auto& path:{data/"20261026-212549-730",data/"logs"/"diagnostic-20261026-212549-730",
+            data/"logs"/"20261026-212549-73",data/"logs"/"20261026-212549-73x",
+            data/"logs"/"20261026_212549-730",data/"logs"/"arbitrary",
+            data/"diagnostic-1",data/"extra"/"logs"/"20261026-212549-730",groupedRun/"child",
+            data/"other"/".."/"logs"/"20261026-212549-730",fs::path("logs")/"20261026-212549-730"})
+            Check(!MatchesRunDataRoot(path,data),"unowned or malformed run refused");
         Check(!ParseRequest(RequestText(remote,id,"4294967296"),request),"overflow account rejected");
         Check(!ParseRequest(RequestText(remote,id,"0"),request),"zero account rejected");
         Check(!ParseRequest(RequestText(remote,id)+"extra\n",request),"extra request field rejected");
         Check(!ParseRequest(RequestText(remote/"..",id),request),"parent root rejected");
         Check(!ParseRequest(RequestText(root/"remote",id),request),"unowned root rejected");
+        const auto installedData=root/"AEC7E6FDD0327678643088C3";
+        const auto installedRemote=installedData/"profiles"/id/"remote";
+        fs::create_directories(installedRemote);
+        Check(ParseRequest(RequestText(installedRemote,id),request),"installed career request accepted");
+        Check(MatchesRunDataRoot(installedData/"logs"/"20261026-212549-730",
+            request.remote.parent_path().parent_path().parent_path()),"installed grouped run owns career");
+        Check(!MatchesRunDataRoot(data/"logs"/"20261026-212549-730",
+            request.remote.parent_path().parent_path().parent_path()),"different installation career refused");
+        {
+            Store installed(request);Check(installed.Ready(),"installed career store ready");
+            Check(installed.Write("savegame@profile0#TEST","saved",5),"installed career writes locally");
+            Check(fs::exists(installedRemote/"savegame@profile0#TEST"),"installed career file stays in selected profile");
+        }
+        for(const char* dataName:{"aec7e6fdd0327678643088c3","AEC7E6FDD0327678643088C","AEC7E6FDD0327678643088C30","GEC7E6FDD0327678643088C3","unowned"})
+            Check(!ParseRequest(RequestText(root/dataName/"profiles"/id/"remote",id),request),"invalid installation identifier rejected");
         Check(ParseRequest(RequestText(remote,id),request),"request restored");
         for(const char* name:{"../save","a/b","a\\b","c:save","NUL","CON.txt","LPT1.dat","COM9","x ","x.",".","..","","a?b"})
             Check(!ValidFileName(name),"unsafe filename rejected");

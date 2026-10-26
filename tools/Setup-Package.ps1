@@ -15,17 +15,19 @@ function Progress-Step([int]$Percent,[string]$Message) {
 }
 # Each bank is generated from this player's original game. Nothing is downloaded
 # or copied from another player's game or career, and no game file is changed.
-foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras')) {
+foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras','cockpit-start')) {
     switch($bank) {
         'practice-flow-20261014' { Progress-Step 16 'Preparing Practice and Race assets…' }
         'startup-movies' { Progress-Step 22 'Preparing intro and logo skipping…' }
         'cockpit-cameras' { Progress-Step 28 'Checking per-car cockpit cameras…' }
+        'cockpit-start' { Progress-Step 88 'Preparing the VR cockpit starting view…' }
     }
     $target=Join-Path $data $bank
     if(Test-Path -LiteralPath $target) { continue }
     $temporary=Join-Path $data ($bank+'-preparing-'+[guid]::NewGuid().ToString('N'))
-    $scriptName=switch($bank){'practice-flow-20261014'{'practice_entry.py'} 'startup-movies'{'startup_movies.py'} 'cockpit-cameras'{'cockpit_assets.py'}}
-    $arguments=@('-u',(Join-Path $root "tools/$scriptName"),'--game-root',$game,'--converter',$converter,'--output',$temporary)
+    $scriptName=switch($bank){'practice-flow-20261014'{'practice_entry.py'} 'startup-movies'{'startup_movies.py'} 'cockpit-cameras'{'cockpit_assets.py'} 'cockpit-start'{'cockpit_start.py'}}
+    $arguments=@('-u',(Join-Path $root "tools/$scriptName"),'--game-root',$game,'--output',$temporary)
+    if($bank -ne 'cockpit-start') { $arguments+=@('--converter',$converter) }
     if($bank -eq 'cockpit-cameras') { $arguments+=@('--catalog',(Join-Path $root 'tools/data/cockpit-cars.json'),'--progress') }
     try {
         & $python @arguments
@@ -42,6 +44,8 @@ foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras'))
     }
 }
 . (Join-Path $root 'tools/Cockpit-Assets.ps1')
+& $python (Join-Path $root 'tools/cockpit_start.py') --game-root $game --verify (Join-Path $data 'cockpit-start')
+if($LASTEXITCODE) { throw 'Prepared cockpit starting view verification failed.' }
 Progress-Step 90 'Verifying head-only cockpit cameras…'
 $null=Get-CockpitAssetSelection $root $game 'HeadOnly' '' $true
 Progress-Step 94 'Verifying hidden-driver cockpit cameras…'

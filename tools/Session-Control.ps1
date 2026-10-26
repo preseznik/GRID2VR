@@ -38,7 +38,7 @@ if($session.workerAlive -or (Get-Process grid2,grid2_avx -ErrorAction SilentlyCo
 $pending=Join-Path (Get-Grid2DataRoot $root) 'diagnostic-pending.json'
 if(Test-Path -LiteralPath $pending) {
     $deployment=Read-SessionJson $pending
-    $run=Get-SessionChild (Get-Grid2DataRoot $root) $deployment.run '^diagnostic-[0-9-]+$'
+    $run=Get-SessionRun $root $deployment.run
     if($session.run -and $session.run -ne $run) { throw 'Recovery belongs to a different run.' }
     $session.run=$run
     & (Join-Path $PSScriptRoot 'Run-Diagnostic.ps1') -Action Restore | Out-Null
@@ -47,8 +47,7 @@ $documents=Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games/GRI
 Restore-UserSettings $session.backup $documents | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $session.backup 'user-settings-recovered.json')
 $python=Get-SessionPython $root
 if(Test-Path -LiteralPath (Join-Path (Get-Grid2DataRoot $root) 'steamvr-theater-pending.json')) {
-    & $python (Join-Path $PSScriptRoot 'steamvr_theater.py') restore --receipt (Join-Path $session.backup 'theater-restored.json') | Out-Null
-    if($LASTEXITCODE) { throw 'SteamVR theater recovery remains pending.' }
+    Invoke-SteamVrTheater $python restore $session.backup | Out-Null
 }
 if($session.run) {
     Complete-InterruptedSessionReceipt $session.run (Get-Grid2GameRoot $root)

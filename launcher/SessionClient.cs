@@ -130,27 +130,55 @@ internal sealed class SessionClient(string root)
 
     public string LogsFolder()
     {
+        Updates.PlainPath(Artifacts);
+        Directory.CreateDirectory(Artifacts);
         foreach (var name in new[] { "session-pending.json", "user-session-last.json" })
         {
             var path = Path.Combine(Artifacts, name);
             if (!File.Exists(path)) continue;
-            if (new FileInfo(path).Length > 256 * 1024) throw new IOException("Session log metadata exceeds its size limit.");
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            if (document.RootElement.TryGetProperty("run", out var run) && run.ValueKind == JsonValueKind.String && run.GetString() is { Length: > 0 } folder &&
-                OwnedLogFolder(folder) is { } found) return found;
+            try
+            {
+                Updates.PlainPath(path);
+                if (new FileInfo(path).Length > 256 * 1024) return Artifacts;
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                var receipt = document.RootElement;
+                if (receipt.ValueKind != JsonValueKind.Object) return Artifacts;
+                if (receipt.TryGetProperty("logDirectory", out var logDirectory) && logDirectory.ValueKind == JsonValueKind.String &&
+                    logDirectory.GetString() is { Length: > 0 } current && OwnedLogFolder(current) is { } currentLogs) return currentLogs;
+                if (receipt.TryGetProperty("run", out var run) && run.ValueKind == JsonValueKind.String && run.GetString() is { Length: > 0 } folder &&
+                    OwnedLogFolder(folder) is { } found) return found;
+                // Early launch failures have a worker log here, but no diagnostic run yet.
+                if (receipt.TryGetProperty("log", out var log) && log.ValueKind == JsonValueKind.String && log.GetString() is { } file &&
+                    Path.IsPathFullyQualified(file) && string.Equals(Path.GetDirectoryName(Path.GetFullPath(file)), Artifacts, StringComparison.OrdinalIgnoreCase) &&
+                    Regex.IsMatch(Path.GetFileName(file), @"\Auser-session-[0-9a-f]{32}\.log\z")) return Artifacts;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+            {
+                // Broken or incomplete status must not prevent access to the actual logs.
+                return Artifacts;
+            }
         }
+        var logs = Path.Combine(Artifacts, "logs");
+        Updates.PlainPath(logs);
+        if (Directory.Exists(logs))
+            foreach (var folder in Directory.EnumerateDirectories(logs).OrderDescending(StringComparer.OrdinalIgnoreCase))
+                if (OwnedLogFolder(folder) is { } found) return found;
         if (Directory.Exists(Artifacts))
             foreach (var folder in Directory.EnumerateDirectories(Artifacts, "diagnostic-*").OrderDescending(StringComparer.OrdinalIgnoreCase))
                 if (OwnedLogFolder(folder) is { } found) return found;
-        throw new IOException("No session logs are available yet. Launch GRID 2 first.");
+        return Artifacts;
     }
 
     private string? OwnedLogFolder(string path)
     {
         if (!Path.IsPathFullyQualified(path)) return null;
         var folder = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
-        if (!string.Equals(Path.GetDirectoryName(folder), Artifacts, StringComparison.OrdinalIgnoreCase) ||
-            !Regex.IsMatch(Path.GetFileName(folder), @"\Adiagnostic-[0-9-]+\z") || !Directory.Exists(folder)) return null;
+        var parent = Path.GetDirectoryName(folder);
+        var legacy = string.Equals(parent, Artifacts, StringComparison.OrdinalIgnoreCase) &&
+            Regex.IsMatch(Path.GetFileName(folder), @"\Adiagnostic-\d{8}-\d{6}-\d{3}\z");
+        var grouped = string.Equals(parent, Path.Combine(Artifacts, "logs"), StringComparison.OrdinalIgnoreCase) &&
+            Regex.IsMatch(Path.GetFileName(folder), @"\A\d{8}-\d{6}-\d{3}\z");
+        if ((!legacy && !grouped) || !Directory.Exists(folder)) return null;
         for (var current = new DirectoryInfo(folder); current != null; current = current.Parent)
             if (current.Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new IOException("Linked log folder retained: " + folder);
         return folder;

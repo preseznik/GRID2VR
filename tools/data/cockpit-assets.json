@@ -574,5 +574,10 @@
     "sha256": "881e4520fa6239de98c5b33a3d580219a5002716c46e422bc1853958927f1189"
   },
   "semanticRoundtrip": true,
-  "installed": false
+  "installed": false,
+  "startsequence": {
+    "name": "cutscene/startsequence.xml",
+    "originalSha256": "9634f52d182a990aa3b86dedc4ea37aea62b2db163588dcec5c5cd3f825cdf97",
+    "sha256": "34d497c44482f2083952890d44ea1e4fd3235a5dfca1d8cbf5428970ee536ef5"
+  }
 }

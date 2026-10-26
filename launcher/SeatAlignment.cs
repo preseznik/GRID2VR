@@ -18,7 +18,7 @@ internal sealed class SeatAlignment
     internal static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
     public void Validate()
     {
-        if (Version != 1 || Cars is null || Cars.Count > 64) throw new IOException("Invalid cockpit alignments.");
+        if (Version != 1 || Cars is null || Cars.Count > 96) throw new IOException("Invalid cockpit alignments.");
         foreach (var (car, offset) in Cars)
         {
             if (!Regex.IsMatch(car, @"\A[a-z0-9]{3}\z") || offset is null) throw new IOException("Invalid cockpit car.");

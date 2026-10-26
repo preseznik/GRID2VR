@@ -42,9 +42,12 @@ internal sealed class PreparationForm : Form
             {
                 IProgress<PreparationProgress> updates = new Progress<PreparationProgress>(DisplayProgress);
                 if (Installation.HasPending(root))
+                {
                     await Task.Run(() => AppPaths.VerifyPackage(root, (done, total) =>
                         updates.Report(new(100 * done / total, $"Checking installed files ({done:N0} of {total:N0})…"))));
-                else await Installation.Setup(root, updates);
+                    await Task.Run(() => SessionRecovery.TryClearUnstarted(root));
+                }
+                if (!Installation.HasPending(root)) await Installation.Setup(root, updates);
             }
             catch (Exception ex) { Failure = ex; }
             finally { Close(); }

@@ -6,11 +6,27 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).parents[1]/'tools'))
 from unpack_snapshots import unpack,retire_expanded
 import json
+import os
+from unittest.mock import patch
 
 def record(name,data):
     name=name.encode('ascii');return struct.pack('<HH',len(name),len(data))+name+data
 
 class SnapshotTests(unittest.TestCase):
+    def test_installed_grouped_run_retirement(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'GRID2VR_DATA_ROOT': folder}):
+            run=Path(folder)/'logs/20261026-212549-730';run.mkdir(parents=True)
+            target=run/'stage-1-x.bin'
+            (run/'cpu-snapshots.bin').write_bytes(b'G2VRSNP1'+record(target.name,b'exact'))
+            unpack(run)
+            (run/'capture-cleanup.json').write_text(json.dumps(dict(status='complete')))
+            self.assertEqual(retire_expanded(run)['removedThisPass'],1)
+            self.assertFalse(target.exists())
+            self.assertTrue((run/'cpu-snapshots.bin').exists())
+            for outside in (Path(folder)/'logs/not-a-run',run/'nested'):
+                outside.mkdir(parents=True,exist_ok=True)
+                with self.assertRaises(ValueError):retire_expanded(outside)
+
     def test_retire_only_exact_recoverable_snapshots_after_cleanup(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parents[1]/'artifacts') as folder:
             run=Path(folder);target=run/'stage-1-x.bin';foreign=run/'manual-backup.bin';foreign.write_bytes(b'keep')

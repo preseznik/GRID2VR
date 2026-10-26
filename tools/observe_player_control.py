@@ -10,7 +10,9 @@ import ctypes as C
 from ctypes import wintypes as W
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
 import struct
 import time
 
@@ -181,9 +183,12 @@ def sample(process, base, obj):
 def observe(pid, run):
     root = Path(__file__).resolve().parents[1]
     run = plain_path(run)
-    if run.parent != root / 'artifacts' or not run.name.startswith('diagnostic-'):
+    data = plain_path(Path(os.environ.get('GRID2VR_DATA_ROOT', str(root/'artifacts'))))
+    legacy = run.parent == data and re.fullmatch(r'diagnostic-\d{8}-\d{6}-\d{3}', run.name)
+    grouped = run.parent == data/'logs' and re.fullmatch(r'\d{8}-\d{6}-\d{3}', run.name)
+    if not (legacy or grouped):
         raise ValueError('Expected an owned diagnostic directory')
-    journal = json.loads((root/'artifacts/diagnostic-pending.json').read_text(encoding='utf-8-sig'))
+    journal = json.loads((data/'diagnostic-pending.json').read_text(encoding='utf-8-sig'))
     game = plain_path(journal['gameRoot'])
     marker = plain_path(game/'GRID2VR.diagnostic-session')
     if plain_path(journal['run']) != run or marker.read_bytes() != (run/marker.name).read_bytes():

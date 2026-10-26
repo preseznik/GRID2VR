@@ -5,7 +5,8 @@ $artifacts=[IO.Path]::GetFullPath((Join-Path $root 'artifacts'))
 $finish=Join-Path $root 'tools\Finish-Diagnostic.ps1'
 $fixtures=[Collections.Generic.List[string]]::new()
 function New-Fixture {
-    $run=Join-Path $artifacts ('diagnostic-20990101-'+(Get-Date -Format 'HHmmss-fff'))
+    param([switch]$Grouped)
+    $run=Join-Path $artifacts ($(if($Grouped){'logs/20990101-'}else{'diagnostic-20990101-'})+(Get-Date -Format 'HHmmss-fff'))
     New-Item -ItemType Directory -Path $run | Out-Null
     $fixtures.Add($run)
     $game=Join-Path $run 'game'
@@ -24,6 +25,15 @@ function Assert-Rejected([scriptblock]$body,[string]$label) {
     if (!$rejected) { throw "$label was not rejected" }
 }
 try {
+    $grouped=New-Fixture -Grouped
+    New-Item -ItemType Directory -Path (Join-Path $grouped 'backup'),(Join-Path $grouped 'selection') | Out-Null
+    [IO.File]::WriteAllText((Join-Path $grouped 'backup/protected-0.bin'),'grouped recovery backup')
+    [IO.File]::WriteAllText((Join-Path $grouped 'user-session.log'),'worker log')
+    & $finish -RunPath $grouped -PythonPath $PythonPath
+    if(Test-Path -LiteralPath (Join-Path $grouped 'frame-1.raw')) { throw 'Grouped capture cleanup failed.' }
+    foreach($name in @('backup/protected-0.bin','user-session.log','selection')) {
+        if(!(Test-Path -LiteralPath (Join-Path $grouped $name))) { throw 'Grouped diagnostics or recovery data was removed.' }
+    }
     $run=New-Fixture
     Push-Location $root
     try { & $finish -RunPath (Join-Path 'artifacts' (Split-Path $run -Leaf)) -Action Plan -PythonPath $PythonPath }
@@ -120,7 +130,9 @@ try {
 } finally {
     foreach ($fixture in $fixtures) {
         $full=[IO.Path]::GetFullPath($fixture)
-        if ([IO.Path]::GetDirectoryName($full) -ne $artifacts -or [IO.Path]::GetFileName($full) -notlike 'diagnostic-20990101-*') { throw 'Test cleanup target escaped fixture scope.' }
+        $legacy=[IO.Path]::GetDirectoryName($full) -eq $artifacts -and [IO.Path]::GetFileName($full) -like 'diagnostic-20990101-*'
+        $grouped=[IO.Path]::GetDirectoryName($full) -eq (Join-Path $artifacts 'logs') -and [IO.Path]::GetFileName($full) -like '20990101-*'
+        if (!$legacy -and !$grouped) { throw 'Test cleanup target escaped fixture scope.' }
         # On a failed link test retain its tiny fixture for inspection.
         $linked=@(Get-ChildItem -LiteralPath $full -Force | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 })
         if (!$linked.Count) { Remove-Item -LiteralPath $full -Recurse }

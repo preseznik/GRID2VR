@@ -1,0 +1,347 @@
+{
+  "schema": 1,
+  "method": "Authored neutral driver pose; headset alignment remains user adjustable.",
+  "embeddedArchive": {
+    "path": "dr.nic",
+    "bytes": 22671534,
+    "sha256": "4e15b383f252dc63149b8e690e73566b0e75916f9b8c3b611576b1bd7d1b1649"
+  },
+  "cars": [
+    {
+      "car": "240",
+      "position": [
+        0.3611,
+        1.0917,
+        -0.2968
+      ],
+      "archives": [
+        "download/drift/comp_drift.nefs",
+        "download/drift/drift.nefs"
+      ],
+      "cameraSha256": "d662f0cd893656e91e20de3bdcea92e1505cb69183e6c5616c79c01ea0fbb859",
+      "embeddedSource": false
+    },
+    {
+      "car": "370",
+      "position": [
+        0.3608,
+        1.1138,
+        -0.3119
+      ],
+      "archives": [
+        "download/drift/comp_drift.nefs",
+        "download/drift/drift.nefs"
+      ],
+      "cameraSha256": "24cac8651ae2fabd4678cc63507bb3eb1e0cd66aa50a4d410f11f8c076f9cb6b",
+      "embeddedSource": false
+    },
+    {
+      "car": "722",
+      "position": [
+        0.3594,
+        1.0163,
+        -0.8145
+      ],
+      "archives": [
+        "download/headstart/headstart.nefs"
+      ],
+      "cameraSha256": "6dd9458fba77eb692cd95876d7f3cfa212afda46ee953a36ac10f281f93c872f",
+      "embeddedSource": true
+    },
+    {
+      "car": "b12",
+      "position": [
+        0.3597,
+        1.1699,
+        -0.1136
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ],
+      "cameraSha256": "bb394a4cefe63cdaad9ceda8628117b63d936ed1a449a085930e53607b96c66d",
+      "embeddedSource": false
+    },
+    {
+      "car": "bz4",
+      "position": [
+        0.3291,
+        1.0349,
+        -0.5135
+      ],
+      "archives": [
+        "download/spa_francorchamps/spa_francorchamps.nefs"
+      ],
+      "cameraSha256": "7f64d532d46ab4d79357d7a474d40b2f2507eab82c8087d539fe5956675b0a9b",
+      "embeddedSource": false
+    },
+    {
+      "car": "cam",
+      "position": [
+        0.4229,
+        1.0859,
+        -0.3768
+      ],
+      "archives": [
+        "download/drift/comp_drift.nefs"
+      ],
+      "cameraSha256": "c9382662431bf75c0e0fc144f3d9c6f11cea5a572f3fa4d0c3a6d81427827c6b",
+      "embeddedSource": false
+    },
+    {
+      "car": "ccg",
+      "position": [
+        0.3261,
+        0.8717,
+        -0.084
+      ],
+      "archives": [
+        "download/classic_grid/classic_grid.nefs"
+      ],
+      "cameraSha256": "d847e254458f09955a7001386eaaf677f19bd5984c464670f5de91b29b644af0",
+      "embeddedSource": false
+    },
+    {
+      "car": "civ",
+      "position": [
+        -0.3691,
+        1.1663,
+        -0.0892
+      ],
+      "archives": [
+        "download/super_modified/comp_super_modified.nefs"
+      ],
+      "cameraSha256": "8020604c8b40d6480435c5b4e7512a952e98363e557d09b10cfabf15272e6de1",
+      "embeddedSource": false
+    },
+    {
+      "car": "cr2",
+      "position": [
+        0.4079,
+        1.1742,
+        0.0041
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ],
+      "cameraSha256": "80f94fb2abbee87ae3dbce14d2233772a9d642d492d58aef0c2c2b39eb19d435",
+      "embeddedSource": false
+    },
+    {
+      "car": "e32",
+      "position": [
+        0.3552,
+        1.1194,
+        0.0307
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ],
+      "cameraSha256": "e30a467f9f61def33b30ecd32d2a35044c111bc80982199f9572cee909f301fc",
+      "embeddedSource": false
+    },
+    {
+      "car": "evx",
+      "position": [
+        -0.3697,
+        1.1969,
+        -0.0808
+      ],
+      "archives": [
+        "download/drift/comp_drift.nefs",
+        "download/drift/drift.nefs"
+      ],
+      "cameraSha256": "94b44a024cda8f0c5cb9296429c8bf6dabb214ea4c815dc6da6bcdc550061b7c",
+      "embeddedSource": false
+    },
+    {
+      "car": "go2",
+      "position": [
+        0.3592,
+        1.1256,
+        -0.1167
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs"
+      ],
+      "cameraSha256": "01463c95f3c046cc01cbb708eefd4743228f5febf464f0849b367a1102250582",
+      "embeddedSource": false
+    },
+    {
+      "car": "gtr",
+      "position": [
+        -0.4,
+        1.1358,
+        -0.1379
+      ],
+      "archives": [
+        "download/gtr_racing/gtr_racing.nefs"
+      ],
+      "cameraSha256": "cada04213280354a302e0cc96a62c6df9d4065f704803687b9a6a2582740cf7f",
+      "embeddedSource": true
+    },
+    {
+      "car": "ind",
+      "position": [
+        0.0023,
+        0.8254,
+        -0.0317
+      ],
+      "archives": [
+        "download/indycar/indycar.nefs"
+      ],
+      "cameraSha256": "2f995c0374b9962a6271431758ba568ed44f81518c498cebb6b600bbeb5bf14c",
+      "embeddedSource": false
+    },
+    {
+      "car": "ma2",
+      "position": [
+        0.4242,
+        1.1342,
+        -0.2331
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ],
+      "cameraSha256": "194131d0a49d23881c08bda51de58e9abe59bb66def29ee2b07494f42225d7a4",
+      "embeddedSource": false
+    },
+    {
+      "car": "mpg",
+      "position": [
+        0.3079,
+        1.0083,
+        -0.0863
+      ],
+      "archives": [
+        "download/mclaren_racing/mclaren_racing.nefs"
+      ],
+      "cameraSha256": "050baf0905b83c747a144758594f1a6745e963f5643e37876219d4598a566a05",
+      "embeddedSource": true
+    },
+    {
+      "car": "r32",
+      "position": [
+        -0.3717,
+        1.097,
+        -0.1955
+      ],
+      "archives": [
+        "download/super_modified/comp_super_modified.nefs",
+        "download/super_modified/super_modified.nefs"
+      ],
+      "cameraSha256": "8dc6a871729b2c03ad4320071c2fc778345d434f73d5fb4c9f3ae17e25114e89",
+      "embeddedSource": false
+    },
+    {
+      "car": "r3b",
+      "position": [
+        -0.3717,
+        1.0834,
+        -0.2104
+      ],
+      "archives": [
+        "download/bathurst/bathurst.nefs"
+      ],
+      "cameraSha256": "e48225c8db90b530fff366966e4ffa2dc7073663c2fbf972c6ed4d76df921db7",
+      "embeddedSource": false
+    },
+    {
+      "car": "rx2",
+      "position": [
+        -0.3723,
+        1.0006,
+        -0.2959
+      ],
+      "archives": [
+        "download/super_modified/comp_super_modified.nefs",
+        "download/super_modified/super_modified.nefs"
+      ],
+      "cameraSha256": "08fba9692ecc088772621aa767d074989fe4d4a8ce6356f7bc3940c5c119d09b",
+      "embeddedSource": false
+    },
+    {
+      "car": "srs",
+      "position": [
+        -0.3721,
+        1.1649,
+        -0.0869
+      ],
+      "archives": [
+        "download/bathurst/bathurst.nefs"
+      ],
+      "cameraSha256": "23c84a4ca8ca9bb0f658ef396074bf8fa5e4d66968e809d78c4c7ced97b827ef",
+      "embeddedSource": false
+    },
+    {
+      "car": "utf",
+      "position": [
+        -0.4095,
+        1.2634,
+        -0.0839
+      ],
+      "archives": [
+        "download/bathurst/bathurst.nefs"
+      ],
+      "cameraSha256": "dce4f481a6533ba2a9af212b723415dcd13ff684244d662f2524063ceb1b6b04",
+      "embeddedSource": false
+    },
+    {
+      "car": "wrx",
+      "position": [
+        -0.3403,
+        1.0681,
+        -0.1255
+      ],
+      "archives": [
+        "download/super_modified/comp_super_modified.nefs",
+        "download/super_modified/super_modified.nefs"
+      ],
+      "cameraSha256": "778ea48b183a89f5a373c2a8d729585556c310529c07c783e192259b37dc906f",
+      "embeddedSource": false
+    },
+    {
+      "car": "z22",
+      "position": [
+        0.3674,
+        1.1081,
+        -0.2973
+      ],
+      "archives": [
+        "download/peak_performance/comp_peak_performance.nefs",
+        "download/peak_performance/peak_performance.nefs"
+      ],
+      "cameraSha256": "5be33a78b61572b91711ce1c8a079ec0b3a5601d6b7c922ec063403ce69603c0",
+      "embeddedSource": false
+    },
+    {
+      "car": "zig",
+      "position": [
+        0.3347,
+        1.0414,
+        -0.443
+      ],
+      "archives": [
+        "download/spa_francorchamps/spa_francorchamps.nefs"
+      ],
+      "cameraSha256": "e81d59f7515f27155e9da5cc6f4151e65fdb1dc265330a2d15d6ab8e07e3720d",
+      "embeddedSource": false
+    },
+    {
+      "car": "zon",
+      "position": [
+        0.3121,
+        0.9896,
+        0.306
+      ],
+      "archives": [
+        "download/classic_grid/classic_grid.nefs"
+      ],
+      "cameraSha256": "533b24c0b466bd390a1dfdf21ae75c0ba7bd7ce7e9c76aa63b412af4ff91220d",
+      "embeddedSource": false
+    }
+  ]
+}

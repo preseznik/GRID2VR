@@ -1,6 +1,7 @@
 """Validate a bounded native snapshot archive before writing any CPU fixtures."""
 import hashlib
 import json
+import os
 import re
 import struct
 from pathlib import Path
@@ -46,10 +47,13 @@ def unpack(run):
 
 def retire_expanded(run):
     # Finish-Diagnostic already verifies game/process recovery. Also constrain
-    # this deletion helper to a direct workspace artifact directory.
-    root=Path(__file__).resolve().parents[1]/'artifacts'
+    # this deletion helper to an owned legacy or grouped run directory.
+    root=Path(os.environ.get('GRID2VR_DATA_ROOT', str(Path(__file__).resolve().parents[1]/'artifacts')))
     resolved=run.resolve()
-    if resolved.parent!=root.resolve() or run.is_symlink():raise ValueError('Snapshot retirement escapes workspace artifacts')
+    legacy=resolved.parent==root.resolve()
+    grouped=resolved.parent==root.resolve()/'logs' and re.fullmatch(r'\d{8}-\d{6}-\d{3}', resolved.name)
+    if not (legacy or grouped) or any(p.exists() and (p.is_symlink() or getattr(p.lstat(),'st_file_attributes',0)&0x400) for p in (run,*run.parents)):
+        raise ValueError('Snapshot retirement escapes owned session logs')
     archive=read_archive(run)
     if archive is None:return None
     data,records,count=archive

@@ -16,7 +16,7 @@ $proxy=Join-Path $game 'd3d11.dll'
 if(Test-Path -LiteralPath $proxy) { throw 'Existing proxy retained.' }
 Copy-Item -LiteralPath (Join-Path $data 'practice-flow-20261014/flow.bin') -Destination (Join-Path $run 'practice-flow.bin')
 $flow=New-PracticeFlowDeployment $game $run
-$camera=@(Get-CockpitAssetSelection $ModRoot $game HeadOnly s20 $false)
+$camera=@(Get-CockpitAssetSelection $ModRoot $game HeadOnly s20 $false $true)
 New-CockpitAssetsDeployment $game $run $ModRoot $camera
 Copy-Item -LiteralPath (Get-Grid2Proxy $ModRoot) -Destination $proxy
 $hash=(Get-FileHash -LiteralPath $proxy).Hash

@@ -12,6 +12,26 @@ function Get-Grid2DataRoot([string]$Root) {
     if(![IO.Path]::IsPathFullyQualified($base)) { throw 'User-data location must be absolute.' }
     return Join-Path $base $id
 }
+function Get-Grid2LogDirectory([string]$Root,[string]$Path) {
+    if(![IO.Path]::IsPathFullyQualified($Path)) { throw 'Log folder must be absolute.' }
+    $full=[IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $logs=[IO.Path]::GetFullPath((Join-Path (Get-Grid2DataRoot $Root) 'logs'))
+    if([IO.Path]::GetDirectoryName($full) -ne $logs -or [IO.Path]::GetFileName($full) -cnotmatch '^\d{8}-\d{6}-\d{3}$') { throw 'Log folder is outside its owned timestamp directory.' }
+    for($part=$full; $part; $part=[IO.Path]::GetDirectoryName($part)) {
+        if((Test-Path -LiteralPath $part) -and ((Get-Item -LiteralPath $part -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Linked log folder retained: $part" }
+    }
+    return $full
+}
+function New-Grid2LogDirectory([string]$Root) {
+    $stamp=Get-Date
+    for($attempt=0; $attempt -lt 100; $attempt++) {
+        $path=Get-Grid2LogDirectory $Root (Join-Path (Get-Grid2DataRoot $Root) ('logs/'+$stamp.AddMilliseconds($attempt).ToString('yyyyMMdd-HHmmss-fff')))
+        if(Test-Path -LiteralPath $path) { continue }
+        New-Item -ItemType Directory -Path $path -ErrorAction Stop | Out-Null
+        return $path
+    }
+    throw 'Could not allocate a new session log folder.'
+}
 function Get-Grid2Python([string]$Root) {
     if(Test-Grid2Package $Root) { return Join-Path $Root 'payload/python/python.exe' }
     $line=Select-String -LiteralPath (Join-Path $Root 'build/win32/CMakeCache.txt') -Pattern '^_?Python3_EXECUTABLE:[^=]*=(.+)$' | Select-Object -First 1

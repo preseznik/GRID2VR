@@ -13,6 +13,7 @@ struct Request {
     std::uint32_t account{};
 };
 bool ParseRequest(std::string_view text, Request& result);
+bool MatchesRunDataRoot(const std::filesystem::path& output, const std::filesystem::path& dataRoot);
 bool ValidFileName(std::string_view name);
 bool ValidImageLayout(const std::uint8_t* image, std::size_t bytes, std::uintptr_t relocatedBase);
 bool UsesManagedUserFolder(std::uintptr_t callerRva);

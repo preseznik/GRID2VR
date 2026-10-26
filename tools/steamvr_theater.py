@@ -15,19 +15,24 @@ import re
 from session_config import plain_path
 
 ROOT = Path(__file__).resolve().parent.parent
-import winreg
-with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Valve\Steam') as steam_key:
-    STEAM = Path(winreg.QueryValueEx(steam_key, 'SteamPath')[0])
-RUNTIME = STEAM/'steamapps/common/SteamVR'
-libraries=STEAM/'steamapps/libraryfolders.vdf'
-if libraries.is_file():
-    for value in re.findall(r'"path"\s*"([^"]+)"',libraries.read_text(encoding='utf-8-sig')):
-        candidate=Path(value.replace('\\\\','\\'))/'steamapps/common/SteamVR'
-        if (candidate/'steamxr_win32.json').is_file():
-            RUNTIME=candidate
-            break
 SECTION, KEY = 'dashboard', 'autoShowGameTheater'
 JOURNAL = Path(os.environ.get('GRID2VR_DATA_ROOT', str(ROOT/'artifacts')))/'steamvr-theater-pending.json'
+
+
+def runtime_paths():
+    # A no-op recovery must also work without a running/available Steam installation.
+    import winreg
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Valve\Steam') as steam_key:
+        steam = Path(winreg.QueryValueEx(steam_key, 'SteamPath')[0])
+    runtime = steam/'steamapps/common/SteamVR'
+    libraries = steam/'steamapps/libraryfolders.vdf'
+    if libraries.is_file():
+        for value in re.findall(r'"path"\s*"([^"]+)"', libraries.read_text(encoding='utf-8-sig')):
+            candidate = Path(value.replace('\\\\', '\\'))/'steamapps/common/SteamVR'
+            if (candidate/'steamxr_win32.json').is_file():
+                runtime = candidate
+                break
+    return steam, runtime
 
 
 def read_json(path, limit=1024*1024):
@@ -38,8 +43,9 @@ def read_json(path, limit=1024*1024):
 
 
 def configured():
-    default = read_json(RUNTIME/'resources/settings/default.vrsettings')[SECTION][KEY]
-    user = read_json(STEAM/'config/steamvr.vrsettings').get(SECTION, {})
+    steam, runtime = runtime_paths()
+    default = read_json(runtime/'resources/settings/default.vrsettings')[SECTION][KEY]
+    user = read_json(steam/'config/steamvr.vrsettings').get(SECTION, {})
     before = user.get(KEY, default)
     if type(default) is not bool or type(before) is not bool:
         raise ValueError('Theater setting is not a boolean')
@@ -48,7 +54,8 @@ def configured():
 
 class Settings:
     def __enter__(self):
-        dll = RUNTIME/('bin/win64' if C.sizeof(C.c_void_p) == 8 else 'bin/win32')/'openvr_api.dll'
+        _, runtime = runtime_paths()
+        dll = runtime/('bin/win64' if C.sizeof(C.c_void_p) == 8 else 'bin/win32')/'openvr_api.dll'
         self.dll = C.CDLL(str(plain_path(dll)))
         self.dll.VR_InitInternal.argtypes = [C.POINTER(C.c_int), C.c_int]
         self.dll.VR_InitInternal.restype = C.c_uint32
@@ -151,17 +158,21 @@ def restore(api, journal):
     return dict(**state, result=result)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('inspect', 'query', 'begin', 'restore'))
     parser.add_argument('--receipt', type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.receipt:
         receipt = plain_path(args.receipt)
-        if (receipt.parent.parent != plain_path(ROOT/'artifacts') or
-                not re.fullmatch(r'stereo-probe-\d{8}-\d{6}-\d{3}', receipt.parent.name) or
+        data = plain_path(JOURNAL.parent)
+        backup = receipt.parent
+        legacy = backup.parent == data and re.fullmatch(r'stereo-probe-\d{8}-\d{6}-\d{3}', backup.name)
+        grouped = (backup.name == 'backup' and backup.parent.parent == data/'logs' and
+                   re.fullmatch(r'\d{8}-\d{6}-\d{3}', backup.parent.name))
+        if (not (legacy or grouped) or
                 receipt.name not in ('theater-begin.json', 'theater-restored.json') or receipt.exists()):
-            raise ValueError('Receipt must be a new fixed-name file in an owned stereo-probe directory')
+            raise ValueError('Receipt must be a new fixed-name file in an owned session backup directory')
     if args.action == 'inspect':
         result = configured()
     elif args.action == 'restore' and not JOURNAL.exists():

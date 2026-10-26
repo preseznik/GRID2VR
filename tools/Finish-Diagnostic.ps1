@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference='Stop'
 $root=if($InstallationRoot){[IO.Path]::GetFullPath($InstallationRoot)}else{Split-Path $PSScriptRoot -Parent}
 . (Join-Path $PSScriptRoot 'Paths.ps1')
+. (Join-Path $PSScriptRoot 'User-Session.ps1')
 $artifacts=[IO.Path]::GetFullPath((Get-Grid2DataRoot $root))
 $run=[IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($RunPath)).TrimEnd('\')
 $capturePattern='^(frame-\d+|stage-\d+[\w-]*|work-\d+[\w-]*)\.(raw|ppm|texture|surface|buffer)$'
@@ -36,10 +37,7 @@ function Retire-ExpandedSnapshots {
     & $snapshotPython (Join-Path $PSScriptRoot 'unpack_snapshots.py') $run --retire-expanded
     if($LASTEXITCODE) { throw 'Expanded snapshot cleanup failed; packed archive and remaining files retained.' }
 }
-if ([IO.Path]::GetDirectoryName($run) -ne $artifacts -or
-    [IO.Path]::GetFileName($run) -cnotmatch '^diagnostic-\d{8}-\d{6}-\d{3}$') {
-    throw 'Cleanup is restricted to direct diagnostic timestamp folders in this workspace artifacts directory.'
-}
+$run=Get-SessionRun $root $run
 Assert-Unlinked $root
 Assert-Unlinked $artifacts
 Assert-Unlinked $run

@@ -99,11 +99,33 @@ bool ParseRequest(std::string_view text,Request& result) {
     try {
         const auto raw=std::filesystem::path(std::u8string(lines[1].begin(),lines[1].end()));
         const auto root=raw.lexically_normal();const auto value=root.native();
+        const auto dataName=root.parent_path().parent_path().parent_path().filename().native();
+        const bool installedData=dataName.size()==24 && std::all_of(dataName.begin(),dataName.end(),
+            [](wchar_t c){return (c>=L'0'&&c<=L'9')||(c>=L'A'&&c<=L'F');});
         if(value.size()<4 || value.size()>220 || value[1]!=L':' || value[2]!=L'\\' || !root.is_absolute() ||
            root!=raw || root.filename()!=L"remote" || root.parent_path().filename().string()!=lines[2] ||
            root.parent_path().parent_path().filename()!=L"profiles" ||
-           root.parent_path().parent_path().parent_path().filename()!=L"artifacts")return false;
+           (dataName!=L"artifacts" && !installedData))return false;
         result={root,std::string(lines[2]),account};return true;
+    }catch(...){return false;}
+}
+bool MatchesRunDataRoot(const std::filesystem::path& output,const std::filesystem::path& dataRoot) {
+    try {
+        if(!output.is_absolute() || output!=output.lexically_normal() || !dataRoot.is_absolute())return false;
+        auto name=output.filename().native();
+        auto owner=output.parent_path();
+        constexpr std::wstring_view legacy=L"diagnostic-";
+        if(name.starts_with(legacy))name.erase(0,legacy.size());
+        else {
+            if(owner.filename()!=L"logs")return false;
+            owner=owner.parent_path();
+        }
+        if(name.size()!=19)return false;
+        for(std::size_t i=0;i<name.size();++i) {
+            if(i==8 || i==15) {if(name[i]!=L'-')return false;}
+            else if(name[i]<L'0' || name[i]>L'9')return false;
+        }
+        return !_wcsicmp(owner.c_str(),dataRoot.lexically_normal().c_str());
     }catch(...){return false;}
 }
 bool UsesManagedUserFolder(std::uintptr_t callerRva){
@@ -362,9 +384,8 @@ BOOL CALLBACK Initialize(PINIT_ONCE,void*,void**) {
         char text[8193]{};DWORD size{};Request request;
         if(!ReadSmall(requestFile,text,sizeof(text),size)||!ParseRequest(std::string_view(text,size),request))Refuse("invalid_request");
         strcpy_s(managedId,request.id.c_str());
-        const auto expectedArtifacts=std::filesystem::path(outputFolder).lexically_normal().parent_path();
         const auto actualArtifacts=request.remote.parent_path().parent_path().parent_path();
-        if(_wcsicmp(expectedArtifacts.c_str(),actualArtifacts.c_str()))Refuse("profile_workspace_mismatch");
+        if(!MatchesRunDataRoot(outputFolder,actualArtifacts))Refuse("profile_workspace_mismatch");
         if(Account()!=request.account)Refuse("steam_account_mismatch");
         localStore=new Store(request);if(!localStore->Ready())Refuse("unsafe_profile_folder");
         char localPath[260]{};if(!localStore->UserFolder(localPath,sizeof(localPath)))Refuse("local_folder_unrepresentable");

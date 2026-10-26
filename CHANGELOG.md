@@ -1,3 +1,16 @@
+# GRID2VR 0.1.9 — Experimental
+
+- Fix SteamVR launch preparation failing in installed copies of GRID2VR.
+- Restore temporary changes and release the launcher for retry after a failed launch.
+- Restore files and unlock the launcher automatically after game exit when GRID 2 refreshes its detected memory or display modes.
+- Automatically clear untouched interrupted launches when reopening the launcher or upgrading. Changed files and unfinished restorations retain their recovery safeguards.
+- Support hardware settings in OneDrive Documents folders.
+- Make Open Logs find early startup failures and include the underlying error details.
+- Keep each launch's logs, diagnostics and recovery backups together in its own dated folder.
+- Start VR Practice and Race in cockpit view when VR cockpit is enabled.
+- Add cockpit views and per-car seat adjustment for the 25 supported DLC cars, while retaining the selected career and original game archives.
+- Apply DLC cockpit settings after the race world is ready, avoiding the early startup code hook associated with the reported crash.
+
 # GRID2VR 0.1.7 — Experimental
 
 - Select **Graphics → Cockpit textures → New cockpit textures** to download, verify and install the optional artwork inside the launcher.

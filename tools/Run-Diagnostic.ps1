@@ -2,6 +2,7 @@ param(
     [ValidateSet('Run','Restore')][string]$Action = 'Run',
     [string]$GameRoot = '',
     [string]$JournalPath = '',
+    [string]$RunLogDirectory = '',
     [ValidateSet('Active','Inactive')][string]$ProxyMode = 'Active',
     [ValidateSet('Probe','Benchmark')][string]$RunKind = 'Probe',
     [switch]$EngineTrace,
@@ -178,11 +179,18 @@ if($CockpitS2000 -ne 'Off') {
     $null=Get-CockpitCameraCandidate $root $CockpitS2000
 }
 $cockpitAssets=@()
+$dlcCockpit=$null
 $cockpitModeRequested=$CockpitMode
 if($selectedSession.carContent.dlc -and !$selectedSession.carContent.cockpitAvailable) { $CockpitMode='Off' }
 if($CockpitMode -ne 'Off') {
     if(!$RuntimeSession -or (!$ExposureAudit -and (!$UntilExit -or !$XrProjection)) -or $PlayerControlOnly -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off') { throw 'Launcher cockpit assets require a VR user session or bounded exposure audit.' }
-    $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch))
+    if($NormalLaunch -or $selectedSession.carContent.dlc) {
+        . (Join-Path $PSScriptRoot 'Dlc-Cockpit.ps1')
+        $dlcCockpit=Get-DlcCockpitRequest $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch)
+        if($dlcCockpit.cars.Count -and (!$UntilExit -or !$XrProjection)) { throw 'DLC cockpit cameras require a VR user session.' }
+    }
+    $startInCockpit=$UntilExit -and $XrProjection -and $selectedSession.control -eq 'human'
+    $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) $startInCockpit ([bool]$selectedSession.carContent.dlc))
 }
 if ($PlayerControlProbe -ne 'Off' -and (!$RuntimeSession -or !$selectedSession -or $selectedSession.selection.mode -ne 'attract' -or (!$RecordedViewsFile -and !$PlayerControlOnly) -or $XrSessionProbe -or $XrProjection)) { throw 'Player input probes require a selected solo attract session and the desktop runtime.' }
 if ($selectedSession -and $selectedSession.control -eq 'human' -and (!$RuntimeSession -or $PlayerControlProbe -ne 'Off')) { throw 'Human practice uses the guarded runtime and native controls, with the old input probe off.' }
@@ -253,8 +261,9 @@ if($CockpitTextures -ne 'Off') {
     $focusBinary=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($proxy))
     if(!$focusBinary.Contains('GRID2VR_COCKPIT_TEXTURES_V1')) { throw 'This native build does not support the Cockpit texture pack. Rebuild before launching.' }
 }
-$run=Join-Path (Get-Grid2DataRoot $root) ('diagnostic-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
-New-Item -ItemType Directory -Path $run | Out-Null
+$run=if($RunLogDirectory){Get-Grid2LogDirectory $root $RunLogDirectory}else{New-Grid2LogDirectory $root}
+if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy }
+if(Test-Path -LiteralPath (Join-Path $run 'session.json')) { throw 'Diagnostic run already exists; retained its logs.' }
 $drivingControlsReceipt=Save-DrivingControls $validatedDrivingControls $run
 $steamArgumentLine=if($NormalLaunch){'-applaunch 44350'}else{'-applaunch 44350 -benchmark example_benchmark.xml'}
 if ($selectedSession) {
@@ -267,6 +276,7 @@ if ($selectedSession) {
     $selectedSession | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'selected-session.json') -Encoding utf8
 }
 if ($RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'runtime-session.request'),'Sustained same-frame stereo with explicit suspension and bounded logs; guarded experimental runtime.') }
+if($dlcCockpit.cars.Count) { [IO.File]::WriteAllText((Join-Path $run 'dlc-cockpit.request'),$dlcCockpit.text,[Text.Encoding]::ASCII) }
 if($CockpitTextures -ne 'Off') { [IO.File]::WriteAllText((Join-Path $run 'cockpit-textures.request'),$CockpitTextures,[Text.Encoding]::ASCII) }
 if ($DiagnosticLogging -or !$UntilExit) { [IO.File]::WriteAllText((Join-Path $run 'diagnostic-logging.request'),'Enable additional bounded troubleshooting details; never disable recovery receipts.') }
 if($NormalLaunch) { [IO.File]::WriteAllText((Join-Path $run 'normal-launch.request'),'Native menus; no selected-session flow or configuration.') }
@@ -407,7 +417,8 @@ $receipt.cockpitAssets=$cockpitAssets
 $receipt.cockpitMode=$CockpitMode
 $receipt.cockpitTextures=$CockpitTextures
 $receipt.cockpitModeRequested=$cockpitModeRequested
-$receipt.cockpitApplied=($cockpitAssets.Count -gt 0)
+$receipt.cockpitApplied=($cockpitAssets.Count -gt 0 -or $dlcCockpit.cars.Count -gt 0)
+$receipt.dlcCockpit=$dlcCockpit
 $receipt.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
 $receipt.exposureAudit=[bool]$ExposureAudit
 $receipt.removeCinemaMatte=[bool]$RemoveCinemaMatte

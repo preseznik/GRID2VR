@@ -103,6 +103,8 @@ def catalog(game_root):
                 tracks.append(dict(id=f'{category}/{location.name}/{route.name}', country=category,
                                    name=location.name, route=route.name))
     dlc = installed_dlc(root)
+    from cockpit_dlc import available as available_cockpits
+    dlc_cockpits = available_cockpits(root, dlc)
     car_ids = {car['id'] for car in cars}
     for car in dlc['cars']:
         if car['id'] in car_ids:
@@ -110,7 +112,7 @@ def catalog(game_root):
         group = classes.get(car['id'], {})
         cars.append(dict(id=car['id'], label=car['label'], liveries=car['liveries'],
                          classId=group.get('id'), className=group.get('label'),
-                         dlc=True, cockpitAvailable=False, archives=car['archives']))
+                         dlc=True, cockpitAvailable=car['id'] in dlc_cockpits, archives=car['archives']))
         car_ids.add(car['id'])
     track_ids = {track['id'] for track in tracks}
     for track in dlc['tracks']:
@@ -121,7 +123,7 @@ def catalog(game_root):
                            dlc=True, archives=track['archives']))
         track_ids.add(track['id'])
     return dict(schema=1, gameRoot=str(root), cars=cars, tracks=tracks,
-                limits='Loose content and fingerprint-verified installed DLC. Game ownership checks still apply. DLC cars use original cameras; custom cockpit calibration is unavailable. Presence does not prove gameplay or VR compatibility.')
+                limits='Loose content and fingerprint-verified installed DLC. Game ownership checks still apply. DLC cockpit cameras require the guarded native loader; presence does not establish headset visual acceptance.')
 
 
 def configuration(installed, car, track, livery='user', mode='benchmark', lighting='day', weather='dry', laps=1, control='ai', cycle_camera=False, opponents=0, opponent_cars='same', opponent_seed=0):

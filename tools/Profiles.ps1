@@ -85,16 +85,17 @@ function Get-LaunchProfile {
 
 function Get-CareerProfileProxy {
     param([string]$Root,[string]$BaseProxy)
-    # Keep the selected renderer for managed careers too; both pinned builds
-    # contain the same guarded career-storage implementation.
+    # Installed releases use their manifest-verified renderer. Development
+    # candidates still require one of the explicitly qualified binary hashes.
     $allowed=@('9fe9e76f825b34650b64d962fc2e115d4fe09c9190eef0decc90362fbd46fe22',
         'fa75274d189e5121cc0e35ccbbc2e2df38b1fee3ef3d5dec3a6b73f559c47495',
         'cdd6e68abcd6e53ee15876f86f952b0e808b2fe515fd443ad80fb05f24fa5da8')
     $null=Assert-PlainPath $BaseProxy
     $base=(Get-FileHash -LiteralPath $BaseProxy).Hash
-    $proxy=if(Test-Grid2Package $Root){Get-Grid2Proxy $Root}else{$BaseProxy}
+    $packaged=Test-Grid2Package $Root
+    $proxy=if($packaged){Get-Grid2Proxy $Root}else{$BaseProxy}
     $null=Assert-PlainPath $proxy
-    if($base -notin $allowed -or (Get-FileHash -LiteralPath $proxy -ErrorAction Stop).Hash -ne $base) {
+    if((!$packaged -and $base -notin $allowed) -or (Get-FileHash -LiteralPath $proxy -ErrorAction Stop).Hash -ne $base) {
         throw 'The managed career provider is missing or differs from its verified renderer. Rebuild the profile package.'
     }
     return $proxy

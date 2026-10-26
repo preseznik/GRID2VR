@@ -14,6 +14,7 @@
 #include "msaa_readback.h"
 #include "msaa_audit.h"
 #include "focus_cockpit.h"
+#include "dlc_cockpit.h"
 #include "replay_profile.h"
 #include "bounded_log.h"
 #include "flicker_capture.h"
@@ -162,7 +163,7 @@ const char* BeforeGameExit() {
         return "renderer_not_restored";
     }
     runtimeStopped=true;
-    playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();
+    playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();dlccockpit::Stop();
 #ifdef GRID2VR_ENABLE_XR_SESSION
     recenter::Enable(false);
     if(xrRequested && !xrStopped) {
@@ -657,6 +658,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     bool garageXrStable=garageXrHold.Observe(GetTickCount64(),garageXrEligible);
     bool renderWindowReady=nativeWindowReady || garageXrStable;
     backgroundplay::ObserveWindow(windowState);
+    dlccockpit::Present();
     LARGE_INTEGER now{},frequency{}; QueryPerformanceCounter(&now); QueryPerformanceFrequency(&frequency);
     static LONGLONG previous{};
     const double ms=previous ? 1000.0*(now.QuadPart-previous)/frequency.QuadPart : 0;
@@ -759,6 +761,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
                 Log("session stop requested source=file frame=%llu",f+1);
                 playercontrol::Stop();
                 backgroundplay::Stop();
+                dlccockpit::Stop();
                 if (engine::Continuous() && !engine::StopSession()) engine::FailSession();
                 runtimeStopped=true;
             }
@@ -1648,6 +1651,7 @@ bool Active() {
             }
 #endif
             gameBase=reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+            if(runtimeSession)dlccockpit::Prepare(gameBase,output);
             engine::ObserveFaults(gameBase,output);
             Log("GRID2VR diagnostic supported AVX host; engine replay and game-device OpenXR probe separately opt-in; no headset image submission");
             return true;

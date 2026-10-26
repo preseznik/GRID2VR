@@ -1,9 +1,21 @@
 . (Join-Path $PSScriptRoot 'Paths.ps1')
+. (Join-Path $PSScriptRoot 'Hardware-Settings.ps1')
 # Shared launcher control and recovery. No game/window input is synthesized.
 function Test-HardwareReportRefresh([xml]$Original,[xml]$Current) {
     # This is the game's generated inventory, not hardware_settings_config.xml.
     # A virtual display can change both native size and available display modes.
     $before=$Original.CloneNode($true); $after=$Current.CloneNode($true)
+    # GRID 2 refreshes this measured value on startup; even the same machine
+    # can report slightly different memory. Identity/capability fields stay exact.
+    $systemBefore=$before.hardware_settings_info.systemInfo; $systemAfter=$after.hardware_settings_info.systemInfo
+    if($systemBefore -or $systemAfter) {
+        if($systemBefore -isnot [Xml.XmlElement] -or $systemAfter -isnot [Xml.XmlElement]) { return $false }
+        foreach($system in @($systemBefore,$systemAfter)) {
+            $memory=[uint64]0
+            if(![uint64]::TryParse($system.GetAttribute('totalMemory'),[ref]$memory) -or !$memory) { return $false }
+        }
+        $systemAfter.SetAttribute('totalMemory',$systemBefore.GetAttribute('totalMemory'))
+    }
     $a=$before.hardware_settings_info.graphics_card; $b=$after.hardware_settings_info.graphics_card
     if($a -isnot [Xml.XmlElement] -or $b -isnot [Xml.XmlElement]) { return $false }
     foreach($attribute in @('native_width','native_height')) {
@@ -31,6 +43,21 @@ function Get-SessionChild([string]$Root,[string]$Path,[string]$Pattern) {
     if([IO.Path]::GetDirectoryName($full) -ne $parent -or [IO.Path]::GetFileName($full) -notmatch $Pattern) { throw 'Session path is outside its owned directory.' }
     return $full
 }
+function Get-SessionRun([string]$Root,[string]$Path) {
+    $data=Get-Grid2DataRoot $Root
+    if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path)) -eq [IO.Path]::GetFullPath($data)) {
+        return Get-SessionChild $data $Path '^diagnostic-\d{8}-\d{6}-\d{3}$'
+    }
+    return Get-Grid2LogDirectory $Root $Path
+}
+function Get-SessionBackup([string]$Root,[string]$Path) {
+    $data=Get-Grid2DataRoot $Root
+    if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path)) -eq [IO.Path]::GetFullPath($data)) {
+        return Get-SessionChild $data $Path '^stereo-probe-\d{8}-\d{6}-\d{3}$'
+    }
+    $run=Get-Grid2LogDirectory $Root ([IO.Path]::GetDirectoryName($Path))
+    return Get-SessionChild $run $Path '^backup$'
+}
 function Read-SessionJson([string]$Path) {
     Assert-PlainPath $Path | Out-Null
     if((Get-Item -LiteralPath $Path).Length -gt 256KB) { throw 'Session metadata exceeds its bound.' }
@@ -45,8 +72,26 @@ function Write-SessionJson([string]$Path,$Value) {
         else { [IO.File]::Move($temporary,$target) }
     } finally { if(Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary } }
 }
+function Write-UserSessionStatus([string]$Root,$Value) {
+    $run=Get-Grid2LogDirectory $Root $Value.logDirectory
+    Write-SessionJson (Join-Path $run 'user-session.json') $Value
+    Write-SessionJson (Join-Path (Get-Grid2DataRoot $Root) 'user-session-last.json') $Value
+}
 function Get-SessionPython([string]$Root) {
     return Get-Grid2Python $Root
+}
+function Invoke-SteamVrTheater([string]$Python,[ValidateSet('begin','restore')][string]$Action,[string]$Backup) {
+    $name=if($Action -eq 'begin'){'theater-begin.json'}else{'theater-restored.json'}
+    $PSNativeCommandUseErrorActionPreference=$false
+    $output=@(& $Python (Join-Path $PSScriptRoot 'steamvr_theater.py') $Action --receipt (Join-Path $Backup $name) 2>&1)
+    $code=$LASTEXITCODE
+    $details=($output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+    if($details.Length -gt 8192) { $details=$details.Substring(0,8192) }
+    if($code) {
+        $message=if($Action -eq 'begin'){'SteamVR launch preparation failed; game not launched.'}else{'SteamVR preference recovery failed. Start SteamVR and choose Restore original files in GRID2VR.'}
+        throw ($message+[Environment]::NewLine+$details)
+    }
+    Write-Output $details
 }
 function Get-UserSession([string]$Root) {
     $artifacts=Get-Grid2DataRoot $Root
@@ -55,8 +100,11 @@ function Get-UserSession([string]$Root) {
     $session=Read-SessionJson $path
     if($session.schema -ne 1 -or ($session.workerId -isnot [long] -and $session.workerId -isnot [int]) -or
         $session.workerId -le 0 -or $session.mode -notin @('Headset','Desktop') -or $session.runtime -notin @('VDXR','SteamVR')) { throw 'Invalid user session journal.' }
-    $session.backup=Get-SessionChild $artifacts $session.backup '^stereo-probe-[0-9-]+$'
-    if($session.run) { $session.run=Get-SessionChild $artifacts $session.run '^diagnostic-[0-9-]+$' }
+    $session.backup=Get-SessionBackup $Root $session.backup
+    if($session.run) {
+        $session.run=Get-SessionRun $Root $session.run
+        if([IO.Path]::GetFileName($session.backup) -eq 'backup' -and [IO.Path]::GetDirectoryName($session.backup) -ne $session.run) { throw 'Recovery backup belongs to a different run.' }
+    }
     $worker=Get-Process -Id $session.workerId -ErrorAction SilentlyContinue
     $alive=$worker -and $worker.StartTime.ToUniversalTime().Ticks -eq ([datetimeoffset]$session.workerStartedUtc).UtcTicks
     $session | Add-Member -NotePropertyName workerAlive -NotePropertyValue ([bool]$alive) -Force
@@ -108,7 +156,7 @@ function Restore-UserSettings([string]$Backup,[string]$Documents) {
     $manifest=Read-SessionJson (Join-Path $Backup 'manifest.json')
     $plan=@()
     foreach($name in @('hardware_settings_config.xml','hardware_settings_info.xml')) {
-        $target=Assert-PlainPath (Join-Path $Documents $name)
+        $target=Assert-HardwareSettingsPath (Join-Path $Documents $name)
         $entries=@($manifest.files | Where-Object path -eq $target)
         if($entries.Count -ne 1) { throw 'Protected settings manifest is incomplete.' }
         $entry=$entries[0]
@@ -119,10 +167,12 @@ function Restore-UserSettings([string]$Backup,[string]$Documents) {
     }
     foreach($entry in $plan) {
         if($entry.after -eq $entry.before) { continue }
+        Assert-HardwareSettingsPath $entry.target | Out-Null
         if((Get-FileHash -LiteralPath $entry.target).Hash -ne $entry.after) { throw 'Settings changed during recovery.' }
         $saved=Join-Path $Backup ('recovery-current-'+[guid]::NewGuid().ToString('N')+'-'+$entry.name)
         [IO.File]::Copy($entry.target,$saved,$false)
         if((Get-FileHash -LiteralPath $saved).Hash -ne $entry.after) { throw 'Current settings backup failed.' }
+        Assert-HardwareSettingsPath $entry.target | Out-Null
         [IO.File]::Copy($entry.source,$entry.target,$true)
         if((Get-FileHash -LiteralPath $entry.target).Hash -ne $entry.before) { throw 'Settings recovery hash mismatch.' }
     }

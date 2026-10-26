@@ -25,6 +25,24 @@ try {
         Check (!(Test-HardwareReportRefresh $report $changed)) 'Unrelated hardware report change accepted.'
     }
     Check (!(Test-HardwareReportRefresh $report ([xml]'<hardware_settings_config/>'))) 'Settings XML treated as generated report.'
+    # The 4090 report changed this measured value by 104 between launches.
+    $memoryReport=[xml]'<hardware_settings_info><systemInfo totalMemory="33289216" rating="3"/><cpu name="cpu"/><graphics_card name="gpu" native_width="3840" native_height="2160"><resolution width="3840" height="2160"/><capabilities id="same"/></graphics_card></hardware_settings_info>'
+    $memoryRefresh=[xml]$memoryReport.OuterXml.Replace('33289216','33289112')
+    Check (Test-HardwareReportRefresh $memoryReport $memoryRefresh) 'Generated memory measurement refresh rejected.'
+    Check ($memoryRefresh.hardware_settings_info.systemInfo.totalMemory -eq '33289112') 'Memory report check modified current input.'
+    foreach($value in @('0','-1','invalid','18446744073709551616')) {
+        $changed=$memoryRefresh.CloneNode($true)
+        $changed.hardware_settings_info.systemInfo.SetAttribute('totalMemory',$value)
+        Check (!(Test-HardwareReportRefresh $memoryReport $changed)) 'Invalid memory measurement accepted.'
+    }
+    foreach($attribute in @('totalMemory','rating')) {
+        $changed=$memoryRefresh.CloneNode($true)
+        $changed.hardware_settings_info.systemInfo.RemoveAttribute($attribute)
+        Check (!(Test-HardwareReportRefresh $memoryReport $changed)) 'Missing hardware report field accepted.'
+    }
+    $changed=$memoryRefresh.CloneNode($true)
+    $changed.hardware_settings_info.systemInfo.SetAttribute('rating','2')
+    Check (!(Test-HardwareReportRefresh $memoryReport $changed)) 'Unrelated system information change accepted.'
     $artifacts=Join-Path $fixture 'artifacts'
     $backup=Join-Path $artifacts 'stereo-probe-20261015-000000-000'
     $documents=Join-Path $fixture 'documents'

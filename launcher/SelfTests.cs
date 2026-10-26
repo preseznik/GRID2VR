@@ -174,9 +174,7 @@ internal static class SelfTests
             client.SaveWindow(new LauncherWindow(-1, 810)); Check(client.LoadWindow() == window);
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-window.json"), "{invalid"); Check(client.LoadWindow() == new LauncherWindow());
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-window.json"), "{\"Width\":99999,\"Height\":720}"); Check(client.LoadWindow() == new LauncherWindow());
-            var noLogs = false;
-            try { client.LogsFolder(); } catch (IOException) { noLogs = true; }
-            Check(noLogs);
+            Check(client.LogsFolder() == client.Artifacts);
             var olderLogs = Path.Combine(client.Artifacts, "diagnostic-20260101-000000-001");
             var newerLogs = Path.Combine(client.Artifacts, "diagnostic-20260101-000000-002");
             Directory.CreateDirectory(olderLogs); Directory.CreateDirectory(newerLogs);
@@ -190,6 +188,32 @@ internal static class SelfTests
             File.WriteAllText(pendingPath, "{\"run\":null}"); Check(client.LogsFolder() == olderLogs);
             File.WriteAllText(pendingPath, JsonSerializer.Serialize(new { run = root })); Check(client.LogsFolder() == olderLogs);
             File.WriteAllText(lastPath, JsonSerializer.Serialize(new { run = client.Artifacts })); Check(client.LogsFolder() == newerLogs);
+            File.Delete(pendingPath);
+            var workerLog = Path.Combine(client.Artifacts, "user-session-" + Guid.NewGuid().ToString("N") + ".log");
+            File.WriteAllText(workerLog, "Linked input retained: OneDrive Documents");
+            File.WriteAllText(lastPath, JsonSerializer.Serialize(new { run = (string?)null, state = "failed", log = workerLog }));
+            Check(client.LogsFolder() == client.Artifacts); // Current failure takes priority over old runs.
+            foreach (var brokenReceipt in new[] { "{invalid", "[]", new string('x', 256 * 1024 + 1) })
+            {
+                File.WriteAllText(lastPath, brokenReceipt);
+                Check(client.LogsFolder() == client.Artifacts);
+            }
+            File.WriteAllText(lastPath, JsonSerializer.Serialize(new { log = Path.Combine(root, Path.GetFileName(workerLog)) }));
+            Check(client.LogsFolder() == newerLogs); // Never open an external log location.
+            File.Delete(workerLog);
+            File.Delete(pendingPath); File.Delete(lastPath);
+            var groupedLogs = Path.Combine(client.Artifacts, "logs", "20261026-212549-730");
+            var nextLogs = Path.Combine(client.Artifacts, "logs", "20261026-212549-731");
+            Directory.CreateDirectory(groupedLogs); Directory.CreateDirectory(nextLogs);
+            Check(client.LogsFolder() == nextLogs);
+            File.WriteAllText(lastPath, JsonSerializer.Serialize(new { logDirectory = groupedLogs, run = (string?)null, state = "failed" }));
+            Check(client.LogsFolder() == groupedLogs); // Includes preparation failures and the worker log.
+            File.WriteAllText(pendingPath, JsonSerializer.Serialize(new { logDirectory = nextLogs, run = (string?)null }));
+            Check(client.LogsFolder() == nextLogs);
+            File.WriteAllText(pendingPath, JsonSerializer.Serialize(new { logDirectory = Path.Combine(root, "logs", "20261026-212549-731") }));
+            Check(client.LogsFolder() == groupedLogs);
+            File.WriteAllText(lastPath, JsonSerializer.Serialize(new { run = groupedLogs }));
+            Check(client.LogsFolder() == groupedLogs);
             File.Delete(pendingPath); File.Delete(lastPath);
             Check(graphics.SceneLabel == "1920 × 1080" && new GraphicsOptions().SceneLabel == "1280 × 720");
             Check(new GraphicsOptions().HeadsetScale == 100 && new GraphicsOptions().HeadsetLabel == "1280 × 720 per eye");
@@ -301,6 +325,7 @@ internal static class SelfTests
             LauncherFeaturesTests.Run(fixture);
             UpdateNotificationTests.Run(root, client);
             InstallationTests.Run(fixture);
+            SessionRecoveryTests.Run(fixture);
             DrivingControlsTests.Run(fixture);
             ResponsiveLayoutTests.Run(root, client);
             SaveLauncherPreviews(root, client);

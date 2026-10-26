@@ -2,6 +2,7 @@
 param(
     [ValidateSet('Preflight','Desktop','Headset')][string]$Mode='Preflight',
     [ValidateSet('VDXR','SteamVR')][string]$XrRuntime='VDXR',
+    [string]$RunLogDirectory='',
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [ValidateRange(2,900)][int]$Frames=900,
     [ValidateRange(1,300)][int]$CaptureAfterSeconds=75,
@@ -111,7 +112,7 @@ if ($BackgroundPlay -ne 'Off' -and !$RuntimeSession) { throw 'Background play re
 if (Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Existing game session retained.' }
 if (Test-Path -LiteralPath (Join-Path $artifacts 'diagnostic-pending.json')) { throw 'Restore the pending diagnostic first.' }
 if (Test-Path -LiteralPath (Join-Path $artifacts 'practice-flow-pending.json')) { throw 'Restore the earlier experimental practice flow first.' }
-if (Test-Path -LiteralPath (Join-Path $artifacts 'steamvr-theater-pending.json')) { throw 'Restore the pending SteamVR theater preference with tools/steamvr_theater.py restore first.' }
+if (Test-Path -LiteralPath (Join-Path $artifacts 'steamvr-theater-pending.json')) { throw 'Start SteamVR and choose Restore original files in GRID2VR before launching again.' }
 foreach($name in @('d3d11.dll','dxgi.dll','GRID2VR.diagnostic-session','GRID2VR.session.xml')) {
     if(Test-Path -LiteralPath (Join-Path $game $name)) { throw "Existing $name retained; preflight refused." }
 }
@@ -147,15 +148,26 @@ if($CockpitS2000 -ne 'Off') {
     $null=Get-CockpitCameraCandidate $root $CockpitS2000
 }
 $cockpitAssets=@()
+$dlcCockpit=$null
 $cockpitModeRequested=$CockpitMode
 if($selectedSession.carContent.dlc -and !$selectedSession.carContent.cockpitAvailable) { $CockpitMode='Off' }
 if($CockpitMode -ne 'Off') {
     if($UntilExit -and $Mode -ne 'Preflight') { Write-Output 'GRID2VR_LAUNCH|Checking cockpit cameras and car assets...' }
     if(!$RuntimeSession -or (!$UntilExit -and !$ExposureAudit) -or $PlayerControlOnly -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off' -or (!$ExposureAudit -and $Mode -notin @('Preflight','Headset'))) { throw 'Launcher cockpit assets require a VR user session or bounded exposure audit.' }
     . (Join-Path $PSScriptRoot 'Cockpit-Assets.ps1')
-    $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch))
+    if($NormalLaunch -or $selectedSession.carContent.dlc) {
+        . (Join-Path $PSScriptRoot 'Dlc-Cockpit.ps1')
+        $dlcCockpit=Get-DlcCockpitRequest $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch)
+        if($dlcCockpit.cars.Count) {
+            if(!$UntilExit -or $Mode -notin @('Preflight','Headset')) { throw 'DLC cockpit cameras require a VR user session.' }
+            Assert-DlcCockpitProxy $proxy
+        }
+    }
+    $startInCockpit=$UntilExit -and $Mode -in @('Preflight','Headset') -and $selectedSession.control -eq 'human'
+    $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) $startInCockpit ([bool]$selectedSession.carContent.dlc))
 }
-$protectedPaths=@((Join-Path $documents 'hardware_settings_config.xml'),(Join-Path $documents 'hardware_settings_info.xml'))
+$hardwarePaths=@((Join-Path $documents 'hardware_settings_config.xml'),(Join-Path $documents 'hardware_settings_info.xml'))
+$protectedPaths=@($hardwarePaths)
 foreach($account in Get-ChildItem -LiteralPath (Join-Path $steam 'userdata') -Directory) {
     $saveRoot=Join-Path $account.FullName '44350'
     if(Test-Path -LiteralPath $saveRoot) {
@@ -169,7 +181,8 @@ if($RemoveCinemaMatte) { $protectedPaths+=Join-Path $game 'frontend/databases/ov
 if($CockpitS2000 -ne 'Off') { $protectedPaths+=Join-Path $game 'cars/models/s20/cameras.xml' }
 foreach($camera in $cockpitAssets) { $protectedPaths+=Join-Path $game $camera.name }
 $protectedPaths=@($protectedPaths | Sort-Object -Unique)
-foreach($path in @($game,$documents,$hardwareSettingsFile,$proxy)+$protectedPaths) {
+foreach($path in @($documents)+$hardwarePaths) { Assert-HardwareSettingsPath $path | Out-Null }
+foreach($path in @($game,$hardwareSettingsFile,$proxy)+@($protectedPaths | Where-Object { $_ -notin $hardwarePaths })) {
     if((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Linked input retained: $path" }
 }
 $protectedBytes=($protectedPaths | ForEach-Object { (Get-Item -LiteralPath $_).Length } | Measure-Object -Sum).Sum
@@ -182,7 +195,8 @@ $preflight.cockpitS2000=$CockpitS2000
 $preflight.cockpitMode=$CockpitMode
 $preflight.cockpitTextures=$CockpitTextures
 $preflight.cockpitModeRequested=$cockpitModeRequested
-$preflight.cockpitApplied=($cockpitAssets.Count -gt 0)
+$preflight.cockpitApplied=($cockpitAssets.Count -gt 0 -or $dlcCockpit.cars.Count -gt 0)
+$preflight.dlcCockpit=$dlcCockpit
 $preflight.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
 $preflight.exposureAudit=[bool]$ExposureAudit
 $preflight.cockpitAssets=$cockpitAssets
@@ -250,12 +264,14 @@ $preflight.headsetSettings=Get-HeadsetSettings $HeadsetScale
 $preflight.runtimeInfo=$runtimeInfo
 $preflight | ConvertTo-Json -Depth 6
 if($Mode -eq 'Preflight') { return }
-$backup=Join-Path $artifacts ('stereo-probe-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
+$RunLogDirectory=if($RunLogDirectory){Get-Grid2LogDirectory $root $RunLogDirectory}else{New-Grid2LogDirectory $root}
+$backup=Join-Path $RunLogDirectory 'backup'
 New-Item -ItemType Directory -Path $backup | Out-Null
 $preflight | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $backup 'preflight.json')
 $files=@(); $i=0
 if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|Backing up original settings and protected files...' }
 foreach($path in $protectedPaths) {
+    if($path -in $hardwarePaths) { Assert-HardwareSettingsPath $path | Out-Null }
     $target=Join-Path $backup ("protected-"+($i++)+'.bin')
     [IO.File]::Copy($path,$target,$false)
     $hash=(Get-FileHash -LiteralPath $target).Hash
@@ -266,7 +282,7 @@ $executables=@($expected.Keys | ForEach-Object { @{path=(Join-Path $game $_);bef
 @{files=$files;executables=$executables} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $backup 'manifest.json')
 if ($UntilExit) {
     $worker=Get-Process -Id $PID
-    $userSession=@{schema=1;backup=$backup;run=$null;workerId=$PID;workerStartedUtc=$worker.StartTime.ToUniversalTime().ToString('o');mode=$Mode;runtime=$XrRuntime}
+    $userSession=@{schema=1;backup=$backup;run=$null;logDirectory=$RunLogDirectory;workerId=$PID;workerStartedUtc=$worker.StartTime.ToUniversalTime().ToString('o');mode=$Mode;runtime=$XrRuntime}
     Write-SessionJson $sessionJournal $userSession
 }
 if($Mode -eq 'Desktop' -and !$RecordedViewsFile -and !$PlayerControlOnly) {
@@ -278,13 +294,13 @@ $output=[Collections.Generic.List[object]]::new()
 try {
     if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|Applying temporary launch settings...' }
     if($suppressTheater) {
-        & $PythonPath (Join-Path $PSScriptRoot 'steamvr_theater.py') begin --receipt (Join-Path $backup 'theater-begin.json')
-        if($LASTEXITCODE) { throw 'SteamVR automatic-theater suppression failed; game not launched.' }
+        Invoke-SteamVrTheater $PythonPath begin $backup
     }
     if($HardwareSettingsFile) {
         $settings=@($files | Where-Object { $_.path.EndsWith('\hardware_settings_config.xml') })
         if($settings.Count -ne 1 -or (Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue)) { throw 'Temporary settings require one protected config and no game process.' }
         $settings=$settings[0]
+        Assert-HardwareSettingsPath $settings.path | Out-Null
         if((Get-FileHash -LiteralPath $settings.path).Hash -ne $settings.before) { throw 'Settings changed before temporary deployment.' }
         $inputPath=(Get-Item -LiteralPath $HardwareSettingsFile -ErrorAction Stop).FullName
         $inputXml=[xml][IO.File]::ReadAllText($inputPath)
@@ -344,6 +360,7 @@ try {
         }
     }
     $parameters.CareerProfile=$career.id
+    $parameters.RunLogDirectory=$RunLogDirectory
     $parameters.CockpitTextures=$CockpitTextures
     # The non-rendering desktop branch also needs the explicitly selected DLL.
     if($CockpitTextures -ne 'Off') { $parameters.DiagnosticProxy=$DiagnosticProxy }
@@ -367,6 +384,7 @@ try {
     $receipt=if($run -and (Test-Path (Join-Path $run 'session.json'))){Get-Content (Join-Path $run 'session.json') -Raw | ConvertFrom-Json}else{$null}
     $audit=@()
     foreach($entry in $files) {
+        if($entry.path -in $hardwarePaths) { Assert-HardwareSettingsPath $entry.path | Out-Null }
         $after=(Get-FileHash -LiteralPath $entry.path).Hash
         $restored=$false
         $hardwareInfo=$entry.path.EndsWith('\hardware_settings_info.xml')
@@ -380,10 +398,11 @@ try {
             if($hardwareInfo) {
                 $originalXml=[xml][IO.File]::ReadAllText($entry.backup)
                 $currentXml=[xml][IO.File]::ReadAllText($entry.path)
-                if(!(Test-HardwareReportRefresh $originalXml $currentXml)) { throw 'Hardware report has changes beyond detected display modes; retained current file.' }
+                if(!(Test-HardwareReportRefresh $originalXml $currentXml)) { throw 'Hardware report has changes beyond detected memory and display modes; retained current file.' }
             }
             $changedName=if($hardwareInfo){'game-written-info.xml'}else{'game-written-settings.xml'}
             [IO.File]::Copy($entry.path,(Join-Path $backup $changedName),$false)
+            Assert-HardwareSettingsPath $entry.path | Out-Null
             [IO.File]::Copy($entry.backup,$entry.path,$true)
             $restored=$true
         }
@@ -401,17 +420,20 @@ try {
     $unexpected=@($audit | Where-Object {!$_.unchanged -and (!$UntilExit -or $career.id -ne 'current' -or $_.path -in (@($cinemaPath,$cockpitPath)+$cameraPaths) -or $_.path.StartsWith($documents,[StringComparison]::OrdinalIgnoreCase))})
     if($unexpected.Count -or @($executables | Where-Object {!$_.unchanged}).Count) { throw 'A protected file differs; see preservation audit.' }
     } finally {
-        if($suppressTheater) {
-            & $PythonPath (Join-Path $PSScriptRoot 'steamvr_theater.py') restore --receipt (Join-Path $backup 'theater-restored.json')
-            if($LASTEXITCODE) { throw 'SteamVR theater restoration failed; recovery journal retained. Run tools/steamvr_theater.py restore while SteamVR is running.' }
+        if($suppressTheater -and (Test-Path -LiteralPath (Join-Path $artifacts 'steamvr-theater-pending.json'))) {
+            Invoke-SteamVrTheater $PythonPath restore $backup
         }
     }
-}
-# Restore settings before the potentially lengthy evidence analysis.
-if($run) { & (Join-Path $PSScriptRoot 'Finish-Diagnostic.ps1') -RunPath $run -KeepCaptures:$KeepCaptures -PythonPath $PythonPath }
-if ($UntilExit) {
-    Copy-Item -LiteralPath $sessionJournal -Destination (Join-Path $backup 'user-session-restored.json')
-    Remove-Item -LiteralPath $sessionJournal
+    # Complete successful rollback even when launch threw. Failed restoration
+    # still leaves the journal above; an ordinary launch error must allow retry.
+    if($run) { & (Join-Path $PSScriptRoot 'Finish-Diagnostic.ps1') -RunPath $run -KeepCaptures:$KeepCaptures -PythonPath $PythonPath }
+    if ($UntilExit) {
+        if((Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) -or
+           (Test-Path -LiteralPath (Join-Path $artifacts 'diagnostic-pending.json')) -or
+           (Test-Path -LiteralPath (Join-Path $artifacts 'steamvr-theater-pending.json'))) { throw 'Recovery remains pending. Close GRID 2 and choose Restore original files in GRID2VR.' }
+        Copy-Item -LiteralPath $sessionJournal -Destination (Join-Path $backup 'user-session-restored.json')
+        Remove-Item -LiteralPath $sessionJournal
+    }
 }
 if($RuntimeSession) {
     if(!$run) { throw 'No runtime evidence directory was produced.' }

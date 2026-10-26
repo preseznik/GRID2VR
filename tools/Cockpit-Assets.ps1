@@ -2,7 +2,7 @@
 # Per-car camera assets only; stereo rendering and saved camera preferences are untouched.
 . (Join-Path $PSScriptRoot 'Cockpit-Camera.ps1')
 $script:CockpitAssetsRoot=Split-Path $PSScriptRoot -Parent
-$script:CockpitAssetsCatalogHash='2e4185a36dd6c1878449d4ab2b6bce596156271483a650b75f749cd2b120645c'
+$script:CockpitAssetsCatalogHash='e57dde118abfdd0f6d81f98734e1799e40021cefdaf9c055699c168d3f240ec2'
 
 function Read-CockpitAssetCatalog([string]$Root) {
     $path=Join-Path $Root 'tools/data/cockpit-assets.json'
@@ -19,11 +19,14 @@ function Read-CockpitAssetCatalog([string]$Root) {
     }
     if($catalog.startView -cne 'bonnet' -or $catalog.intro.name -cne 'cutscene/intro_buildup.xml' -or
        $catalog.intro.originalSha256 -cnotmatch '^[0-9a-f]{64}$' -or $catalog.intro.sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid cockpit startup record.' }
+    if($catalog.startsequence.name -cne 'cutscene/startsequence.xml' -or
+       $catalog.startsequence.originalSha256 -cnotmatch '^[0-9a-f]{64}$' -or $catalog.startsequence.sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid cockpit race-start record.' }
     return $catalog
 }
 
 function Get-CockpitAssetSource([string]$Root,$Entry) {
     if($Entry.car -ceq 'intro') { return Join-Path (Get-Grid2DataRoot $Root) 'cockpit-cameras/intro.xml' }
+    if($Entry.car -ceq 'startsequence') { return Join-Path (Get-Grid2DataRoot $Root) 'cockpit-start/startsequence.xml' }
     return Join-Path (Get-Grid2DataRoot $Root) "cockpit-cameras/$($Entry.car)/$($Entry.mode).bin"
 }
 
@@ -41,7 +44,7 @@ function Read-SeatAlignments([string]$Root) {
     Assert-CockpitCameraPlainPath $path
     if((Get-Item -LiteralPath $path).Length -gt 32KB) { throw 'Seat settings exceed their bound.' }
     $value=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
-    if($value.Version -ne 1 -or $value.Cars -isnot [Collections.IDictionary] -or $value.Cars.Count -gt 64) { throw 'Invalid seat settings.' }
+    if($value.Version -ne 1 -or $value.Cars -isnot [Collections.IDictionary] -or $value.Cars.Count -gt 96) { throw 'Invalid seat settings.' }
     foreach($car in $value.Cars.Keys) {
         if($car -cnotmatch '^[a-z0-9]{3}$') { throw 'Invalid seat car.' }
         Assert-SeatOffset $value.Cars[$car]
@@ -60,12 +63,12 @@ function Invoke-CockpitAlignment([string]$Root,$Entry,[string]$BaseHash,[string]
     return ($result | ConvertFrom-Json).sha256
 }
 
-function Get-CockpitAssetSelection([string]$Root,[string]$Game,[ValidateSet('HeadOnly','HideDriver')][string]$Mode,[string]$Car,[bool]$NormalLaunch) {
+function Get-CockpitAssetSelection([string]$Root,[string]$Game,[ValidateSet('HeadOnly','HideDriver')][string]$Mode,[string]$Car,[bool]$NormalLaunch,[bool]$StartInCockpit=$false,[bool]$DlcCar=$false) {
     $null=Get-Grid2ExecutableHash (Join-Path $Game 'grid2_avx.exe')
     $catalog=Read-CockpitAssetCatalog $Root
     $alignments=Read-SeatAlignments $Root
     $cars=@($catalog.cars | Where-Object {$NormalLaunch -or $_.car -ceq $Car})
-    if(!$cars.Count) { throw "No cockpit calibration is available for car '$Car'. Disable Cockpit view to use its original cameras." }
+    if(!$cars.Count -and !$DlcCar) { throw "No cockpit calibration is available for car '$Car'. Disable Cockpit view to use its original cameras." }
     $result=@()
     foreach($item in $cars) {
         $name="cars/models/$($item.car)/cameras.xml"
@@ -89,6 +92,12 @@ function Get-CockpitAssetSelection([string]$Root,[string]$Game,[ValidateSet('Hea
         $entry=@{car='intro';name=$intro.name;mode='Intro';originalSha256=$intro.originalSha256;sha256=$intro.sha256}
         Assert-CockpitCameraHash (Get-CockpitAssetSource $Root $entry) $intro.sha256
         $result+=$entry
+    } elseif($StartInCockpit) {
+        $start=$catalog.startsequence
+        Assert-CockpitCameraHash (Join-Path $Game $start.name) $start.originalSha256
+        $entry=@{car='startsequence';name=$start.name;mode='Start';originalSha256=$start.originalSha256;sha256=$start.sha256}
+        Assert-CockpitCameraHash (Get-CockpitAssetSource $Root $entry) $start.sha256
+        $result+=$entry
     }
     return $result
 }
@@ -99,6 +108,12 @@ function Assert-CockpitAssetEntries($Entries) {
     $catalog=Read-CockpitAssetCatalog $script:CockpitAssetsRoot
     $seen=@{}
     foreach($entry in $items) {
+        if($entry.car -ceq 'startsequence') {
+            if($seen.ContainsKey('startsequence') -or $entry.name -cne $catalog.startsequence.name -or $entry.mode -cne 'Start' -or
+               $entry.originalSha256 -ne $catalog.startsequence.originalSha256 -or $entry.sha256 -ne $catalog.startsequence.sha256) { throw 'Invalid cockpit race-start recovery entry.' }
+            $seen['startsequence']=$true
+            continue
+        }
         if($entry.car -ceq 'intro') {
             if($seen.ContainsKey('intro') -or $entry.name -cne $catalog.intro.name -or $entry.mode -cne 'Intro' -or
                $entry.originalSha256 -ne $catalog.intro.originalSha256 -or $entry.sha256 -ne $catalog.intro.sha256) { throw 'Invalid first-career cockpit recovery entry.' }
@@ -120,11 +135,12 @@ function Assert-CockpitAssetEntries($Entries) {
 function Get-CockpitAssetPaths([string]$Game,[string]$Run,$Entry) {
     # Reuse the installation/backup containment and reparse-point guards.
     $null=Get-CockpitCameraPaths $Game $Run
-    $intro=$Entry.car -ceq 'intro' -and $Entry.name -ceq 'cutscene/intro_buildup.xml'
-    if(!$intro -and ($Entry.car -cnotmatch '^[a-z0-9]{3}$' -or $Entry.name -cne "cars/models/$($Entry.car)/cameras.xml")) { throw 'Invalid cockpit path.' }
+    $cutscene=($Entry.car -ceq 'intro' -and $Entry.name -ceq 'cutscene/intro_buildup.xml') -or
+        ($Entry.car -ceq 'startsequence' -and $Entry.name -ceq 'cutscene/startsequence.xml')
+    if(!$cutscene -and ($Entry.car -cnotmatch '^[a-z0-9]{3}$' -or $Entry.name -cne "cars/models/$($Entry.car)/cameras.xml")) { throw 'Invalid cockpit path.' }
     $paths=@{
         target=(Join-Path $Game $Entry.name)
-        temporary=$(if($intro){Join-Path $Game 'cutscene/GRID2VR.cockpit.tmp'}else{Join-Path $Game "cars/models/$($Entry.car)/GRID2VR.cockpit.tmp"})
+        temporary=$(if($cutscene){Join-Path $Game 'cutscene/GRID2VR.cockpit.tmp'}else{Join-Path $Game "cars/models/$($Entry.car)/GRID2VR.cockpit.tmp"})
         source=(Join-Path $Run "cockpit-assets/$($Entry.car)-applied.xml")
         backup=(Join-Path $Run "cockpit-assets/$($Entry.car)-original.xml")
     }

@@ -40,16 +40,27 @@ function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
     [IO.File]::WriteAllText($intro,'original intro')
     $introAsset=Join-Path $fixture 'artifacts/cockpit-cameras/intro.xml'
     [IO.File]::WriteAllText($introAsset,'cockpit first-career handoff')
+    $start=Join-Path $game 'cutscene/startsequence.xml'
+    [IO.File]::WriteAllText($start,'original start sequence')
+    $startAsset=Join-Path $fixture 'artifacts/cockpit-start/startsequence.xml'
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($startAsset)) | Out-Null
+    [IO.File]::WriteAllText($startAsset,'cockpit race-start handoff')
     $catalogPath=Join-Path $fixture 'tools/data/cockpit-assets.json'
-    @{schema=1;cars=$cars;startView='bonnet';intro=@{name='cutscene/intro_buildup.xml';originalSha256=(Hash $intro);sha256=(Hash $introAsset)}} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $catalogPath
+    @{schema=1;cars=$cars;startView='bonnet';intro=@{name='cutscene/intro_buildup.xml';originalSha256=(Hash $intro);sha256=(Hash $introAsset)};
+        startsequence=@{name='cutscene/startsequence.xml';originalSha256=(Hash $start);sha256=(Hash $startAsset)}} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $catalogPath
     $script:CockpitAssetsCatalogHash=Hash $catalogPath
-    Require (@(Get-CockpitAssetSelection $fixture $game HeadOnly 's20' $false).Count -eq 1) 'Selected launch touches other cars.'
+    Require (@(Get-CockpitAssetSelection $fixture $game HeadOnly 's20' $false).Count -eq 1) 'Camera-only diagnostics must retain their original startup sequence.'
+    $selected=@(Get-CockpitAssetSelection $fixture $game HeadOnly 's20' $false $true)
+    Require ($selected.Count -eq 2 -and $selected[0].car -ceq 's20' -and $selected[1].car -ceq 'startsequence') 'Selected launch must include only its car and race-start handoff.'
     Require (@(Get-CockpitAssetSelection $fixture $game HeadOnly 's20' $true).Count -eq 3) 'Normal does not cover menu-selected cars and first-career handoff.'
+    $dlc=@(Get-CockpitAssetSelection $fixture $game HeadOnly 'ind' $false $true $true)
+    Require ($dlc.Count -eq 1 -and $dlc[0].car -ceq 'startsequence') 'Native DLC cockpit must deploy only its shared startup asset.'
     Reject {Get-CockpitAssetSelection $fixture $game HeadOnly '../bad' $false}
     foreach($mode in @('HeadOnly','HideDriver')) {
+      foreach($normal in @($true,$false)) {
         foreach($phase in @('prepared','partial','installed','temporary')) {
-            $run=Join-Path $fixture "$mode-$phase"; [IO.Directory]::CreateDirectory($run) | Out-Null
-            $entries=@(Get-CockpitAssetSelection $fixture $game $mode '' $true)
+            $run=Join-Path $fixture "$mode-$normal-$phase"; [IO.Directory]::CreateDirectory($run) | Out-Null
+            $entries=@(Get-CockpitAssetSelection $fixture $game $mode 's20' $normal $true)
             $null=New-CockpitAssetsDeployment $game $run $fixture $entries
             if($phase -eq 'installed') { Install-CockpitAssets $game $run $entries }
             if($phase -eq 'partial') {
@@ -64,6 +75,7 @@ function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
             Restore-CockpitAssets $game $run $entries
             foreach($entry in $entries) { Assert-CockpitCameraHash (Join-Path $game $entry.name) $entry.originalSha256 }
         }
+      }
     }
     $run=Join-Path $fixture 'guards';[IO.Directory]::CreateDirectory($run) | Out-Null
     $entries=@(Get-CockpitAssetSelection $fixture $game HeadOnly '' $true)
@@ -90,6 +102,13 @@ function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
     }
     Reject {Restore-CockpitAssets $game $run @($entries[0],$entries[0])}
     Restore-CockpitAssets $game $run $entries
+    # The startup entry receives the same foreign-file and journal guards as cameras.
+    foreach($field in @('name','car','mode','sha256','originalSha256')) {
+        $bad=$selected[1].Clone();$bad[$field]='../foreign'
+        Reject {Assert-CockpitAssetEntries @($bad)}
+    }
+    [IO.File]::AppendAllText($startAsset,' foreign')
+    Reject {Get-CockpitAssetSelection $fixture $game HeadOnly 's20' $false $true}
     [IO.File]::AppendAllText($catalogPath,' ')
     Reject {Get-CockpitAssetSelection $fixture $game HeadOnly '' $true}
     Write-Output 'Per-car cockpit selection, Normal coverage, both visibility modes, interrupted multi-car recovery and foreign/process/catalog guards passed.'

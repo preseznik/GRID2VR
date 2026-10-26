@@ -5,9 +5,11 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 DATA_FILES=['cockpit-assets.json','cockpit-cars.json','cockpit-defaults.json','car-classes.json','dlc-content.json']
 SCRIPTS=['Paths','Setup-Package','Start-UserSession','Run-StereoProbe','Run-Diagnostic','Write-DiagnosticReceipt','Save-BenchmarkReports','User-Session','Session-Control','Finish-Diagnostic','Profiles','Cockpit-Camera','Cockpit-Assets','Recenter-Device','Recenter-Key','Headset-Settings','OpenXR-Runtime','Practice-Flow','Native-Startup','Startup-Movies','Cinema-Matte','Instance-Capacity','Driving-Controls','Flicker-Automation','Launcher-VrPreview']
-SCRIPTS += ['Borderless-Desktop', 'Game-Executable']
+SCRIPTS += ['Borderless-Desktop', 'Game-Executable', 'Hardware-Settings']
 SCRIPTS += ['Focus-CockpitPack', 'Cockpit-TexturePack']
 DATA_FILES += ['cockpit-texture-pack.json']
+DATA_FILES += ['cockpit-dlc.json']
+SCRIPTS += ['Dlc-Cockpit']
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def copy(source,target):
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
@@ -63,9 +65,10 @@ def stage(a):
     copy(ROOT/'build/driving-input-vs-x64/Release/driving_input.dll',payload/'driving_input.dll')
     for name in SCRIPTS:copy(ROOT/f'tools/{name}.ps1',mod/f'tools/{name}.ps1')
     copy(ROOT/'tools/GameExecutable.cs',mod/'tools/GameExecutable.cs')
+    copy(ROOT/'tools/HardwareSettingsPath.cs',mod/'tools/HardwareSettingsPath.cs')
     # Analysis modules are imported on demand by bounded post-run cleanup.
     for p in (ROOT/'tools').glob('*.py'):
-        if p.name.startswith(('analyze_','observe_')) or p.name in ['session_config.py','graphics_profile.py','practice_entry.py','startup_movies.py','cockpit_assets.py','cockpit_camera.py','cockpit_alignment.py','steamvr_theater.py','unpack_snapshots.py','summarize_diagnostic.py','recorded_views.py','dynamic_views.py']:
+        if p.name.startswith(('analyze_','observe_')) or p.name in ['session_config.py','graphics_profile.py','practice_entry.py','startup_movies.py','cockpit_assets.py','cockpit_start.py','cockpit_camera.py','cockpit_alignment.py','steamvr_theater.py','unpack_snapshots.py','summarize_diagnostic.py','recorded_views.py','dynamic_views.py']:
             copy(p,mod/'tools'/p.name)
     # Include local imports even when they are used only during post-run recovery.
     pending=list((mod/'tools').glob('*.py'));included={p.stem for p in pending}

@@ -15,7 +15,9 @@ function Copy-GameFile([string]$Relative) {
     New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
     if(!(Test-Path -LiteralPath $target)) { Copy-Item -LiteralPath (Join-Path $originalGame $Relative) -Destination $target }
 }
-foreach($name in @('grid2.exe','grid2_avx.exe','bink2w32.dll','cutscene/intro_buildup.xml','system/flow.bin','system/states.bin','frontend/databases/overlayPersistent.pssg','tracks/generic/ornament_system_settings.xml')) {Copy-GameFile $name}
+foreach($name in @('grid2.exe','grid2_avx.exe','bink2w32.dll','cutscene/intro_buildup.xml','cutscene/startsequence.xml','system/flow.bin','system/states.bin','frontend/databases/overlayPersistent.pssg','tracks/generic/ornament_system_settings.xml')) {Copy-GameFile $name}
+# Exercise a single-package car, a split package and an embedded dr.nic camera.
+foreach($name in @('dr.nic','download/indycar/indycar.nefs','download/drift/comp_drift.nefs','download/drift/drift.nefs','download/mclaren_racing/mclaren_racing.nefs')) {Copy-GameFile $name}
 $catalog=Get-Content -LiteralPath (Join-Path $root 'tools/data/cockpit-assets.json') -Raw | ConvertFrom-Json
 foreach($car in $catalog.cars) {Copy-GameFile "cars/models/$($car.car)/cameras.xml"}
 Copy-GameFile 'cars/models/s20/s20_highLOD.pssg'
@@ -56,10 +58,28 @@ $preserved=@{};foreach($name in @('launcher-settings.json','launcher-window.json
 $shell=Join-Path $mod 'payload/powershell/pwsh.exe'
 Run (Join-Path $mod 'payload/python/python.exe') @('-B','-c',"import sys,importlib;sys.path.insert(0,sys.argv[1]);from pathlib import Path;from PIL import Image;import numpy;[importlib.import_module(p.stem) for p in Path(sys.argv[1]).glob('analyze_*.py')];print('All diagnostic modules imported')",(Join-Path $mod 'tools')) 'python-dependencies'
 $recenter=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{"Action":"Recenter","Device":"Xbox","DeviceId":"xinput:0","DeviceType":"xinput_pad","Input":"xinput_button_back"}'))
+$runFolders=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+function Check-RunLogs {
+    $last=Get-Content -LiteralPath (Join-Path $data 'user-session-last.json') -Raw | ConvertFrom-Json
+    $folder=Get-Grid2LogDirectory $mod $last.logDirectory
+    if(!$runFolders.Add($folder) -or $last.state -ne 'complete') { throw 'Launch preflights did not receive separate completed log folders.' }
+    foreach($name in @('user-session.log','user-session.json','selection/hardware-settings.xml','selection/graphics-profile.json')) {
+        if(!(Test-Path -LiteralPath (Join-Path $folder $name) -PathType Leaf)) { throw "Run log folder is incomplete: $name" }
+    }
+    if((Get-FileHash -LiteralPath (Join-Path $folder 'user-session.json')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $data 'user-session-last.json')).Hash) { throw 'Latest session status differs from its run folder.' }
+}
 foreach($mode in @('Normal','Practice','Race')) {
     Run $shell @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $mod 'tools/Start-UserSession.ps1'),'-Preflight','-PreviewVrFixes','-Mode','VR','-LaunchMode',$mode,'-Car','s20','-Track','circuits/brands_hatch/route_3','-RenderScale','300','-HeadsetScale','200','-VrMsaa','4xmsaa','-CockpitMode','HeadOnly','-SkipIntro','-RecenterDeviceBase64',$recenter) ('preflight-'+$mode)
+    Check-RunLogs
 }
 Run $shell @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $mod 'tools/Start-UserSession.ps1'),'-Preflight','-Mode','Desktop','-LaunchMode','Practice','-Car','s20','-Track','circuits/brands_hatch/route_3','-RenderScale','300','-HeadsetScale','200','-DesktopMsaa','4xmsaa') 'preflight-desktop'
+Check-RunLogs
+foreach($car in @('ind','240','mpg')) {
+    Run $shell @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $mod 'tools/Start-UserSession.ps1'),'-Preflight','-Mode','VR','-LaunchMode','Race','-Car',$car,'-Track','circuits/brands_hatch/route_3','-CockpitMode','HeadOnly') ('preflight-dlc-'+$car)
+    Check-RunLogs
+    $last=Get-Content -LiteralPath (Join-Path $data 'user-session-last.json') -Raw | ConvertFrom-Json
+    if($last.cockpitMode -ne 'HeadOnly' -or (Get-Content -LiteralPath $last.log -Raw) -notmatch 'dlc-cockpit-v1 head-only') { throw "DLC cockpit request was lost: $car" }
+}
 Run $shell @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $root 'tests/Test-InstalledRecovery.ps1'),'-ModRoot',$mod) 'recovery'
 # Refusals must leave foreign files and interrupted-session receipts intact.
 $foreign=Join-Path $game 'd3d11.dll'

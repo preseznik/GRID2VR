@@ -30,6 +30,12 @@ target_include_directories(d3d11 PRIVATE "${CMAKE_BINARY_DIR}" src)
 target_link_libraries(d3d11 PRIVATE minhook d3dcompiler dxguid bcrypt psapi)
 target_sources(d3d11 PRIVATE src/motion_blur.cpp src/player_control.cpp src/background_play.cpp)
 target_sources(d3d11 PRIVATE src/focus_cockpit.cpp)
+target_sources(d3d11 PRIVATE src/dlc_cockpit.cpp)
+add_executable(dlc_cockpit_test tests/dlc_cockpit_test.cpp src/dlc_cockpit.cpp src/guarded_hooks.cpp)
+target_include_directories(dlc_cockpit_test PRIVATE src)
+target_compile_definitions(dlc_cockpit_test PRIVATE GRID2VR_DLC_COCKPIT_TEST WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(dlc_cockpit_test PRIVATE bcrypt)
+add_test(NAME guarded_dlc_cockpit COMMAND dlc_cockpit_test "${CMAKE_SOURCE_DIR}/tests/fixtures/dlc-cockpit-code.bin")
 add_executable(focus_cockpit_test tests/focus_cockpit_test.cpp src/focus_cockpit.cpp src/guarded_hooks.cpp src/texture_digest.cpp)
 target_include_directories(focus_cockpit_test PRIVATE src)
 target_compile_definitions(focus_cockpit_test PRIVATE GRID2VR_FOCUS_COCKPIT_TEST WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -294,6 +300,9 @@ add_test(NAME cockpit_camera_asset COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOUR
 add_test(NAME cockpit_camera_recovery COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-CockpitCamera.ps1")
 add_test(NAME cockpit_assets_recovery COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-CockpitAssets.ps1")
 add_test(NAME cockpit_assets_catalog COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cockpit_assets.py")
+add_test(NAME cockpit_start_handoff COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cockpit_start.py")
+add_test(NAME cockpit_dlc_request COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cockpit_dlc.py")
+add_test(NAME session_logs COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-SessionLogs.ps1")
 add_test(NAME cockpit_texture_pack_catalog COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cockpit_texture_pack.py")
 add_test(NAME cockpit_seat_geometry COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cockpit_geometry.py")
 add_test(NAME cockpit_alignment COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cockpit_alignment.py")
@@ -388,6 +397,10 @@ add_test(NAME openxr_runtime_selection COMMAND "${POWERSHELL_EXECUTABLE}" -NoPro
   -File "${CMAKE_SOURCE_DIR}/tests/Test-OpenXRRuntime.ps1")
 add_test(NAME user_session_recovery COMMAND "${POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass
   -File "${CMAKE_SOURCE_DIR}/tests/Test-UserSession.ps1")
+add_test(NAME launch_failure_rollback COMMAND "${POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass
+  -File "${CMAKE_SOURCE_DIR}/tests/Test-LaunchRollback.ps1" -Python "${Python3_EXECUTABLE}")
+add_test(NAME hardware_settings_paths COMMAND "${POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass
+  -File "${CMAKE_SOURCE_DIR}/tests/Test-HardwareSettingsPath.ps1")
 add_test(NAME diagnostic_receipt_recovery COMMAND "${POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass
   -File "${CMAKE_SOURCE_DIR}/tests/Test-DiagnosticReceipt.ps1")
 add_test(NAME package_script_dependencies COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_package_stage.py")

@@ -545,6 +545,7 @@ internal sealed class MainForm : LauncherForm
             else if (pending && rendering) state.Text = "VR active · " + TextValue(session, "runtime") + (!AppPaths.Packaged(client.Root) && Flag(last, "previewVrFixes") ? " · Preview VR fixes" : "");
             else if (pending) state.Text = headset ? "Waiting for game / tracking: " + TextValue(Child(data, "readiness"), "reason") : "Desktop session running.";
             else if (active || DateTime.UtcNow < launchGrace) state.Text = "Preparing session…";
+            else if (TextValue(last, "state") == "failed") state.Text = "Launch stopped. You can try again or open Logs for details.";
             else state.Text = TextValue(last, "message", "Ready. Select a car and track, then Launch or Launch VR.");
             details.Text = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
         }

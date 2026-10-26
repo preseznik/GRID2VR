@@ -62,15 +62,17 @@ try {
     try {$locked=$mutex.WaitOne(0)} catch [Threading.AbandonedMutexException] {$locked=$true}
     if(!$locked) { throw 'A GRID2VR session worker is already running.' }
     if(Get-UserSession $root) { throw 'Recover the pending user session first.' }
-    $career=Get-LaunchProfile $root
+    $runLogs=New-Grid2LogDirectory $root
     $worker=Get-Process -Id $PID
-    $log=Join-Path (Get-Grid2DataRoot $root) ('user-session-'+[guid]::NewGuid().ToString('N')+'.log')
+    $log=Join-Path $runLogs 'user-session.log'
     $receipt=@{schema=1;workerId=$PID;workerStartedUtc=$worker.StartTime.ToUniversalTime().ToString('o');
-        mode=$Mode;launchMode=$LaunchMode;runtime=$XrRuntime;car=$Car;track=$Track;laps=$sessionLaps;opponents=$(if($LaunchMode -eq 'Race'){$Opponents}else{0});headsetScale=$HeadsetScale;previewVrFixes=[bool]$PreviewVrFixes;skipIntro=[bool]$SkipIntro;diagnosticLogging=[bool]$DiagnosticLogging;recenterKey=$RecenterKey;recenterModifiers=$RecenterModifiers;state='starting';message="Preparing $LaunchMode session";log=$log}
+        mode=$Mode;launchMode=$LaunchMode;runtime=$XrRuntime;car=$Car;track=$Track;laps=$sessionLaps;opponents=$(if($LaunchMode -eq 'Race'){$Opponents}else{0});headsetScale=$HeadsetScale;previewVrFixes=[bool]$PreviewVrFixes;skipIntro=[bool]$SkipIntro;diagnosticLogging=[bool]$DiagnosticLogging;recenterKey=$RecenterKey;recenterModifiers=$RecenterModifiers;state='starting';message="Preparing $LaunchMode session";log=$log;logDirectory=$runLogs}
     if($LaunchMode -eq 'Normal') { $receipt.car=$null; $receipt.track=$null; $receipt.laps=$null }
     $receipt.opponentCars=if($LaunchMode -eq 'Race'){$OpponentCars.ToLowerInvariant()}else{$null}
     $receipt.desktopBorderlessRequested=($Mode -eq 'Desktop')
     $receipt.vrHud=@{enabled=($Mode -eq 'VR');distance=$HudDistance;followView=[bool]$HudFollowView;hiddenElements=$HudHiddenElements}
+    Write-UserSessionStatus $root $receipt
+    $career=Get-LaunchProfile $root
     $receipt.career=$career
     $receipt.cockpitS2000=$CockpitS2000
     $receipt.cockpitModeRequested=$CockpitMode
@@ -82,29 +84,29 @@ try {
     $receipt.performanceDisplay=($Mode -eq 'VR' -and [bool]$PerformanceDisplay)
     $receipt.performanceFollowView=[bool]$PerformanceFollowView
     $receipt.removeCinemaMatte=($Mode -eq 'VR')
-    Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+    Write-UserSessionStatus $root $receipt
     if($PreviewVrFixes) {
         $receipt.message='Checking the VR renderer...'
-        Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+        Write-UserSessionStatus $root $receipt
         . (Join-Path $PSScriptRoot 'Launcher-VrPreview.ps1')
         # Texture comparisons must use the same verified renderer in every mode.
         $DiagnosticProxy=Get-LauncherVrPreviewProxy -Root $root
         $HeadsetVisibilityCandidate=$true; $FlickerDiagnostic=$true
         $receipt.proxySha256=(Get-FileHash -LiteralPath $DiagnosticProxy).Hash.ToLowerInvariant()
-        Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+        Write-UserSessionStatus $root $receipt
     }
     if($career.id -ne 'current') {
         $receipt.message='Preparing the selected career profile...'
-        Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+        Write-UserSessionStatus $root $receipt
         $baseProxy=if($DiagnosticProxy){$DiagnosticProxy}else{Get-Grid2Proxy $root}
         $profileProxy=Get-CareerProfileProxy -Root $root -BaseProxy $baseProxy
         $receipt.proxySha256=(Get-FileHash -LiteralPath $profileProxy).Hash.ToLowerInvariant()
-        Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+        Write-UserSessionStatus $root $receipt
     }
     $python=Get-SessionPython $root
-    $selection=Join-Path (Get-Grid2DataRoot $root) ('user-selection-'+[guid]::NewGuid().ToString('N'))
+    $selection=Join-Path $runLogs 'selection'
     $receipt.message=if($LaunchMode -eq 'Normal'){'Preparing the game menus...'}else{'Preparing the selected car, track and race options...'}
-    Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+    Write-UserSessionStatus $root $receipt
     if($LaunchMode -eq 'Normal') {
         # Own only graphics files; Normal uses native menus and no selected flow.
         New-Item -ItemType Directory -Path $selection -ErrorAction Stop | Out-Null
@@ -126,13 +128,13 @@ try {
     $receipt.cockpitExposureLimit=($Mode -eq 'VR' -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
     $hardware=Join-Path $selection 'hardware-settings.xml'
     $receipt.message='Preparing graphics settings...'
-    Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+    Write-UserSessionStatus $root $receipt
     $graphics=& $python (Join-Path $PSScriptRoot 'graphics_profile.py') --output $hardware --game-root (Get-Grid2GameRoot $root) --mode $Mode --render-scale $RenderScale --desktop-vsync $DesktopVSync --desktop-msaa $DesktopMsaa --vr-msaa $VrMsaa --tree-detail $TreeDetail --object-detail $ObjectDetail --crowd-detail $CrowdDetail --texture-filtering $TextureFiltering
     if($LASTEXITCODE) { throw 'Graphics profile could not be prepared; nothing deployed.' }
     $receipt.graphics=$graphics | ConvertFrom-Json
     $graphics | Set-Content -LiteralPath (Join-Path $selection 'graphics-profile.json') -Encoding utf8
     $parameters=@{Mode=$(if($Preflight){'Preflight'}elseif($Mode -eq 'VR'){'Headset'}else{'Desktop'});XrRuntime=$XrRuntime;
-        RuntimeSession=$true;UntilExit=$true;BackgroundPlay='Suppress';RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers;
+        RunLogDirectory=$runLogs;RuntimeSession=$true;UntilExit=$true;BackgroundPlay='Suppress';RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers;
         # Request early; the native owner waits for its live renderer, camera,
         # visibility and tracking guards rather than a fixed race-start delay.
         HardwareSettingsFile=$hardware;HeadsetScale=$HeadsetScale;CaptureAfterSeconds=1;TimeoutSeconds=150;PythonPath=$python;
@@ -160,19 +162,19 @@ try {
     # The worker owns its log; closing the launcher cannot close a redirected pipe
     # under a running session. Bound the log even for a user-run session.
     $receipt.message='Checking game files and launch requirements...'
-    Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+    Write-UserSessionStatus $root $receipt
     & (Join-Path $PSScriptRoot 'Run-StereoProbe.ps1') @parameters | ForEach-Object {
         if($_ -is [string] -and $_.StartsWith('GRID2VR_LAUNCH|',[StringComparison]::Ordinal)) {
             $receipt.message=$_.Substring('GRID2VR_LAUNCH|'.Length)
-            Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+            Write-UserSessionStatus $root $receipt
         }
         if($_ -ceq 'GRID2VR_GAME_WINDOW_READY') {
             $receipt.gameWindowReady=$true
             $receipt.message=if($Mode -eq 'VR'){'Game window open; waiting for the scene and headset...'}else{'GRID 2 window is open.'}
-            Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+            Write-UserSessionStatus $root $receipt
         }
         if($_ -is [string] -and $_ -like 'Diagnostic evidence: *') {
-            $receipt.run=Get-SessionChild (Get-Grid2DataRoot $root) $_.Substring('Diagnostic evidence: '.Length) '^diagnostic-[0-9-]+$'
+            $receipt.run=Get-SessionRun $root $_.Substring('Diagnostic evidence: '.Length)
         }
         if(!(Test-Path -LiteralPath $log) -or (Get-Item -LiteralPath $log).Length -lt 128KB) {
             $line=[string]$_
@@ -183,7 +185,14 @@ try {
     }
     $receipt.state='complete'; $receipt.message=if($Preflight){'Preflight passed; no game or runtime opened.'}else{'Session ended; original files restored.'}
 } catch {
-    if($receipt) { $receipt.state='failed'; $receipt.message=$_.Exception.Message }
+    if($receipt) {
+        $receipt.state='failed'; $receipt.message=$_.Exception.Message
+        $failure=($_.Exception.ToString()+[Environment]::NewLine+$_.ScriptStackTrace)
+        if($failure.Length -gt 16384) { $failure=$failure.Substring(0,16384) }
+        if(!(Test-Path -LiteralPath $log) -or (Get-Item -LiteralPath $log).Length -lt 128KB) {
+            [IO.File]::AppendAllText($log,$failure+[Environment]::NewLine)
+        }
+    }
     throw
 } finally {
     try {
@@ -202,7 +211,7 @@ try {
                     } catch {}
                 }
             }
-            Write-SessionJson (Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json') $receipt
+            Write-UserSessionStatus $root $receipt
         }
     }
     finally {

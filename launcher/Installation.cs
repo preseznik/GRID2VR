@@ -19,7 +19,7 @@ internal static class Installation
             GameExecutable.Validate(path, name == "grid2_avx.exe");
         }
     }
-    internal static void RequireIdle(string root)
+    internal static void RequireIdle(string root, bool allowPending = false)
     {
         using var mutex=new Mutex(false,MutexName); bool acquired=false;
         try {
@@ -28,13 +28,13 @@ internal static class Installation
             foreach(var name in new[]{"grid2","grid2_avx"})
                 foreach(var process in Process.GetProcessesByName(name)) using(process) throw new IOException("Close GRID 2 first.");
             foreach(var name in new[]{"session-pending.json","diagnostic-pending.json","practice-flow-pending.json","steamvr-theater-pending.json"})
-                if(File.Exists(Path.Combine(AppPaths.Data(root),name))) throw new IOException("Use Restore original files in GRID2VR before upgrading or uninstalling.");
+                if(!allowPending && File.Exists(Path.Combine(AppPaths.Data(root),name))) throw new IOException("Use Restore original files in GRID2VR before upgrading or uninstalling.");
         } finally { if(acquired)mutex.ReleaseMutex(); }
     }
     internal static void CheckInstall(string game)
     {
         game=Path.GetFullPath(game).TrimEnd(Path.DirectorySeparatorChar); ValidateGame(game);
-        var root=Path.Combine(game,"GRID2VR"); RequireIdle(root);
+        var root=Path.Combine(game,"GRID2VR"); RequireIdle(root, allowPending:true);
         foreach(var process in Process.GetProcessesByName("GRID2VR"))
             using(process) if(process.Id!=Environment.ProcessId && string.Equals(process.MainModule?.FileName,Path.Combine(game,"GRID2VR.exe"),StringComparison.OrdinalIgnoreCase)) throw new IOException("Close the installed GRID2VR launcher before upgrading or uninstalling.");
         foreach(var name in new[]{"d3d11.dll","dxgi.dll","GRID2VR.diagnostic-session","GRID2VR.session.xml"})
@@ -42,6 +42,8 @@ internal static class Installation
         if(Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root).Any() && !AppPaths.Packaged(root)) throw new IOException("The existing GRID2VR folder has no ownership manifest; it was preserved.");
         if(File.Exists(Path.Combine(game,"GRID2VR.exe")) && !AppPaths.Packaged(root)) throw new IOException("Existing GRID2VR.exe has no package ownership manifest.");
         if(AppPaths.Packaged(root)) AppPaths.VerifyPackage(root);
+        SessionRecovery.TryClearUnstarted(root);
+        RequireIdle(root);
     }
     internal static string? Discover()
     {
