@@ -12,6 +12,9 @@ using BeforeExit = const char* (*)();
 // lock acquisition; it must not touch renderer/XR objects or report their stop.
 bool Install(uintptr_t gameBase, const std::filesystem::path& output, BeforeExit callback,
              BeforeExit observerCleanup=nullptr);
+// Arm only for the verified runtime's DXGI OutputWindow. Defer window close
+// before native teardown stops the render owner; never call XR from the UI.
+bool AttachWindow(HWND window);
 // Pump only at a restored render boundary. Foreign exit callers wait briefly
 // for this owner; timeout preserves native exit without cross-thread XR calls.
 void Service();

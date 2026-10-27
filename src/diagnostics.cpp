@@ -369,7 +369,9 @@ void InitializeXr(ID3D11Device* device) {
     xrProjection=std::filesystem::exists(output/L"xr-projection.request");
     if (!xrRequested) return;
     std::wifstream request(output/L"xr-session.request");std::wstring runtime;std::getline(request,runtime);
-    bool initialized=EnsureExitHandler() && !std::filesystem::exists(output/L"recorded-views.request") && xrSession.Initialize(device,runtime,output);
+    const bool closeReady=EnsureExitHandler() && processexit::AttachWindow(diagnosticWindow);
+    Log("session close handler attached=%u",closeReady);
+    bool initialized=closeReady && !std::filesystem::exists(output/L"recorded-views.request") && xrSession.Initialize(device,runtime,output);
     if (initialized && xrProjection) {
         unsigned width{},height{};std::ifstream settings(output/L"xr-projection.request");
         settings>>width>>height>>xrUnitsPerMetre;const bool parsed=bool(settings);settings>>std::ws;
@@ -612,6 +614,7 @@ bool StageBoundary(engine::StageStamp stage,const char* phase) {
 
 HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     if (flags & DXGI_PRESENT_TEST) return realPresent(chain,sync,flags);
+    if(runtimeStopped && stopReceipt.Reported()) return realPresent(chain,sync,flags);
     nativeUiWitness.End();
     FinishLateUi(true);
     const auto f=frame.fetch_add(1);
@@ -627,6 +630,9 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
         drivingcontrols::Tick();
     }
     processexit::Service();
+    // An early window-close request has stopped XR at this restored boundary.
+    // Forward native Presents without rearming input, eye rendering or overlays.
+    if(runtimeStopped) return realPresent(chain,sync,flags);
     flicker::Poll();
 #ifdef GRID2VR_ENABLE_XR_SESSION
     if (runtimeSession && f==0) {

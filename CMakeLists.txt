@@ -258,6 +258,10 @@ add_executable(process_exit_test tests/process_exit_test.cpp src/process_exit.cp
 target_include_directories(process_exit_test PRIVATE src)
 target_compile_definitions(process_exit_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_test(NAME guarded_game_process_exit COMMAND process_exit_test "${CMAKE_BINARY_DIR}/process-exit-fixture")
+add_executable(window_close_test tests/window_close_test.cpp src/process_exit.cpp src/guarded_hooks.cpp)
+target_include_directories(window_close_test PRIVATE src)
+target_compile_definitions(window_close_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+add_test(NAME render_owner_window_close COMMAND window_close_test "${CMAKE_BINARY_DIR}/window-close-fixture")
 add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/native_session_hooks.inc"
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/extract_native_session_hooks.py"
     "${CMAKE_SOURCE_DIR}/src/diagnostics.cpp" "${CMAKE_BINARY_DIR}/native_session_hooks.inc"
