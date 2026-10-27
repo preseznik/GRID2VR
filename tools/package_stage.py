@@ -1,6 +1,7 @@
 """Build a bounded player package. No personal data or game-derived assets are shipped."""
 import argparse, ast, hashlib, json, shutil, subprocess, sys, zipfile
 from pathlib import Path
+import release_assets
 
 ROOT=Path(__file__).resolve().parent.parent
 DATA_FILES=['cockpit-assets.json','cockpit-cars.json','cockpit-defaults.json','car-classes.json','dlc-content.json']
@@ -58,6 +59,7 @@ def package_apphost(output, assembly, resources, runtime):
                     '-Output',str(output),'-Assembly',assembly,'-Resources',str(resources),
                     '-RuntimeVersion',runtime],check=True)
 def stage(a):
+    release=release_assets.check_inputs(ROOT,a.output.resolve(),a.version,a.channel)
     out=a.output.resolve();stage=out/'stage';mod=stage/'GRID2VR';payload=mod/'payload';payload.mkdir(parents=True)
     copy(out/'publish/GRID2VR.exe',stage/'GRID2VR.exe')
     (stage/'Start-GRID2VR.cmd').write_text('@echo off\nstart "" "%~dp0GRID2VR.exe"\n',encoding='ascii')
@@ -128,6 +130,7 @@ def stage(a):
     copy(Path('C:/Program Files/dotnet/LICENSE.txt'),mod/'licenses/Microsoft-MIT.txt')
     sources={str(p.relative_to(ROOT)).replace('\\','/'):sha(p) for folder in ['launcher','src','tools','installer'] for p in (ROOT/folder).rglob('*') if p.is_file() and not any(x in p.parts for x in ['obj','bin','__pycache__'])}
     manifest={'schema':1,'version':a.version,'channel':a.channel,'builtUtc':a.built,'revision':a.revision,'sourceDigest':hashlib.sha256(json.dumps(sources,sort_keys=True).encode()).hexdigest(),'files':{p.relative_to(stage).as_posix():sha(p) for p in sorted(stage.rglob('*')) if p.is_file()}}
+    manifest.update(releaseTag=release['tag'],cockpitTextures=release['cockpitTextures'])
     (mod/'package.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
     (out/'source-manifest.json').write_text(json.dumps(sources,indent=2)+'\n')
     print(json.dumps({'stage':str(stage),'files':len(manifest['files']),'bytes':sum(p.stat().st_size for p in stage.rglob('*') if p.is_file())}))
@@ -140,8 +143,8 @@ def finalize(out):
         for p in sorted(stage.rglob('*')):
             if p.is_file():z.write(p,p.relative_to(stage).as_posix())
     setup=out/f'GRID2VR-{version}-Setup.exe';assert setup.is_file()
-    (out/'SHA256SUMS.txt').write_text(''.join(f'{sha(p)}  {p.name}\n' for p in [setup,archive]),encoding='ascii')
-    print(json.dumps({'installer':str(setup),'zip':str(archive),'channel':manifest['channel'],'published':False}))
+    release=release_assets.finalize(out,manifest,setup,archive)
+    print(json.dumps({'installer':str(setup),'zip':str(archive),'textures':release['cockpitTextures'],'channel':manifest['channel'],'published':False}))
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path);p.add_argument('--python',type=Path);p.add_argument('--version');p.add_argument('--channel');p.add_argument('--revision');p.add_argument('--built');p.add_argument('--finalize',type=Path);a=p.parse_args()
     finalize(a.finalize) if a.finalize else stage(a)

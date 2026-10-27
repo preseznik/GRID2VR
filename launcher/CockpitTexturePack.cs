@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http;
+using System.Text.Json;
 
 namespace GRID2VR;
 
@@ -8,13 +9,22 @@ internal sealed record TexturePackProgress(string Message, int Percent = 0, bool
 internal sealed class CockpitTexturePack(SessionClient client, HttpClient http,
     Func<ProcessStartInfo, Task>? worker = null, ReleaseInstaller? download = null)
 {
-    internal const string Version = "0.2.0-preview.2";
-    // Immutable artwork release, independent of the launcher version. The worker
-    // additionally verifies the pinned catalog and every extracted file.
+    // The catalog is embedded at build time. Each build downloads its compatible
+    // artwork from its own release; newer releases never retarget older builds.
+    private static readonly JsonElement Catalog = ReadCatalog();
+    internal static readonly string Version = Catalog.GetProperty("version").GetString()!;
     internal static readonly ReleaseInstaller Asset = new(
         "GRID2VR-CockpitTextures-" + Version + ".zip",
-        new(Updates.Repository + "/releases/download/v0.1.6/GRID2VR-CockpitTextures-" + Version + ".zip"),
-        124629371, "88e74364390a21c819b282494b9fbb2a11154e4a203ce3597bd39da6e79cc838");
+        new(Updates.Repository + "/releases/download/v" + Updates.CurrentVersion + "/GRID2VR-CockpitTextures-" + Version + ".zip"),
+        Catalog.GetProperty("zipBytes").GetInt64(), Catalog.GetProperty("zipSha256").GetString()!);
+
+    private static JsonElement ReadCatalog()
+    {
+        using var stream = typeof(CockpitTexturePack).Assembly.GetManifestResourceStream("GRID2VR.CockpitPack.json")
+            ?? throw new IOException("The build's cockpit texture catalog is missing.");
+        using var document = JsonDocument.Parse(stream);
+        return document.RootElement.Clone();
+    }
 
     internal async Task Ensure(IProgress<TexturePackProgress> progress, CancellationToken cancellation)
     {
@@ -28,7 +38,7 @@ internal sealed class CockpitTexturePack(SessionClient client, HttpClient http,
             return;
         }
         Installation.RequireIdle(client.Root);
-        progress.Report(new("Downloading cockpit textures (125 MB)…"));
+        progress.Report(new($"Downloading cockpit textures ({Math.Ceiling(Asset.Size / 1_000_000d):0} MB)…"));
         var zip = await new Updates(http).Download(download ?? Asset, client.Root,
             new DownloadProgress(progress), cancellation);
         cancellation.ThrowIfCancellationRequested();

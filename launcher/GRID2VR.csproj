@@ -22,5 +22,6 @@
     <AssemblyMetadata Include="BuildRevision" Value="$(BuildRevision)" />
     <EmbeddedResource Include="assets\GRID2VR.ico" LogicalName="GRID2VR.ico" />
     <EmbeddedResource Include="assets\GRID2VR.png" LogicalName="GRID2VR.png" />
+    <EmbeddedResource Include="..\tools\data\cockpit-texture-pack.json" LogicalName="GRID2VR.CockpitPack.json" />
   </ItemGroup>
 </Project>

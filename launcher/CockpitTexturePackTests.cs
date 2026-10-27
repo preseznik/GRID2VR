@@ -14,6 +14,8 @@ internal static class CockpitTexturePackTests
         Check(catalog.RootElement.GetProperty("zipSha256").GetString() == CockpitTexturePack.Asset.Sha256);
         Check(catalog.RootElement.GetProperty("zipBytes").GetInt64() == CockpitTexturePack.Asset.Size);
         Check(catalog.RootElement.GetProperty("version").GetString() == CockpitTexturePack.Version);
+        Check(CockpitTexturePack.Asset.Url.AbsoluteUri == Updates.Repository + "/releases/download/v" +
+            Updates.CurrentVersion + "/" + CockpitTexturePack.Asset.Name);
         var previous = Environment.GetEnvironmentVariable("GRID2VR_USER_BASE");
         Environment.SetEnvironmentVariable("GRID2VR_USER_BASE", Path.Combine(fixture, "texture-user-data"));
         try { Task.Run(() => Exercise(fixture)).GetAwaiter().GetResult(); }

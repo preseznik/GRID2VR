@@ -23,10 +23,18 @@ Supported installed DLC appears in the Practice / Race car and track lists. DLC 
 
 ## Updates and help
 
-For the optional cockpit artwork, open **Graphics → Cockpit textures → New cockpit textures**. The launcher downloads (123 MB), verifies and installs the pack automatically, with download progress and cancellation. Save settings or launch to use it. **Old cockpit textures** switches back to the original artwork. The pack works in desktop and VR; no separate download or commands are needed. Its per-car headset visual checks are still pending.
+For the optional cockpit artwork, open **Graphics → Cockpit textures → New cockpit textures**. The launcher downloads, verifies and installs its compatible pack automatically, with download progress and cancellation. Save settings or launch to use it. **Old cockpit textures** switches back to the original artwork. The pack works in desktop and VR; no separate download or commands are needed. Its per-car headset visual checks are still pending.
 
 Use **Help / About** to check for updates and read the instructions. Updates preserve your settings and careers.
 
 Having trouble? [Report an issue](https://github.com/preseznik/GRID2VR/issues) with your headset/runtime, what happened, and the latest session logs from **Open logs**.
 
 GRID2VR requires your own copy of GRID 2. No game files or saves are included.
+
+## Building and publishing
+
+Build and validate the native renderer first. Run `tools/Package.ps1` with the new release's `-Version` and `-Channel Stable` or `-Channel Experimental`. Packaging requires the exact cockpit ZIP named by `tools/data/cockpit-texture-pack.json`, normally in `artifacts/cockpit-packs/all-cars`; use `-TexturePack` to supply another local path. Missing or changed artwork, or a native renderer built for another pack, stops packaging before the launcher build.
+
+The package folder contains the installer, portable ZIP, matching cockpit ZIP, checksums and `release-assets.json`. The launcher embeds that pack's catalog and downloads from **its own build's GitHub release tag**. Every release carries its compatible pack, including when the artwork is unchanged. Older releases and download URLs stay intact.
+
+Append `-Publish` to the package command to publish, or run `tools/Publish-Release.ps1 -PackageDirectory <package-folder>` afterward. The source commit must already be on GitHub. Publication uploads all four assets to a draft and verifies their sizes and SHA-256 hashes before making it public. Failed uploads leave the draft for a retry; published releases and conflicting assets are never overwritten. Experimental releases do not replace Stable Latest. Use `-Check` with `Publish-Release.ps1` for local validation without contacting GitHub.
