@@ -4,7 +4,7 @@ $root=Split-Path $PSScriptRoot -Parent
 $fixture=[IO.Path]::GetFullPath((Join-Path $root ('build/cockpit-texture-install-test-'+[guid]::NewGuid().ToString('N'))))
 $script=Join-Path $root 'tools/Cockpit-TexturePack.ps1'
 $game=Join-Path $fixture 'game';$mod=Join-Path $game 'GRID2VR'
-$target=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.1'
+$target=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.2'
 $tests=[Collections.Generic.List[string]]::new()
 function Refuses([scriptblock]$Body,[string]$Name) {
     $failed=$false;try { & $Body | Out-Null } catch { $failed=$true }
@@ -15,6 +15,9 @@ try {
     [IO.File]::Copy((Join-Path $GameRoot 'grid2_avx.exe'),(Join-Path $game 'grid2_avx.exe'))
     Refuses { & $script -Action Install -GameRoot $game -ZipPath $ZipPath } 'requires_core'
     [IO.Directory]::CreateDirectory($mod)|Out-Null;[IO.File]::WriteAllText((Join-Path $mod 'package.json'),'{}')
+    $previous=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.1'
+    [IO.Directory]::CreateDirectory($previous)|Out-Null
+    $retained=Join-Path $previous 'retain.txt';[IO.File]::WriteAllText($retained,'previous pack retained')
     $badZip=Join-Path $fixture 'bad.zip';[IO.File]::WriteAllText($badZip,'invalid')
     Refuses { & $script -Action Install -GameRoot $game -ZipPath $badZip } 'rejects_foreign_archive'
     [IO.File]::WriteAllText((Join-Path $game 'GRID2VR.diagnostic-session'),'pending')
@@ -33,8 +36,10 @@ try {
     if(!(Test-Path -LiteralPath (Join-Path $target 'foc.dds'))) { throw 'Changed pack partially removed.' }
     [IO.File]::WriteAllBytes($manifest,$original)
     & $script -Action Remove -GameRoot $game | Out-Null
-    if((Test-Path -LiteralPath (Join-Path $mod 'addons')) -or !(Test-Path -LiteralPath (Join-Path $mod 'package.json'))) { throw 'Unexpected removal scope.' }
-    $tests.Add('remove_owned_files_and_empty_parents')
+    if((Test-Path -LiteralPath $target) -or !(Test-Path -LiteralPath (Join-Path $mod 'package.json'))) { throw 'Unexpected removal scope.' }
+    $tests.Add('remove_owned_version')
+    if([IO.File]::ReadAllText($retained) -cne 'previous pack retained') { throw 'Previous pack was changed.' }
+    $tests.Add('previous_preview_preserved_during_install_and_removal')
     $tests | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'build/cockpit-texture-install-tests.json')
     Write-Output "$($tests.Count) Cockpit texture pack install/removal checks passed in a disposable workspace game fixture."
 } finally {

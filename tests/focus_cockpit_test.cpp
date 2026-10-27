@@ -187,7 +187,7 @@ int wmain(int argc,wchar_t** argv) {
     CHECK(SUCCEEDED(Texture(device.Get(),&td,mips.data(),original.ReleaseAndGetAddressOf())));
     absent.TextureCreated(device.Get(),&td,mips.data(),original.Get(),Texture,0);
     CHECK(SUCCEEDED(absent.CreateView(device.Get(),original.Get(),nullptr,view.ReleaseAndGetAddressOf(),View)));CHECK(Width(view.Get())==512);
-    const auto installed=game/L"GRID2VR/addons/cockpit-textures/0.2.0-preview.1"/(argc>=4?std::filesystem::path(argv[3]).filename():L"foc.dds");
+    const auto installed=game/L"GRID2VR/addons/cockpit-textures/0.2.0-preview.2"/(argc>=4?std::filesystem::path(argv[3]).filename():L"foc.dds");
     std::filesystem::create_directories(installed.parent_path());Write(installed,dds);
     if(argc>=4) {
         FocusCockpit real;real.Configure(game,run);CHECK(real.Enabled());

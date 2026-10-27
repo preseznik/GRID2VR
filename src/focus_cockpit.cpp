@@ -85,7 +85,7 @@ void FocusCockpit::Configure(const std::filesystem::path& game,const std::filesy
         std::ifstream input(request);std::string text;std::getline(input,text);
         if(input.peek()!=std::char_traits<char>::eof() || (text!="Observe" && text!="Replace"))throw std::runtime_error("request");
         mode=text=="Replace"?Mode::Replace:Mode::Observe;
-        const auto pack=game/L"GRID2VR/addons/cockpit-textures/0.2.0-preview.1";
+        const auto pack=game/L"GRID2VR/addons/cockpit-textures/0.2.0-preview.2";
         for(const auto& row:catalog)
             atlases.push_back({row.car,row.sourceHash,row.sourceHash8,row.packHash,pack/(std::string(row.car)+".dds")});
         Event(std::string("{\"event\":\"configured\",\"capability\":\"")+capability+"\",\"mode\":\""+text+"\"}");

@@ -12,7 +12,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.2.0-preview.1'
+VERSION = '0.2.0-preview.2'
 def sha(data): return hashlib.sha256(data).hexdigest()
 def layout(data, size, mips, length):
     if len(data) != length or data[:4] != b'DDS ' or struct.unpack_from('<I', data, 4)[0] != 124 or struct.unpack_from('<2I', data, 12) != (size, size) or struct.unpack_from('<I', data, 28)[0] != mips or data[84:88] != b'DXT1':

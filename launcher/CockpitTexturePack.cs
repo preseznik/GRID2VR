@@ -8,13 +8,13 @@ internal sealed record TexturePackProgress(string Message, int Percent = 0, bool
 internal sealed class CockpitTexturePack(SessionClient client, HttpClient http,
     Func<ProcessStartInfo, Task>? worker = null, ReleaseInstaller? download = null)
 {
-    internal const string Version = "0.2.0-preview.1";
+    internal const string Version = "0.2.0-preview.2";
     // Immutable artwork release, independent of the launcher version. The worker
     // additionally verifies the pinned catalog and every extracted file.
     internal static readonly ReleaseInstaller Asset = new(
         "GRID2VR-CockpitTextures-" + Version + ".zip",
         new(Updates.Repository + "/releases/download/v0.1.6/GRID2VR-CockpitTextures-" + Version + ".zip"),
-        122784997, "642938c9fb69f89e343181522aed927505be0222e374e46e8c5990dfd88417cd");
+        124629371, "88e74364390a21c819b282494b9fbb2a11154e4a203ce3597bd39da6e79cc838");
 
     internal async Task Ensure(IProgress<TexturePackProgress> progress, CancellationToken cancellation)
     {
@@ -28,7 +28,7 @@ internal sealed class CockpitTexturePack(SessionClient client, HttpClient http,
             return;
         }
         Installation.RequireIdle(client.Root);
-        progress.Report(new("Downloading cockpit textures (123 MB)…"));
+        progress.Report(new("Downloading cockpit textures (125 MB)…"));
         var zip = await new Updates(http).Download(download ?? Asset, client.Root,
             new DownloadProgress(progress), cancellation);
         cancellation.ThrowIfCancellationRequested();

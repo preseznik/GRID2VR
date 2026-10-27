@@ -10,12 +10,12 @@ $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'Paths.ps1')
 $game=[IO.Path]::GetFullPath($GameRoot).TrimEnd('\')
 $mod=Join-Path $game 'GRID2VR'
-$target=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.1'
-$catalogHash='a13f7e4f3b06ee378118dd36eb8f8356a68633270a16e38c9cef9b0765d25b04'
+$target=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.2'
+$catalogHash='3a094699905d768ca9dd3286a6b0fad8b5cb4ed8ee33e5e14e2b9b2ca9df7536'
 $catalogPath=Join-Path $PSScriptRoot 'data/cockpit-texture-pack.json'
 Assert-CockpitCameraHash $catalogPath $catalogHash
 $catalog=Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json -AsHashtable
-if($catalog.schema -ne 1 -or $catalog.version -cne '0.2.0-preview.1' -or $catalog.files.Count -ne 74) { throw 'Unsupported cockpit texture catalog.' }
+if($catalog.schema -ne 1 -or $catalog.version -cne '0.2.0-preview.2' -or $catalog.files.Count -ne 75) { throw 'Unsupported cockpit texture catalog.' }
 $hashes=$catalog.files
 foreach($name in $hashes.Keys) {
     if($name -cnotmatch '^(?:[a-z0-9]{3}\.dds|pack\.json|README\.txt)$' -or $hashes[$name] -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid cockpit texture catalog.' }
@@ -72,7 +72,7 @@ try {
         if($archive.Entries.Count -ne $hashes.Count) { throw 'Unexpected ZIP contents.' }
         $seen=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
         foreach($entry in $archive.Entries) {
-            if(!$hashes.ContainsKey($entry.Name) -or $entry.FullName -cne ('cockpit-textures/0.2.0-preview.1/'+$entry.Name) -or
+            if(!$hashes.ContainsKey($entry.Name) -or $entry.FullName -cne ('cockpit-textures/0.2.0-preview.2/'+$entry.Name) -or
                 !$seen.Add($entry.Name) -or $entry.Length -gt 2796344) { throw 'Unexpected archive path or size.' }
         }
         # Stage beside the final version directory; the final move is atomic.
