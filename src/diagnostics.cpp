@@ -932,13 +932,21 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     return hr;
 }
 
-HRESULT STDMETHODCALLTYPE Resize(IDXGISwapChain* chain,UINT count,UINT width,UINT height,DXGI_FORMAT format,UINT flags) {
+void PrepareSwapchainChange() {
     nativeUiWitness.End(true);
     FinishLateUi(false);lateUi.Reset();
     previewFrame.Reset();
     if (runtimeSession && engine::Continuous() && !engine::SuspendSession()) engine::FailSession();
-    Log("ResizeBuffers requested=%ux%u format=%u",width,height,format);
-    const auto hr=realResize(chain,count,width,height,format,flags); Describe(chain); return hr;
+}
+HRESULT STDMETHODCALLTYPE Resize(IDXGISwapChain* chain,UINT count,UINT width,UINT height,DXGI_FORMAT format,UINT flags) {
+    const auto incomingWidth=width,incomingHeight=height;
+    const auto change=sceneresolution::PrepareResize(gameBase,reinterpret_cast<uintptr_t>(_ReturnAddress()),chain,width,height,format);
+    PrepareSwapchainChange();
+    Log("ResizeBuffers requested=%ux%u effective=%ux%u format=%u enforced=%u",incomingWidth,incomingHeight,width,height,format,bool(change));
+    const auto hr=realResize(chain,count,width,height,format,flags);
+    sceneresolution::CompleteResize(change,hr);
+    sceneresolution::ObserveSwapchain(chain);
+    Describe(chain);return hr;
 }
 
 void AttachSwapchain(IDXGISwapChain* chain) {
@@ -949,10 +957,12 @@ void AttachSwapchain(IDXGISwapChain* chain) {
 
 HRESULT STDMETHODCALLTYPE CreateSwapchain(IDXGIFactory* factory,IUnknown* device,DXGI_SWAP_CHAIN_DESC* desc,IDXGISwapChain** chain) {
     Stack("CreateSwapChain");
-    sceneresolution::Apply(gameBase,output,desc,reinterpret_cast<uintptr_t>(_ReturnAddress()));
+    const auto change=sceneresolution::PrepareCreate(gameBase,output,device,desc,chain,reinterpret_cast<uintptr_t>(_ReturnAddress()));
+    if(change && change.recreation)PrepareSwapchainChange();
     const auto hr=realSwap(factory,device,desc,chain);
     Log("CreateSwapChain hr=0x%08lx",hr);
-    if (SUCCEEDED(hr) && chain && *chain) { sceneresolution::ObserveSwapchain(*chain);std::lock_guard lock(attachMutex); AttachSwapchain(*chain); }
+    sceneresolution::CompleteCreate(change,hr,SUCCEEDED(hr) && chain?*chain:nullptr);
+    if (SUCCEEDED(hr) && chain && *chain) { std::lock_guard lock(attachMutex); AttachSwapchain(*chain); }
     return hr;
 }
 

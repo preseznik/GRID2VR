@@ -17,6 +17,12 @@ internal static class LaunchModeTests
         Choice("PracticeEvent").Items.Add(new ContentItem("cities/chicago", "Chicago"));
         var selected = new Choices("foc", routes[0].Id) { LaunchMode = "Race", OpponentCars = "class", ModernInterface = LauncherAppearance.Modern };
         Call("ApplyChoices", selected);
+        var mirror = (CheckBox)form.Controls.Find("VrMirrorBorderless", true).Single();
+        Check(!mirror.Checked && mirror.Text == "Maximize windowed screen");
+        mirror.Checked = true;
+        Check(((Choices)Call("Current")!).Graphics.VrMirrorBorderless);
+        Call("ApplyGraphics", new GraphicsOptions());
+        Check(!mirror.Checked && !((Choices)Call("Current")!).Graphics.VrMirrorBorderless);
         var opponents = Choice("OpponentCars"); var mode = Choice("LaunchMode"); var car = Choice("PracticeCar");
         var hint = (Label)form.Controls.Find("OpponentHint", true).Single();
         Check(opponents.Items.Cast<ContentItem>().Select(c => c.Label).SequenceEqual(new[] { "Same car", "Mixed", "Same class" }));
@@ -35,8 +41,8 @@ internal static class LaunchModeTests
         opponents.SelectedIndex = 2;
         foreach (var state in new[] { "active", "pending", "busy", "capturingRecenter" })
         {
-            Set(state, true); Call("EnableActions"); Check(!opponents.Enabled);
-            Set(state, false); Call("EnableActions"); Check(opponents.Enabled);
+            Set(state, true); Call("EnableActions"); Check(!opponents.Enabled && !mirror.Enabled);
+            Set(state, false); Call("EnableActions"); Check(opponents.Enabled && mirror.Enabled);
         }
         Check(!form.Visible);
     }

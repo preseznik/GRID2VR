@@ -29,6 +29,7 @@ param(
     [switch]$MsaaAudit,
     [switch]$ExposureAudit,
     [switch]$ForceSceneResolution,
+    [switch]$VrMirrorBorderless,
     [switch]$FlickerDiagnostic,
     [switch]$AutoCaptureFlicker,
     [switch]$FlickerSignTarget,
@@ -58,6 +59,7 @@ param(
     [string]$PythonPath=''
 )
 $ErrorActionPreference='Stop'
+if($VrMirrorBorderless -and ($Mode -notin @('Headset','Preflight') -or !$RuntimeSession -or !$UntilExit -or $PlayerControlOnly -or !$ForceSceneResolution)) { throw 'Borderless VR mirror requires a user VR session with scene resolution enforcement.' }
 if($NormalLaunch -and ($SessionDirectory -or !$RuntimeSession -or $PlayerControlProbe -ne 'Off')) { throw 'Normal launch requires the guarded runtime without a selected session or input probe.' }
 $RemoveCinemaMatte=$RemoveCinemaMatte -or ($Mode -eq 'Headset' -and $RuntimeSession)
 if($MsaaAudit -and ($Mode -notin @('Desktop','Preflight') -or !$RuntimeSession -or !$FlickerDiagnostic -or !$DiagnosticProxy -or $UntilExit)) { throw 'MSAA audit requires an isolated bounded desktop diagnostic.' }
@@ -258,6 +260,7 @@ $preflight.untilExit=[bool]$UntilExit
 $preflight.playerControlProbe=$PlayerControlProbe
 $preflight.playerControlOnly=[bool]$PlayerControlOnly
 $preflight.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly)
+$preflight.vrMirrorBorderlessRequested=[bool]$VrMirrorBorderless
 $preflight.backgroundPlay=$BackgroundPlay
 $preflight.xrRuntime=$XrRuntime
 $preflight.headsetSettings=Get-HeadsetSettings $HeadsetScale
@@ -332,6 +335,7 @@ try {
         HudDistance=$HudDistance;HudFollowView=$HudFollowView;HudHiddenElements=$HudHiddenElements;PerformanceDisplay=[bool]$PerformanceDisplay;PerformanceFollowView=$PerformanceFollowView
         VrReplayCameras=$VrReplayCameras;VrGarageMenus=$VrGarageMenus;FrontendSceneAudit=[bool]$FrontendSceneAudit
         SceneWidth=$sceneWidth;SceneHeight=$sceneHeight
+        VrMirrorBorderless=[bool]$VrMirrorBorderless
         FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy
         AutoCaptureFlicker=[bool]$AutoCaptureFlicker;FlickerCaptureAfterPairs=$FlickerCaptureAfterPairs
         FlickerObservationSeconds=$FlickerObservationSeconds

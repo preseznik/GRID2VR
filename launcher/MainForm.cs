@@ -24,6 +24,7 @@ internal sealed class MainForm : LauncherForm
     private readonly ComboBox desktopMsaa = Choice("DesktopMSAA"), vrMsaa = Choice("VrMSAA"), treeDetail = Choice("TreeDetail"),
         objectDetail = Choice("ObjectDetail"), crowdDetail = Choice("CrowdDetail"), textureFiltering = Choice("TextureFiltering");
     private readonly CheckBox desktopVSync = new() { Name = "DesktopVSync", Text = "On", AutoSize = true };
+    private readonly CheckBox vrMirrorBorderless = new() { Name = "VrMirrorBorderless", Text = "Maximize windowed screen", AutoSize = true };
     private readonly Label sceneResolution = TextLabel("");
     private readonly Label measuredScene = TextLabel("No measured scene from the last session.");
     private readonly ComboBox headsetScale = Choice("HeadsetScale");
@@ -133,6 +134,9 @@ internal sealed class MainForm : LauncherForm
         sceneResolution.Tag = headsetResolution.Tag = measuredScene.Tag = "hint";
         graphics.Controls.Add(TextLabel("Render resolution requests the game scene size; VR also enforces it in the native renderer. Measured scene reports the actual scene target from the current or last session. Headset texture scale separately changes the finished VR image: 100% keeps the working 1280 × 720 per eye. Both width and height scale relative to the working profile."));
         graphics.Controls.Add(TextLabel("VR anti-aliasing is independent of desktop MSAA and defaults to Off. Higher MSAA uses more GPU time and memory. VR keeps motion blur off with the current shadow, ambient-occlusion and post-processing profile."));
+        Section(graphics, "VR mirror");
+        graphics.Controls.Add(vrMirrorBorderless);
+        graphics.Controls.Add(TextLabel("Fill the mirror's monitor without borders on the next VR launch. Scene resolution and headset texture scale stay independent of window size."));
         graphics = graphicsColumns.Second;
         Section(graphics, "Detail");
         AddQualityChoices(treeDetail, "medium", "high", "ultra"); AddQualityChoices(objectDetail, "medium", "high", "ultra");
@@ -424,6 +428,7 @@ internal sealed class MainForm : LauncherForm
     private GraphicsOptions CurrentGraphics() => retainedGraphics with
     {
         RenderScale = renderScale.Value, DesktopVSync = desktopVSync.Checked, DesktopMsaa = ChoiceId(desktopMsaa), VrMsaa = ChoiceId(vrMsaa),
+        VrMirrorBorderless = vrMirrorBorderless.Checked,
         TreeDetail = ChoiceId(treeDetail), ObjectDetail = ChoiceId(objectDetail), CrowdDetail = ChoiceId(crowdDetail), TextureFiltering = ChoiceId(textureFiltering),
         HeadsetScale = int.Parse(ChoiceId(headsetScale), System.Globalization.CultureInfo.InvariantCulture), HudDistance = hudDistance.Value, HudFollowView = hudFollow.Checked
     };
@@ -431,6 +436,7 @@ internal sealed class MainForm : LauncherForm
     {
         retainedGraphics = value;
         renderScale.Value = value.RenderScale;
+        vrMirrorBorderless.Checked = value.VrMirrorBorderless;
         desktopVSync.Checked = value.DesktopVSync; SelectChoice(desktopMsaa, value.DesktopMsaa);
         SelectChoice(vrMsaa, value.VrMsaa);
         SelectChoice(treeDetail, value.TreeDetail); SelectChoice(objectDetail, value.ObjectDetail);
@@ -584,7 +590,7 @@ internal sealed class MainForm : LauncherForm
         bindRecenterDevice.Enabled = clearRecenterDevice.Enabled = loaded && idle && !capturingRecenter;
         defaults.Enabled = loaded && idle && !capturingRecenter;
         foreach (var control in new Control[] { renderScale, headsetScale, modernInterface, previewVrFixes, skipIntro, diagnosticLogging, performanceDisplay, replay3d, garage3d, vrCockpit, keepHorizonLevel,
-            cockpitTextures, hudDistance, hudFollow, desktopVSync, desktopMsaa, vrMsaa, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
+            cockpitTextures, hudDistance, hudFollow, desktopVSync, desktopMsaa, vrMsaa, vrMirrorBorderless, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
             control.Enabled = loaded && idle && !capturingRecenter;
         performanceFollowView.Enabled = performanceDisplay.Enabled && performanceDisplay.Checked;
         cockpitDriver.Enabled = vrCockpit.Enabled && vrCockpit.Checked;
@@ -650,6 +656,7 @@ internal sealed class MainForm : LauncherForm
         tips.SetToolTip(desktopMsaa, "Desktop Launch only. Launch VR uses the separate Anti-aliasing (VR) choice.");
         tips.SetToolTip(vrMsaa, "Smooth jagged geometry edges in VR. Off preserves the working default. 2×, 4× and 8× increase GPU time and memory use. Applies to the next VR launch; desktop MSAA is independent.");
         tips.SetToolTip(graphicsDefaults, "Restore only graphics choices to the working profile, then Save or Launch to keep them.");
+        tips.SetToolTip(vrMirrorBorderless, "Fill the VR mirror's current monitor without borders on the next VR launch. Scene resolution and headset texture scale are unchanged.");
         tips.SetToolTip(requestedSession, "Requested choices for the next launch. Check the actual car and track in GRID 2.");
         tips.SetToolTip(runtime, "VDXR connects directly through Virtual Desktop. SteamVR uses SteamVR's OpenXR runtime. Applies to the next session only.");
         tips.SetToolTip(recenter, "Choose the in-game recenter shortcut. Sit comfortably and face forward before pressing it in GRID 2.");

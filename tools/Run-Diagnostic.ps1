@@ -51,6 +51,7 @@ param(
     [switch]$ExposureAudit,
     [int]$SceneWidth=0,
     [int]$SceneHeight=0,
+    [switch]$VrMirrorBorderless,
     [switch]$FlickerDiagnostic,
     [switch]$AutoCaptureFlicker,
     [switch]$FlickerSignTarget,
@@ -93,6 +94,7 @@ if($Action -eq 'Run' -and $NormalLaunch -and ($SessionDirectory -or !$RuntimeSes
 if($MsaaAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe)) { throw 'MSAA audit requires an isolated bounded desktop diagnostic.' }
 if($Action -eq 'Run' -and $ExposureAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$AutoCaptureFlicker -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe -or $XrProjection -or $NormalLaunch)) { throw 'Exposure audit requires an isolated bounded unattended desktop diagnostic.' }
 if($Action -eq 'Run' -and ($SceneWidth -or $SceneHeight) -and (!$RuntimeSession -or $PlayerControlOnly -or $SceneWidth -lt 640 -or $SceneWidth -gt 3840 -or $SceneHeight -lt 360 -or $SceneHeight -gt 2160)) { throw 'Invalid native VR scene-size request.' }
+if($Action -eq 'Run' -and $VrMirrorBorderless -and (!$RuntimeSession -or !$UntilExit -or !$XrProjection -or $PlayerControlOnly -or !$SceneWidth -or !$SceneHeight)) { throw 'Borderless VR mirror requires a user VR session with scene resolution enforcement.' }
 if($Action -eq 'Run' -and $ScreenUiStereo -and (!$RuntimeSession -or !$ReplayStereo -or !$ReplayFullPose -or !$ReplayAsymmetricFov -or !$TraceReplayWork)) { throw 'UI stereo candidate requires a fully posed stereo runtime and replay instrumentation.' }
 if($Action -eq 'Run' -and $FlickerObservationSeconds -and (!$TrackedVisibility -or !$VisibilityCapture -or !$AutoCaptureFlicker -or !$RuntimeSession -or !$RecordedViewsFile -or $XrSessionProbe -or $XrProjection -or $UntilExit -or $HeadsetVisibilityCandidate -or $CaptureAfterSeconds+$FlickerObservationSeconds+20 -ge $TimeoutSeconds)) { throw 'Extended observation requires bounded simulated tracked visibility with reduced capture and enough timeout.' }
 if($Action -eq 'Run' -and $HeadsetVisibilityCandidate -and (!$RuntimeSession -or !$UntilExit -or !$FlickerDiagnostic -or !$TrackedVisibility -or !$MirrorPreview -or !$VisibilityCapture -or $InstanceCapacity -ne 'Expand' -or !$DiagnosticProxy -or !$XrSessionProbe -or !$XrProjection -or !$ReplayStereo -or !$ReplayFullPose -or !$ReplayAsymmetricFov -or !$ExpandVisibility -or $AutoCaptureFlicker -or $RecordedViewsFile -or $NativeVisibilityControl -or $FlickerSignTarget -or $PlayerControlOnly -or $PlayerControlProbe -ne 'Off' -or $WaitForStereoStart -or $RunKind -ne 'Probe')) { throw 'Headset visibility candidate requires isolated live-XR human practice with qualified capacity and no recorded/automatic capture.' }
@@ -445,6 +447,7 @@ $receipt.frontendSceneAudit=[bool]$FrontendSceneAudit
 $receipt.playerControlProbe=$PlayerControlProbe
 $receipt.playerControlOnly=[bool]$PlayerControlOnly
 $receipt.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly)
+$receipt.vrMirrorBorderlessRequested=[bool]$VrMirrorBorderless
 $receipt.backgroundPlay=$BackgroundPlay
 if ($selectedSession) { $receipt.selectedSession=$selectedSession }
 $before=@(Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\GRID 2') -Recurse -File | ForEach-Object {@{path=$_.FullName;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}})
@@ -510,6 +513,10 @@ try {
                 if($RuntimeSession -and $UntilExit -and $PlayerControlOnly -and $process) {
                     try { Start-DesktopBorderless $root $run $process }
                     catch { Write-Warning "Desktop borderless unavailable; retaining windowed play: $_" }
+                }
+                if($RuntimeSession -and $UntilExit -and $XrProjection -and !$PlayerControlOnly -and $VrMirrorBorderless -and $process) {
+                    try { Start-VrMirrorBorderless $root $run $process }
+                    catch { Write-Warning "VR mirror borderless unavailable; retaining windowed play: $_" }
                 }
                 if($RecenterDeviceBase64 -and $RuntimeSession -and $XrProjection -and $process) {
                     try { Start-RecenterDevice $root $run $RecenterDeviceBase64 $process }

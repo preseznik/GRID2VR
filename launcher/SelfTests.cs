@@ -15,6 +15,7 @@ internal static class SelfTests
             var client = new SessionClient(fixture);
             ProfileTests.Run(fixture);
             var defaults = new Choices();
+            Check(!defaults.Graphics.VrMirrorBorderless);
             Check(SessionClient.CarLabel("z28") == "Chevrolet Camaro Z28");
             Check(SessionClient.CarLabel("unverified_car") == "unverified_car");
             Check(SessionClient.LocationLabel("circuits/brands_hatch") == "Brands Hatch");
@@ -44,6 +45,20 @@ internal static class SelfTests
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-settings.json"), legacyGraphics.ToJsonString());
             Check(client.Load() == (selection with { ModernInterface = false, Graphics = graphics with { HeadsetScale = 100 } }));
             Check(client.Load().Graphics.VrMsaa == "off");
+            client.Save(selection);
+            foreach (var runtime in new[] { "SteamVR", "VDXR" })
+                foreach (var mode in new[] { "Normal", "Practice", "Race" })
+                    foreach (var borderless in new[] { false, true })
+                    {
+                        var mirrorOptions = selection with { Runtime = runtime, LaunchMode = mode, Graphics = graphics with { VrMirrorBorderless = borderless } };
+                        client.Save(mirrorOptions); Check(client.Load() == mirrorOptions);
+                        Check(client.LaunchCommand(mirrorOptions, true).ArgumentList.Contains("-VrMirrorBorderless") == borderless);
+                        Check(!client.LaunchCommand(mirrorOptions, false).ArgumentList.Contains("-VrMirrorBorderless"));
+                    }
+            var legacyMirror = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(client.Artifacts, "launcher-settings.json")))!.AsObject();
+            legacyMirror["Graphics"]!.AsObject().Remove("VrMirrorBorderless");
+            File.WriteAllText(Path.Combine(client.Artifacts, "launcher-settings.json"), legacyMirror.ToJsonString());
+            Check(!client.Load().Graphics.VrMirrorBorderless);
             client.Save(selection);
             foreach (var value in new[] { defaults with { Car = "pag; Stop-Process steam" }, defaults with { Track = "../foreign" }, defaults with { Runtime = "Auto" },
                 defaults with { RecenterKey = 27 }, defaults with { RecenterModifiers = 8 }, defaults with { RecenterKey = 115, RecenterModifiers = 2 },

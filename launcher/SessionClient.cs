@@ -208,6 +208,7 @@ internal sealed class SessionClient(string root)
                 "-HudFollowView", value.Graphics.HudFollowView ? "1" : "0", "-HudHiddenElements", value.Graphics.HiddenHudElements.ToString(System.Globalization.CultureInfo.InvariantCulture) })
                 command.ArgumentList.Add(arg);
         }
+        if (vr && value.Graphics.VrMirrorBorderless) command.ArgumentList.Add("-VrMirrorBorderless");
         if (vr && value.PerformanceDisplay)
         {
             command.ArgumentList.Add("-PerformanceDisplay");

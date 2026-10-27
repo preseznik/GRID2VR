@@ -9,6 +9,7 @@ param(
     [ValidateSet('same','mixed','class')][string]$OpponentCars='same',
     [ValidateRange(50,300)][int]$RenderScale=100,
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
+    [switch]$VrMirrorBorderless,
     [ValidateSet(0,1)][int]$DesktopVSync=1,
     [ValidateSet('off','2xmsaa','4xmsaa','8xmsaa')][string]$DesktopMsaa='off',
     [ValidateSet('off','2xmsaa','4xmsaa','8xmsaa')][string]$VrMsaa='off',
@@ -41,6 +42,7 @@ param(
     [switch]$Preflight
 )
 $ErrorActionPreference='Stop'
+if($VrMirrorBorderless -and $Mode -ne 'VR') { throw 'Borderless VR mirror requires a VR launch.' }
 if($CockpitMode -ne 'Off' -and ($Mode -ne 'VR' -or $CockpitS2000 -ne 'Off')) { throw 'Launcher cockpit mode requires VR and cannot be combined with the legacy S2000 diagnostic.' }
 if($CockpitS2000 -ne 'Off' -and $LaunchMode -ne 'Normal' -and $Car -cne 's20') { throw 'The cockpit prototype is for the Honda S2000 only.' }
 if($PreviewVrFixes -and ($Mode -ne 'VR' -or $DiagnosticProxy -or $HeadsetVisibilityCandidate -or $FlickerDiagnostic)) { throw 'Preview VR fixes require VR and cannot be combined with diagnostic overrides.' }
@@ -70,6 +72,7 @@ try {
     if($LaunchMode -eq 'Normal') { $receipt.car=$null; $receipt.track=$null; $receipt.laps=$null }
     $receipt.opponentCars=if($LaunchMode -eq 'Race'){$OpponentCars.ToLowerInvariant()}else{$null}
     $receipt.desktopBorderlessRequested=($Mode -eq 'Desktop')
+    $receipt.vrMirrorBorderlessRequested=($Mode -eq 'VR' -and [bool]$VrMirrorBorderless)
     $receipt.vrHud=@{enabled=($Mode -eq 'VR');distance=$HudDistance;followView=[bool]$HudFollowView;hiddenElements=$HudHiddenElements}
     Write-UserSessionStatus $root $receipt
     $career=Get-LaunchProfile $root
@@ -139,7 +142,7 @@ try {
         # visibility and tracking guards rather than a fixed race-start delay.
         HardwareSettingsFile=$hardware;HeadsetScale=$HeadsetScale;CaptureAfterSeconds=1;TimeoutSeconds=150;PythonPath=$python;
         FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy;
-        ForceSceneResolution=($Mode -eq 'VR');SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
+        ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
     if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection }
     $parameters.HudDistance=$HudDistance; $parameters.HudFollowView=$HudFollowView; $parameters.HudHiddenElements=$HudHiddenElements
     $parameters.VrReplayCameras=$VrReplayCameras

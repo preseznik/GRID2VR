@@ -28,6 +28,35 @@ internal static class DesktopWindowTests
         {
             journal[field] = false; Reject(() => Validate(executable, ticks)); journal[field] = true;
         }
+        journal["playerControlOnly"] = false;
+        journal["xrProjection"] = true;
+        journal["vrMirrorBorderlessRequested"] = true;
+        void ValidateVr()
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(journal));
+            DesktopWindow.ValidateOwner(doc.RootElement, gameRoot, executable, 123, ticks, true);
+        }
+        ValidateVr();
+        Reject(() => Validate(executable, ticks));
+        foreach (var field in new[] { "runtimeSession", "untilExit", "xrProjection", "vrMirrorBorderlessRequested" })
+        {
+            journal[field] = false; Reject(ValidateVr); journal[field] = true;
+        }
+        journal["playerControlOnly"] = true; Reject(ValidateVr);
+        var resolution = new Dictionary<string, object> { ["applied"] = true, ["operationComplete"] = true, ["processId"] = 123, ["window"] = 456,
+            ["requested"] = new { width = 3840, height = 2160 }, ["backbuffer"] = new { width = 3840, height = 2160 } };
+        bool Ready()
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(resolution));
+            return DesktopWindow.ResolutionReady(doc.RootElement, 123, 456);
+        }
+        Check(Ready());
+        foreach (var field in new[] { "applied", "operationComplete", "processId", "window", "backbuffer" })
+        {
+            var originalValue = resolution[field];
+            resolution[field] = field switch { "processId" => 124, "window" => 457, "backbuffer" => new { width = 2560, height = 1417 }, _ => false };
+            Check(!Ready()); resolution.Remove(field); Check(!Ready()); resolution[field] = originalValue;
+        }
 
         // Real Win32 frame/placement tests use only our never-shown fixture windows.
         // No existing app/game window, focus, mouse or keyboard is controlled.

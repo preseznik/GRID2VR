@@ -39,10 +39,24 @@ bool ValidSize(Size size);
 bool ParseSize(std::string_view text,Size& size);
 bool SetFields(Renderer& renderer,Size size);
 bool ApplyNative(uintptr_t gameBase,uintptr_t caller,DXGI_SWAP_CHAIN_DESC* desc,Size size);
+bool ApplyResizeNative(uintptr_t gameBase,uintptr_t caller,Renderer& renderer,IDXGISwapChain* chain,Size size);
+
+// Only the six size words are transactional; never restore an entire renderer.
+struct Change {
+    Renderer* renderer{};
+    Size engine{},window{},descriptor{},incoming{},effective{};
+    IDXGISwapChain* chain{};
+    bool recreation{};
+    explicit operator bool() const { return renderer!=nullptr; }
+};
 
 // Call only after Active() validates the executable SHA. The explicit request
 // is scene-size.request ("width height"); absence leaves all game fields alone.
-void Apply(uintptr_t gameBase,const std::filesystem::path& output,DXGI_SWAP_CHAIN_DESC* desc,uintptr_t caller) noexcept;
+Change PrepareCreate(uintptr_t gameBase,const std::filesystem::path& output,IUnknown* device,
+    DXGI_SWAP_CHAIN_DESC* desc,IDXGISwapChain** result,uintptr_t caller) noexcept;
+void CompleteCreate(const Change& change,HRESULT result,IDXGISwapChain* chain) noexcept;
+Change PrepareResize(uintptr_t gameBase,uintptr_t caller,IDXGISwapChain* chain,UINT& width,UINT& height,DXGI_FORMAT format) noexcept;
+void CompleteResize(const Change& change,HRESULT result) noexcept;
 void ObserveSwapchain(IDXGISwapChain* chain) noexcept;
 // The slot-100 final colour target establishes the actual per-eye scene size.
 void ObserveScene(unsigned width,unsigned height) noexcept;

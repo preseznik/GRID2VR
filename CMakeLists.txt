@@ -107,7 +107,8 @@ add_executable(scene_resolution_test tests/scene_resolution_test.cpp src/scene_r
 target_include_directories(scene_resolution_test PRIVATE src)
 target_compile_definitions(scene_resolution_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_test(NAME guarded_native_scene_resolution COMMAND scene_resolution_test
-    "${CMAKE_SOURCE_DIR}/tests/fixtures/native-scene-resolution-init.bin" "${CMAKE_BINARY_DIR}/scene-resolution-fixture")
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/native-scene-resolution-init.bin" "${CMAKE_BINARY_DIR}/scene-resolution-fixture"
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/native-scene-resolution-recreate.bin" "${CMAKE_SOURCE_DIR}/tests/fixtures/native-scene-resolution-resize.bin")
 add_executable(screen_ui_test tests/screen_ui_test.cpp src/screen_ui.cpp)
 target_link_libraries(screen_ui_test PRIVATE d3dcompiler)
 target_include_directories(screen_ui_test PRIVATE src)

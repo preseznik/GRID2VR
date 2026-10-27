@@ -3,6 +3,7 @@ namespace GRID2VR;
 internal sealed record GraphicsOptions(int RenderScale = 100, bool DesktopVSync = true, string DesktopMsaa = "off",
     string TreeDetail = "ultra", string ObjectDetail = "ultra", string CrowdDetail = "ultra", string TextureFiltering = "ultra", int HeadsetScale = 100, string VrMsaa = "off")
 {
+    public bool VrMirrorBorderless { get; init; }
     public decimal HudDistance { get; init; } = 1m;
     public bool HudFollowView { get; init; }
     public bool HudGauges { get; init; }

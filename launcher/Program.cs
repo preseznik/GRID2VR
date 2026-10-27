@@ -7,12 +7,12 @@ internal static class Program
     {
         if (args is ["--self-test"]) return SelfTests.Run();
         if (args.Length > 0 && args[0] is "--discover" or "--check-install" or "--check-uninstall" or "--setup" or "--verify-package" or "--migrate-from") return Installation.Command(args);
-        if (args is ["--borderless-desktop", var desktopRun, var desktopPid, var desktopTicks])
+        if (args is ["--borderless-desktop" or "--borderless-vr-mirror", var desktopRun, var desktopPid, var desktopTicks])
         {
             try
             {
                 Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-                return DesktopWindow.Watch(SessionClient.FindRoot(AppContext.BaseDirectory), desktopRun, int.Parse(desktopPid), long.Parse(desktopTicks));
+                return DesktopWindow.Watch(SessionClient.FindRoot(AppContext.BaseDirectory), desktopRun, int.Parse(desktopPid), long.Parse(desktopTicks), args[0] == "--borderless-vr-mirror");
             }
             catch { return 1; }
         }

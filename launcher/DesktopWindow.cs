@@ -69,20 +69,50 @@ internal sealed class DesktopWindow(int processId)
         }
     }
 
-    internal static void ValidateOwner(JsonElement journal, string gameRoot, string executable, int pid, long ticks)
+    private static bool Flag(JsonElement value, string name) => value.TryGetProperty(name, out var flag) && flag.ValueKind == JsonValueKind.True;
+
+    internal static void ValidateOwner(JsonElement journal, string gameRoot, string executable, int pid, long ticks, bool vrMirror = false)
     {
         var name = Path.GetFileName(executable);
         if (name is not ("grid2.exe" or "grid2_avx.exe") ||
             !string.Equals(Path.GetFullPath(executable), Path.Combine(gameRoot, name), StringComparison.OrdinalIgnoreCase) ||
             !journal.GetProperty("runtimeSession").GetBoolean() || !journal.GetProperty("untilExit").GetBoolean() ||
-            !journal.GetProperty("playerControlOnly").GetBoolean() ||
+            !(vrMirror ? !Flag(journal, "playerControlOnly") && Flag(journal, "xrProjection") && Flag(journal, "vrMirrorBorderlessRequested")
+                : Flag(journal, "playerControlOnly")) ||
             !journal.GetProperty("processes").EnumerateArray().Any(p => p.GetProperty("id").GetInt32() == pid &&
                 string.Equals(p.GetProperty("path").GetString(), executable, StringComparison.OrdinalIgnoreCase) &&
                 Math.Abs(DateTimeOffset.Parse(p.GetProperty("createdUtc").GetString()!).UtcTicks - ticks) < TimeSpan.TicksPerSecond))
-            throw new IOException("Window does not belong to an owned desktop game session.");
+            throw new IOException("Window does not belong to the requested owned game session.");
     }
 
-    internal static int Watch(string root, string run, int pid, long ticks)
+    internal static bool ResolutionReady(JsonElement resolution, int pid, nint window)
+    {
+        if (!Flag(resolution, "applied") || !Flag(resolution, "operationComplete") ||
+            !resolution.TryGetProperty("processId", out var process) || !process.TryGetInt32(out var owner) || owner != pid ||
+            !resolution.TryGetProperty("window", out var handle) || !handle.TryGetInt64(out var value) || value != window.ToInt64() ||
+            !resolution.TryGetProperty("requested", out var requested) || !resolution.TryGetProperty("backbuffer", out var actual)) return false;
+        return Size(requested, out var w, out var h) && Size(actual, out var aw, out var ah) && w == aw && h == ah;
+        static bool Size(JsonElement value, out int width, out int height)
+        {
+            width = height = 0;
+            return value.ValueKind == JsonValueKind.Object && value.TryGetProperty("width", out var w) && w.TryGetInt32(out width) && width > 0 &&
+                value.TryGetProperty("height", out var h) && h.TryGetInt32(out height) && height > 0;
+        }
+    }
+
+    private static bool ResolutionReady(string run, int pid, nint window)
+    {
+        try
+        {
+            var path = Path.Combine(run, "scene-resolution.json");
+            if (!File.Exists(path) || new FileInfo(path).Length > 64 * 1024) return false;
+            using var resolution = JsonDocument.Parse(File.ReadAllText(path));
+            return ResolutionReady(resolution.RootElement, pid, window);
+        }
+        catch (Exception error) when (error is IOException or JsonException or InvalidOperationException) { return false; }
+    }
+
+    internal static int Watch(string root, string run, int pid, long ticks, bool vrMirror = false)
     {
         string? receipt = null;
         var window = new DesktopWindow(pid);
@@ -94,7 +124,7 @@ internal sealed class DesktopWindow(int processId)
             using var mutex = new Mutex(false, @"Local\GRID2VR.DesktopWindow." + pid);
             bool locked; try { locked = mutex.WaitOne(0); } catch (AbandonedMutexException) { locked = true; }
             if (!locked) return 0;
-            receipt = Path.Combine(run, "desktop-window.json");
+            receipt = Path.Combine(run, vrMirror ? "vr-mirror-window.json" : "desktop-window.json");
             try
             {
                 using var game = Process.GetProcessById(pid);
@@ -102,7 +132,7 @@ internal sealed class DesktopWindow(int processId)
                 var journalPath = Path.Combine(run, "session.json");
                 if (new FileInfo(journalPath).Length > 1024 * 1024) throw new IOException("Session receipt exceeds its bound.");
                 using var journal = JsonDocument.Parse(File.ReadAllText(journalPath));
-                ValidateOwner(journal.RootElement, AppPaths.Game(root), game.MainModule?.FileName ?? "", pid, ticks);
+                ValidateOwner(journal.RootElement, AppPaths.Game(root), game.MainModule?.FileName ?? "", pid, ticks, vrMirror);
                 Installation.ValidateGame(AppPaths.Game(root));
                 string previous = "";
                 while (!game.HasExited)
@@ -110,7 +140,10 @@ internal sealed class DesktopWindow(int processId)
                     if (File.Exists(Path.Combine(run, "session-exit.request"))) { result = "session-stopped"; break; }
                     game.Refresh();
                     var handle = game.MainWindowHandle;
-                    if (Eligible(handle, pid)) window.Update(handle, Screen.FromHandle(handle).Bounds, Environment.TickCount64);
+                    // Once placement starts, always finish verification/rollback,
+                    // including if the resulting resize reports a renderer failure.
+                    if (Eligible(handle, pid) && (!vrMirror || window.attempts.ContainsKey(handle) || ResolutionReady(run, pid, handle)))
+                        window.Update(handle, Screen.FromHandle(handle).Bounds, Environment.TickCount64);
                     var state = window.Applied + ":" + window.Warning;
                     if (state != previous) { Save(); previous = state; }
                     Thread.Sleep(250);
