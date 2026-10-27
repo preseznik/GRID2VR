@@ -516,11 +516,12 @@ if($RuntimeSession) {
 if(!$run -or $receipt.result -ne 'probe_window_completed') {
     throw "The bounded probe did not complete cleanly. See preservation evidence: $backup"
 }
-$faults=@(Get-Content -LiteralPath (Join-Path $run 'engine-faults.txt'))
-# This handled startup exception was also present before engine hook installation
-# in the short controls. Any other observed fault keeps acceptance closed.
-$unexpectedFaults=@($faults | Where-Object { $_ -notmatch '^code=c0000005 .*game_rva=0084762b .*engine_installed=0$' })
-if($unexpectedFaults.Count) { throw "Unexpected observed exception; inspect engine-faults.txt in: $run" }
+# Share the hash/signature/owned-completion checks with runtime sessions. The
+# deliberate native SEH signal is independent of renderer-hook install timing.
+$faultReport=& $PythonPath (Join-Path $PSScriptRoot 'analyze_runtime.py') $run --classify-faults
+if($LASTEXITCODE) { throw "Exception classification failed; inspect: $run" }
+$faultReport=$faultReport | ConvertFrom-Json
+if(@($faultReport.unexpectedFaults).Count) { throw "Unexpected observed exception; inspect engine-faults.txt in: $run" }
 foreach($name in @('stereo-sequence-summary.json','visibility-summary.json')) {
     $summary=Get-Content -LiteralPath (Join-Path $run $name) -Raw | ConvertFrom-Json
     if(!$summary.accepted) { throw "Diagnostic rejected by $name. Evidence: $run" }

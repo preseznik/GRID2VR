@@ -1,0 +1,31 @@
+{
+  "sourceRun": "20261027-213643-069",
+  "sourceFaultLogSha256": "6ea69e4cbc1f7dbea2ffa6fce4c051ab74de8a03c76b1fd3d4b66ee810fec2f9",
+  "evidence": "Captured intentional zero-write; native frame handler redirects CONTEXT.Eax and resumes. No game code or exception observer is changed.",
+  "faultStubRva": "0x847620",
+  "faultStubBytes": "57 8b 4c 24 08 8b 7c 24 0c 33 c0 89 08 5f c3",
+  "nativeWrapperRva": "0xb15980",
+  "nativeFrameHandlerRva": "0xb15ca0",
+  "session": {
+    "executableSha256": "519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502",
+    "executableBuild": "grid2-avx-1.0.85.8679",
+    "runKind": "Probe",
+    "result": "process_exited",
+    "terminatedOwnedProcessIds": [],
+    "exits": [
+      {
+        "code": 0,
+        "id": 79316
+      }
+    ],
+    "processes": [
+      {
+        "id": 79316
+      }
+    ]
+  },
+  "faults": [
+    "code=c0000005 address=012D762B game_rva=0084762b eip=012d762b esp=005ecc98 game_base=00a90000 eax=00000000 ebx=01770901 ecx=00000000 edx=022e0000 esi=005ed980 edi=00000000 ebp=005ee034 access=1 location=0 frame=3 engine_installed=0",
+    "code=c0000005 address=012D762B game_rva=0084762b eip=012d762b esp=062ce030 game_base=00a90000 eax=00000000 ebx=76b33601 ecx=00000000 edx=022e0000 esi=53935110 edi=00000000 ebp=062cee04 access=1 location=0 frame=795 engine_installed=1"
+  ]
+}

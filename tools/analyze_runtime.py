@@ -4,9 +4,9 @@ import json
 import re
 
 
-def normal_user_process_exit(session):
-    """Owned user-session process exit, not a claim about final GPU restoration."""
-    if not session or session.get('untilExit') is not True or session.get('runtimeSession') is not True:
+def normal_process_exit(session):
+    """Matching owned processes exited 0, without harness termination."""
+    if not isinstance(session, dict):
         return False
     if session.get('result') != 'process_exited' or session.get('terminatedOwnedProcessIds') != []:
         return False
@@ -18,6 +18,60 @@ def normal_user_process_exit(session):
     ids = {p['id'] for p in processes}
     return (len(ids) == len(processes) and len({p['id'] for p in exits}) == len(exits) and
             ids == {p['id'] for p in exits} and all(type(p.get('code')) is int and p['code'] == 0 for p in exits))
+
+
+def normal_user_process_exit(session):
+    """Owned user-session process exit, not a claim about final GPU restoration."""
+    return (normal_process_exit(session) and session.get('untilExit') is True and
+            session.get('runtimeSession') is True)
+
+
+def classify_faults(lines, session):
+    """Keep the game's deliberate SEH signal distinct from unexpected faults.
+
+    The hash-pinned 0x847620 stub explicitly zeros EAX then writes [EAX]. Its
+    native frame handler supplies a scratch address in CONTEXT.Eax and resumes.
+    Renderer hook installation does not change this protocol. Require the exact
+    captured null-write signature and completed owned execution; never handle
+    exceptions, waive abnormal exits, or discard the original observations.
+    """
+    known, unexpected = [], []
+    fingerprint = session.get('executableSha256') if isinstance(session, dict) else None
+    supported = (isinstance(fingerprint, str) and fingerprint.lower() ==
+                 '519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502' and
+                 session.get('executableBuild') == 'grid2-avx-1.0.85.8679')
+    completed = normal_process_exit(session)
+    # A bounded probe deliberately stops its owned game after the completion
+    # marker. Preserve that existing workflow without accepting timeouts/crashes.
+    if supported and session.get('runKind') == 'Probe' and session.get('result') == 'probe_window_completed':
+        processes, exits = session.get('processes'), session.get('exits')
+        stopped = session.get('terminatedOwnedProcessIds')
+        if (isinstance(processes, list) and processes and isinstance(exits, list) and isinstance(stopped, list) and
+                all(isinstance(p, dict) and type(p.get('id')) is int and p['id'] > 0 for p in processes + exits) and
+                all(type(p) is int and p > 0 for p in stopped)):
+            ids = {p['id'] for p in processes}
+            completed = (len(processes) == len(ids) == len(exits) == len(stopped) and
+                         ids == {p['id'] for p in exits} == set(stopped) and
+                         all(type(p.get('code')) is int and p['code'] == -1 for p in exits))
+    fields = ('code', 'address', 'game_rva', 'eip', 'esp', 'game_base', 'eax', 'ebx',
+              'ecx', 'edx', 'esi', 'edi', 'ebp', 'access', 'location', 'frame', 'engine_installed')
+    pattern = ' '.join(name + ('=([0-9]+)' if name in ('frame', 'engine_installed') else '=([0-9a-fA-F]+)') for name in fields)
+    for line in lines:
+        match = re.fullmatch(pattern, line)
+        expected = False
+        if supported and completed and match:
+            values = dict(zip(fields, match.groups()))
+            value = {key: int(text, 10 if key in ('frame', 'engine_installed') else 16) for key, text in values.items()}
+            base = value['game_base']
+            expected = (value['code'] == 0xc0000005 and value['game_rva'] == 0x84762b and
+                        0x10000 <= base <= 0xffffffff - 0x84762b and base % 0x10000 == 0 and
+                        value['address'] == value['eip'] == base + 0x84762b and
+                        value['eax'] == value['ecx'] == value['edi'] == value['location'] == 0 and
+                        value['access'] == 1 and value['frame'] <= 0xffffffffffffffff and
+                        all(v <= 0xffffffff for k, v in value.items() if k != 'frame') and
+                        values['engine_installed'] in ('0', '1'))
+        (known if expected else unexpected).append(line)
+    return dict(knownNativeExceptions=known, unexpectedFaults=unexpected)
 
 
 def non_rendering_clean_exit(session):
@@ -82,8 +136,8 @@ def analyze(run):
 
     status, stopped = read('runtime-status.json'), read('runtime-stopped')
     faults = (run/'engine-faults.txt').read_text() if (run/'engine-faults.txt').exists() else ''
-    unexpected = [line for line in faults.splitlines() if not re.match(
-        r'^code=c0000005 .*game_rva=0084762b .*engine_installed=0$', line)]
+    fault_classification = classify_faults(faults.splitlines(), read('session.json', 256*1024))
+    unexpected = fault_classification['unexpectedFaults']
     # The fixed practice binary and its recovery backup are bounded inputs,
     # not renderer dumps. Never exempt arbitrary .bin files or supplied hashes.
     from practice_entry import FLOW_SHA256, PRACTICE_SHA256
@@ -184,7 +238,7 @@ def analyze(run):
                 playerControl=control, playerControlProbeHealthy=bool(control_ok) if control_ok is not None else None,
                 handoffObservations=handoff_observations(control),
                 storageBounded=storage_ok, rawFiles=raw, practiceRecoveryFiles=practice_files,
-                instanceCapacityRecoveryFiles=capacity_files, startupMoviesRecoveryFiles=startup_files, unexpectedFaults=unexpected,
+                instanceCapacityRecoveryFiles=capacity_files, startupMoviesRecoveryFiles=startup_files, **fault_classification,
                 independentStereoValidated=False, gameplayValidated=False,
                 limits='Native counters and explicit restored stop are separate from non-rendering process exit. Last recorded background observations and exit code do not prove quit intent or final render-thread restoration. Bounded logs are incomplete history. A healthy report is not headset or driving acceptance.')
 
@@ -194,8 +248,13 @@ if __name__ == '__main__':
     from pathlib import Path
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('run', type=Path)
+    parser.add_argument('--classify-faults', action='store_true', help='Print read-only exception classification JSON.')
     args = parser.parse_args()
-    # Preserve the pre-cleanup report and its retained-evidence checksum.
-    target = args.run / 'runtime-after-cleanup.json'
-    target.write_text(json.dumps(analyze(args.run), indent=2) + '\n')
-    print(target)
+    result = analyze(args.run)
+    if args.classify_faults:
+        print(json.dumps({key: result[key] for key in ('knownNativeExceptions', 'unexpectedFaults')}))
+    else:
+        # Preserve the pre-cleanup report and its retained-evidence checksum.
+        target = args.run / 'runtime-after-cleanup.json'
+        target.write_text(json.dumps(result, indent=2) + '\n')
+        print(target)

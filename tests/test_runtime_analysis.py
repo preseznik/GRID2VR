@@ -1,12 +1,13 @@
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parents[1]/'tools'))
-from analyze_runtime import analyze, handoff_observations, non_rendering_clean_exit, normal_user_process_exit
+from analyze_runtime import analyze, classify_faults, handoff_observations, non_rendering_clean_exit, normal_user_process_exit
 import practice_entry
 import instance_capacity_config
 import startup_movies
@@ -14,6 +15,101 @@ from summarize_diagnostic import summarize
 
 
 class RuntimeEvidenceTests(unittest.TestCase):
+    def startup_signal(self):
+        return json.loads((Path(__file__).parent/'fixtures/native-startup-seh-20261027.json').read_text())
+
+    def test_captured_native_signal_is_independent_of_hook_install_timing(self):
+        fixture = self.startup_signal()
+        lines, session = fixture['faults'], fixture['session']
+        self.assertEqual(hashlib.sha256(('\r\n'.join(lines)+'\r\n').encode()).hexdigest(), fixture['sourceFaultLogSha256'])
+        result = classify_faults(lines, session)
+        self.assertEqual(result['knownNativeExceptions'], lines)
+        self.assertEqual(result['unexpectedFaults'], [])
+        for installed in (0, 1):
+            for base in (0x400000, 0xa90000, 0xf30000):
+                parts = dict(item.split('=') for item in lines[1].split())
+                parts.update(engine_installed=str(installed), game_base=f'{base:08x}',
+                             address=f'{base+0x84762b:08X}', eip=f'{base+0x84762b:08x}')
+                line = ' '.join(f'{k}={v}' for k, v in parts.items())
+                with self.subTest(installed=installed, base=base):
+                    self.assertEqual(classify_faults([line], session)['knownNativeExceptions'], [line])
+
+    def test_native_signal_rejects_foreign_images_bad_registers_and_other_faults(self):
+        fixture = self.startup_signal()
+        line, session = fixture['faults'][1], fixture['session']
+        parts = dict(item.split('=') for item in line.split())
+        changes = dict(code='c000001d', address='012D762C', game_rva='0084762c', eip='012d762c',
+                       game_base='00a90001', eax='00000001', ecx='00000001', edi='00000001',
+                       access='0', location='1', frame='795abc', engine_installed='2', esp='100000000')
+        for key, value in changes.items():
+            changed = ' '.join(f'{k}={value if k==key else v}' for k, v in parts.items())
+            with self.subTest(field=key):
+                self.assertEqual(classify_faults([changed], session)['unexpectedFaults'], [changed])
+        for changed in (line+' engine_installed=0', line+' extra=0', line.replace('access=1', 'access=8'),
+                        'code=c0000005 game_rva=0084762b engine_installed=0',
+                        line.replace('012D762B', 'DEDEDEDE').replace('game_rva=0084762b', 'game_rva=00000000')):
+            self.assertEqual(classify_faults([changed], session)['unexpectedFaults'], [changed])
+        for changed in (None, {}, {**session, 'executableSha256': None},
+                        {**session, 'executableSha256': '0'*64}, {**session, 'executableBuild': 'foreign'}):
+            self.assertEqual(classify_faults([line], changed)['unexpectedFaults'], [line])
+
+    def test_native_signal_cannot_waive_an_abnormal_or_unowned_exit(self):
+        fixture = self.startup_signal()
+        line, session = fixture['faults'][1], fixture['session']
+        for change in (dict(result='prepared'), dict(result='timeout_owned_game_terminated'),
+                       dict(exits=[dict(id=79316, code=-1073741819)]), dict(exits=[dict(id=79316, code=False)]),
+                       dict(exits=[dict(id=1, code=0)]), dict(exits=[]), dict(terminatedOwnedProcessIds=[79316]),
+                       dict(processes=[dict(id=79316), dict(id=79316)])):
+            with self.subTest(change=change):
+                self.assertEqual(classify_faults([line], {**session, **change})['unexpectedFaults'], [line])
+        bounded = {**session, 'result': 'probe_window_completed', 'terminatedOwnedProcessIds': [79316],
+                   'exits': [dict(id=79316, code=-1)]}
+        self.assertEqual(classify_faults([line], bounded)['knownNativeExceptions'], [line])
+        for change in (dict(runKind='Observe'), dict(terminatedOwnedProcessIds=[]),
+                       dict(terminatedOwnedProcessIds=[1]), dict(exits=[dict(id=79316, code=-1073741819)])):
+            self.assertEqual(classify_faults([line], {**bounded, **change})['unexpectedFaults'], [line])
+
+    def test_known_native_signal_does_not_replace_stop_or_other_fault_evidence(self):
+        fixture = self.startup_signal()
+        with tempfile.TemporaryDirectory() as name:
+            run = Path(name)
+            (run/'session.json').write_text(json.dumps(fixture['session']))
+            (run/'engine-faults.txt').write_text('\n'.join(fixture['faults']))
+            (run/'runtime-status.json').write_text(json.dumps(dict(frame=3695, state=2, epoch=2,
+                attemptedPairs=2128, acceptedPairs=2128, failed=False)))
+            self.assertFalse(analyze(run)['rendererHealthy'])
+            (run/'runtime-stopped').write_text('{"failed":false,"source":"game_exit"}')
+            result = analyze(run)
+            self.assertTrue(result['rendererHealthy'])
+            self.assertEqual(result['knownNativeExceptions'], fixture['faults'])
+            self.assertFalse(result['gameplayValidated'])
+            for change in ('{"failed":true}', 'malformed'):
+                (run/'runtime-stopped').write_text(change)
+                self.assertFalse(analyze(run)['rendererHealthy'])
+            (run/'runtime-stopped').write_text('{"failed":false}')
+            genuine = 'code=c0000005 game_rva=00000000 engine_installed=1'
+            (run/'engine-faults.txt').write_text('\n'.join([*fixture['faults'], genuine]))
+            result = analyze(run)
+            self.assertEqual(result['unexpectedFaults'], [genuine])
+            self.assertFalse(result['rendererHealthy'])
+
+    def test_fault_classification_cli_is_read_only_and_shared_by_bounded_probe(self):
+        fixture = self.startup_signal()
+        with tempfile.TemporaryDirectory() as name:
+            run = Path(name)
+            (run/'session.json').write_text(json.dumps(fixture['session']))
+            (run/'engine-faults.txt').write_text('\n'.join(fixture['faults']))
+            (run/'runtime-summary.json').write_text('original retained report')
+            before = {p.name: p.read_bytes() for p in run.iterdir()}
+            script = Path(__file__).parents[1]/'tools/analyze_runtime.py'
+            result = subprocess.run([sys.executable, str(script), str(run), '--classify-faults'],
+                                    capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads(result.stdout)['knownNativeExceptions'], fixture['faults'])
+            self.assertEqual({p.name: p.read_bytes() for p in run.iterdir()}, before)
+        probe = (Path(__file__).parents[1]/'tools/Run-StereoProbe.ps1').read_text()
+        self.assertIn("$run --classify-faults", probe)
+        self.assertNotIn("engine_installed=0$", probe)
+
     def test_startup_backups_require_exact_hashes_and_restored_ownership(self):
         with tempfile.TemporaryDirectory() as name:
             run = Path(name)
