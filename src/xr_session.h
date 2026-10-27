@@ -10,6 +10,7 @@
 #include "xr_eye_images.h"
 #include "bounded_log.h"
 #include "performance_display.h"
+#include "resolution_limits.h"
 
 namespace grid2vr {
 // All calls, including explicit Shutdown, belong to the initializing render
@@ -73,5 +74,6 @@ private:
     bool diagnosticLogging_{true};
     XrPosef screenAnchor_{};
     bool screenAnchorReady_{};
+    resolution::Plan resolution_;
 };
 }

@@ -93,7 +93,8 @@ function Get-CareerProfileProxy {
     # candidates still require one of the explicitly qualified binary hashes.
     $allowed=@('9fe9e76f825b34650b64d962fc2e115d4fe09c9190eef0decc90362fbd46fe22',
         'fa75274d189e5121cc0e35ccbbc2e2df38b1fee3ef3d5dec3a6b73f559c47495',
-        'cdd6e68abcd6e53ee15876f86f952b0e808b2fe515fd443ad80fb05f24fa5da8')
+        'cdd6e68abcd6e53ee15876f86f952b0e808b2fe515fd443ad80fb05f24fa5da8',
+        'ef1bb4b7b93575c821c85c3f515865159bf2e002ec01c67f1a9aa50549770a00') # Menu-Quit shutdown candidate; attended exit acceptance pending.
     $null=Assert-PlainPath $BaseProxy
     $base=(Get-FileHash -LiteralPath $BaseProxy).Hash
     $packaged=Test-Grid2Package $Root

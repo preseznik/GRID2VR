@@ -28,6 +28,7 @@
 #include "instance_capacity.h"
 #include "headset_visibility_candidate.h"
 #include "process_exit.h"
+#include "menu_exit.h"
 #include "stop_receipt.h"
 #include "scene_resolution.h"
 #include "exposure_audit.h"
@@ -369,7 +370,7 @@ void InitializeXr(ID3D11Device* device) {
     xrProjection=std::filesystem::exists(output/L"xr-projection.request");
     if (!xrRequested) return;
     std::wifstream request(output/L"xr-session.request");std::wstring runtime;std::getline(request,runtime);
-    const bool closeReady=EnsureExitHandler() && processexit::AttachWindow(diagnosticWindow);
+    const bool closeReady=EnsureExitHandler() && processexit::AttachWindow(diagnosticWindow) && menuexit::Install(gameBase,output);
     Log("session close handler attached=%u",closeReady);
     bool initialized=closeReady && !std::filesystem::exists(output/L"recorded-views.request") && xrSession.Initialize(device,runtime,output);
     if (initialized && xrProjection) {

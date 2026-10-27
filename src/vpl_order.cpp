@@ -40,8 +40,10 @@ void main(uint3 tile:SV_GroupID,uint i:SV_GroupIndex) {
 HRESULT VplOrder::Apply(ID3D11DeviceContext* context,ID3D11UnorderedAccessView* view,
     UINT groupsX,UINT groupsY,UINT groupsZ,NativeDispatch dispatch,bool& restored) {
     restored=false;
+    // VPL storage uses twice the scene height. An 8192-high scene needs
+    // 16384 texels / 512 tile rows; the old 256-row cap stopped above 4096.
     if (!context || !view || !dispatch || context->GetType()!=D3D11_DEVICE_CONTEXT_IMMEDIATE ||
-        !groupsX || groupsX>512 || !groupsY || groupsY>256 || groupsZ!=1) return E_INVALIDARG;
+        !groupsX || groupsX>512 || !groupsY || groupsY>512 || groupsZ!=1) return E_INVALIDARG;
     D3D11_UNORDERED_ACCESS_VIEW_DESC vd{}; view->GetDesc(&vd);
     ComPtr<ID3D11Resource> resource; view->GetResource(&resource);
     ComPtr<ID3D11Texture2D> texture;

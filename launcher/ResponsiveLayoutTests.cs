@@ -44,6 +44,7 @@ internal static class ResponsiveLayoutTests
             ((ProfilePanel)form.Controls.Find("ProfilePanel", true).Single()).Reload();
             LauncherAppearance.Modern = modern; LauncherAppearance.Apply(form);
             LaunchModeTests.RunForm(form);
+            VrResolutionTests.RunForm(form, fixture);
             var tabs = (TabControl)form.Controls.Find("LauncherTabs", true).Single();
             var controlTabs = (TabControl)form.Controls.Find("ControlTabs", true).Single();
             Require(controlTabs.TabPages.Cast<TabPage>().Select(p => p.Text).SequenceEqual(new[] { "General", "VR", "Driving", "Seat" }), "Controls subtabs changed.");
@@ -79,7 +80,7 @@ internal static class ResponsiveLayoutTests
                     var compactHeight = 0;
                     foreach (var width in new[] { 460, 820, 1320, 460 })
                     {
-                        content.Size = new Size(width, page.Text == "Advanced" ? 600 : content.Height);
+                        content.Size = new Size(width, content.Height);
                         content.PerformLayout();
                         AssertBounds(content);
                         foreach (var choice in choices) Require(ReferenceEquals(choice.Control.SelectedItem, choice.Value), "Resizing changed a choice.");

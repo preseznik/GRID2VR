@@ -17,9 +17,10 @@ std::wstring childMode;
 bool observerCallbackEnabled{};
 grid2vr::StopReceipt stopReceipt;
 const char* Cleanup() {
-    std::ofstream(folder/L"callback.txt") << GetCurrentThreadId();
+    std::ofstream(folder/L"callback.txt",std::ios::app) << GetCurrentThreadId() << '\n';
     if(GetCurrentThreadId()!=cleanupOwner)return "wrong_callback_thread";
     if(observerCallbackEnabled && !std::filesystem::exists(folder/L"observer-callback.txt"))return "observer_callback_order";
+    if(childMode==L"slow-handoff")Sleep(5200);
     return stopReceipt.GameExit(folder/L"runtime-stopped")?"complete":"stop_receipt_failed";
 }
 const char* ObserverCleanup() {
@@ -94,7 +95,7 @@ int Child(const wchar_t* mode) {
     if(childMode==L"owner" || childMode==L"observer-throw" || childMode==L"observer-refusal")exitGame(37);
     else {
         std::thread other([=]{grid2vr::processexit::Service();exitGame(37);});
-        if(wcscmp(mode,L"handoff")==0) {
+        if(childMode==L"handoff" || childMode==L"slow-handoff") {
             for(;;) {
                 grid2vr::processexit::Service();
                 if(stopReceipt.Reported())stopReceipt.Stop(folder/L"runtime-stopped",false);
@@ -115,7 +116,7 @@ int wmain(int argc,wchar_t** argv) {
     wchar_t executable[32768]{};
     if(!GetModuleFileNameW(nullptr,executable,32768))return 10;
     const auto root=std::filesystem::path(argv[1])/std::to_wstring(GetCurrentProcessId());
-    for(const auto* mode:{L"owner",L"handoff",L"timeout",L"observer-timeout",L"observer-throw",L"observer-refusal"}) {
+    for(const auto* mode:{L"owner",L"handoff",L"slow-handoff",L"timeout",L"observer-timeout",L"observer-throw",L"observer-refusal"}) {
         const auto target=root/mode;
         std::filesystem::create_directories(target);
         std::wstring command=L"\""+std::wstring(executable)+L"\" \""+target.wstring()+L"\" "+mode;
@@ -131,9 +132,19 @@ int wmain(int argc,wchar_t** argv) {
         if(std::filesystem::exists(target/L"callback.txt")!=cleaned)return 13;
         if(std::filesystem::exists(target/L"runtime-stopped")!=cleaned)return 15;
         if(cleaned && Read(target/L"runtime-stopped")!="{\"failed\":false,\"source\":\"game_exit\"}\n")return 16;
+        if(cleaned) {
+            const auto callback=Read(target/L"callback.txt");
+            if(std::count(callback.begin(),callback.end(),'\n')!=1)return 26;
+        }
         const auto log=Read(target/L"process-exit.txt");
         if(log.find(cleaned?"exit cleanup=complete":"exit cleanup=owner_unavailable")==std::string::npos ||
            log.find("forwarding=1")==std::string::npos)return 14;
+        const std::string running="exit cleanup=still_running forwarding=0\n";
+        const auto runningAt=log.find(running);
+        if(wcscmp(mode,L"slow-handoff")==0) {
+            if(runningAt==std::string::npos || log.find(running,runningAt+running.size())!=std::string::npos ||
+               log.find("exit cleanup=complete forwarding=1")<runningAt)return 27;
+        } else if(runningAt!=std::string::npos)return 28;
         if(observer) {
             const auto callback=Read(target/L"observer-callback.txt");
             if(std::count(callback.begin(),callback.end(),'\n')!=1)return 19;
@@ -147,6 +158,6 @@ int wmain(int argc,wchar_t** argv) {
             }
         } else if(log.find("observer_cleanup=")!=std::string::npos)return 24;
     }
-    puts("Guarded exit preserves code, owner-only cleanup and timeout; observer restores without owner service and failures still exit.");
+    puts("Guarded exit preserves code, owner-only cleanup and unclaimed timeout; running cleanup finishes once before exit, and observers restore without owner service.");
     return 0;
 }

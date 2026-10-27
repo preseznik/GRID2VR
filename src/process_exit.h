@@ -15,6 +15,13 @@ bool Install(uintptr_t gameBase, const std::filesystem::path& output, BeforeExit
 // Arm only for the verified runtime's DXGI OutputWindow. Defer window close
 // before native teardown stops the render owner; never call XR from the UI.
 bool AttachWindow(HWND window);
+// Request at a native menu transition, then yield that transition until ready.
+// An unclaimed request may expire; an active callback must finish before exit.
+bool RequestCleanup();
+// Withdraw only an unclaimed menu request. Window-close, ExitProcess and an
+// already running owner callback retain ownership and cannot be canceled.
+bool CancelCleanup();
+bool CleanupReady(ULONGLONG deadline);
 // Pump only at a restored render boundary. Foreign exit callers wait briefly
 // for this owner; timeout preserves native exit without cross-thread XR calls.
 void Service();

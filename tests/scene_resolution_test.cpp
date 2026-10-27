@@ -36,8 +36,12 @@ int wmain(int argc,wchar_t** argv) {
             CHECK(dimensions || reinterpret_cast<const uint8_t*>(&r)[i]==reinterpret_cast<const uint8_t*>(&before)[i]);
         }
     }
-    for(const auto text:{"", "3840", "3840 2161", "0 0", "640 359", "3841 2160", "1920 1080 extra", "1920 1080\n0", " 1920 1080", "1920  1080", "-1920 1080", "+1920 1080"}) {
+    for(const auto text:{"", "3840", "8193 2160", "0 0", "640 179", "8192 8193", "1920 1080 extra", "1920 1080\n0", " 1920 1080", "1920  1080", "-1920 1080", "+1920 1080"}) {
         Size parsed{1,2};CHECK(!ParseSize(text,parsed) && (parsed==Size{1,2}));
+    }
+    for(const Size size: {Size{2400,2600},Size{3288,3562},Size{4096,4096},Size{320,180},Size{4608,4896},Size{6144,6528},Size{8192,8192}}) {
+        auto r=Fixture();CHECK(SetFields(r,size));
+        CHECK(r.width==size.width && r.height==size.height && r.swap.BufferDesc.Width==size.width && r.swap.BufferDesc.Height==size.height);
     }
     for(unsigned fault=0;fault<10;++fault) {
         auto r=Fixture();
@@ -86,7 +90,7 @@ int wmain(int argc,wchar_t** argv) {
     }
     auto r=Fixture();const auto before=r;
     CHECK(!ApplyNative(base,base+0x87e888,&r.swap,{3840,2160}) && !memcmp(&r,&before,sizeof(r)));
-    CHECK(!ApplyNative(base,base+0x87e887,&r.swap,{3840,2161}) && !memcmp(&r,&before,sizeof(r)));
+    CHECK(!ApplyNative(base,base+0x87e887,&r.swap,{8192,8193}) && !memcmp(&r,&before,sizeof(r)));
     CHECK(ApplyNative(base,base+0x87e887,&r.swap,{3840,2160}));CHECK(r.width==3840 && r.height==2160);
     auto* readOnly=static_cast<Renderer*>(VirtualAlloc(nullptr,4096,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));CHECK(readOnly);
     *readOnly=Fixture();DWORD old{};CHECK(VirtualProtect(readOnly,4096,PAGE_READONLY,&old));

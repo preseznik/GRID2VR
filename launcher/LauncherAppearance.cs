@@ -38,7 +38,6 @@ internal static class LauncherAppearance
             root.BackColor = styled ? (input ? Cell : Surface) : Dark && !SystemInformation.HighContrast ? Color.FromArgb(32, 32, 32) : input ? SystemColors.Window : SystemColors.Control;
             root.ForeColor = styled ? Ink : Dark && !SystemInformation.HighContrast ? Color.White : input ? SystemColors.WindowText : SystemColors.ControlText;
             if (root.Tag is "hint" or "section" && styled) root.ForeColor = Accent;
-            if (root.Tag is "recommendation" && !SystemInformation.HighContrast) root.ForeColor = Accent;
             if (root.Tag is "setting-row") root.Margin = styled ? new Padding(0, 0, 0, Px(root, 6)) : original.Margin;
             if (root is Button button)
             {

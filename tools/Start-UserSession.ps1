@@ -8,6 +8,7 @@ param(
     [ValidateRange(1,7)][int]$Opponents=7,
     [ValidateSet('same','mixed','class')][string]$OpponentCars='same',
     [ValidateRange(50,300)][int]$RenderScale=100,
+    [int]$VrRenderScale=0,
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [switch]$VrMirrorBorderless,
     [ValidateSet(0,1)][int]$DesktopVSync=1,
@@ -89,6 +90,19 @@ try {
     $receipt.vrMirrorBorderlessRequested=($Mode -eq 'VR' -and [bool]$VrMirrorBorderless)
     $receipt.vrHud=@{enabled=($Mode -eq 'VR');distance=$HudDistance;followView=[bool]$HudFollowView;hiddenElements=$HudHiddenElements}
     Write-UserSessionStatus $root $receipt
+    $headsetResolution=$null
+    $sceneArguments=@()
+    if($VrRenderScale) {
+        if($Mode -ne 'VR') { throw 'Headset-relative resolution requires a VR launch.' }
+        . (Join-Path $PSScriptRoot 'Headset-Resolution.ps1')
+        $receipt.message='Reading connected headset resolution...'
+        Write-UserSessionStatus $root $receipt
+        $headset=Get-ConnectedHeadsetResolution $root $XrRuntime
+        $headsetResolution=Get-HeadsetResolutionPlan $headset.width $headset.height $VrRenderScale
+        $receipt.headsetResolution=$headsetResolution
+        $receipt.headset=$headset
+        $sceneArguments=@('--scene-width',$headsetResolution.sceneWidth,'--scene-height',$headsetResolution.sceneHeight)
+    }
     $career=Get-LaunchProfile $root
     $receipt.career=$career
     $receipt.cockpitS2000=$CockpitS2000
@@ -107,7 +121,7 @@ try {
         Write-UserSessionStatus $root $receipt
         . (Join-Path $PSScriptRoot 'Launcher-VrPreview.ps1')
         # Texture comparisons must use the same verified renderer in every mode.
-        $DiagnosticProxy=Get-LauncherVrPreviewProxy -Root $root
+        $DiagnosticProxy=Get-LauncherVrPreviewProxy -Root $root -HeadsetResolution:([bool]$headsetResolution)
         $HeadsetVisibilityCandidate=$true; $FlickerDiagnostic=$true
         $receipt.proxySha256=(Get-FileHash -LiteralPath $DiagnosticProxy).Hash.ToLowerInvariant()
         Write-UserSessionStatus $root $receipt
@@ -146,7 +160,7 @@ try {
     $hardware=Join-Path $selection 'hardware-settings.xml'
     $receipt.message='Preparing graphics settings...'
     Write-UserSessionStatus $root $receipt
-    $graphics=& $python (Join-Path $PSScriptRoot 'graphics_profile.py') --output $hardware --game-root (Get-Grid2GameRoot $root) --mode $Mode --render-scale $RenderScale --desktop-vsync $DesktopVSync --desktop-msaa $DesktopMsaa --vr-msaa $VrMsaa --tree-detail $TreeDetail --object-detail $ObjectDetail --crowd-detail $CrowdDetail --texture-filtering $TextureFiltering
+    $graphics=& $python (Join-Path $PSScriptRoot 'graphics_profile.py') --output $hardware --game-root (Get-Grid2GameRoot $root) --mode $Mode --render-scale $RenderScale --desktop-vsync $DesktopVSync --desktop-msaa $DesktopMsaa --vr-msaa $VrMsaa --tree-detail $TreeDetail --object-detail $ObjectDetail --crowd-detail $CrowdDetail --texture-filtering $TextureFiltering @sceneArguments
     if($LASTEXITCODE) { throw 'Graphics profile could not be prepared; nothing deployed.' }
     $receipt.graphics=$graphics | ConvertFrom-Json
     $graphics | Set-Content -LiteralPath (Join-Path $selection 'graphics-profile.json') -Encoding utf8
@@ -158,6 +172,9 @@ try {
         FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy;ChaseCameraObserver=[bool]$ChaseCameraObserver;
         ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
     if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection }
+    if($headsetResolution) {
+        $parameters.HeadsetWidth=$headsetResolution.width; $parameters.HeadsetHeight=$headsetResolution.height; $parameters.VrRenderScale=$VrRenderScale
+    }
     $parameters.ChaseFreeLook=$ChaseFreeLook; $parameters.ChaseKeepAngle=$ChaseKeepAngle; $parameters.ChaseMouseMode=$ChaseMouseMode
     $parameters.ChaseMaxZoomOut=$ChaseMaxZoomOut; $parameters.ChaseMouseSensitivity=$ChaseMouseSensitivity
     $parameters.ChaseStickSensitivity=$ChaseStickSensitivity; $parameters.ChaseInvertVertical=$ChaseInvertVertical
@@ -203,7 +220,7 @@ try {
         }
         $_
     }
-    $receipt.state='complete'; $receipt.message=if($Preflight){'Preflight passed; no game or runtime opened.'}else{'Session ended; original files restored.'}
+    $receipt.state='complete'; $receipt.message=if($Preflight){if($headsetResolution){'Preflight passed; headset queried without starting a game or VR session.'}else{'Preflight passed; no game or runtime opened.'}}else{'Session ended; original files restored.'}
 } catch {
     if($receipt) {
         $receipt.state='failed'; $receipt.message=$_.Exception.Message

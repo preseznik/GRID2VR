@@ -4,6 +4,7 @@ param(
     [ValidateSet('VDXR','SteamVR')][string]$XrRuntime='VDXR',
     [string]$RunLogDirectory='',
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
+    [int]$HeadsetWidth=0,[int]$HeadsetHeight=0,[int]$VrRenderScale=0,
     [ValidateRange(2,900)][int]$Frames=900,
     [ValidateRange(1,300)][int]$CaptureAfterSeconds=75,
     [ValidateRange(30,600)][int]$TimeoutSeconds=180,
@@ -247,7 +248,7 @@ $sceneWidth=0; $sceneHeight=0
 if($ForceSceneResolution) {
     $sceneResolution=([xml][IO.File]::ReadAllText($HardwareSettingsFile)).hardware_settings_config.graphics_card.resolution
     $sceneWidth=[int]$sceneResolution.width; $sceneHeight=[int]$sceneResolution.height
-    if(!$RuntimeSession -or $PlayerControlOnly -or $sceneWidth -lt 640 -or $sceneWidth -gt 3840 -or $sceneHeight -lt 360 -or $sceneHeight -gt 2160) { throw 'Invalid native VR scene-size request.' }
+    if(!$RuntimeSession -or $PlayerControlOnly -or $sceneWidth -lt 320 -or $sceneWidth -gt 8192 -or $sceneHeight -lt 180 -or $sceneHeight -gt 8192 -or [long]$sceneWidth*$sceneHeight -gt 64MB) { throw 'Invalid native VR scene-size request.' }
 }
 $preflight.nativeSceneResolution=@{enabled=[bool]$ForceSceneResolution;width=$sceneWidth;height=$sceneHeight}
 . (Join-Path $PSScriptRoot 'Profiles.ps1')
@@ -286,6 +287,13 @@ $preflight.chaseCameraObserver=[bool]$ChaseCameraObserver
 $preflight.chaseCameraRequested=$chase.requested
 $preflight.xrRuntime=$XrRuntime
 $preflight.headsetSettings=Get-HeadsetSettings $HeadsetScale
+if($HeadsetWidth -or $HeadsetHeight -or $VrRenderScale) {
+    . (Join-Path $PSScriptRoot 'Headset-Resolution.ps1')
+    $plan=Get-HeadsetResolutionPlan $HeadsetWidth $HeadsetHeight $VrRenderScale
+    if(!$ForceSceneResolution -or $Mode -eq 'Desktop' -or $sceneWidth -ne $plan.sceneWidth -or $sceneHeight -ne $plan.sceneHeight) { throw 'Headset and scene resolution requests do not match.' }
+    $preflight.headsetSettings=$plan
+    Assert-HeadsetResolutionProxy $proxy
+}
 $preflight.runtimeInfo=$runtimeInfo
 $preflight | ConvertTo-Json -Depth 6
 if($Mode -eq 'Preflight') { return }
@@ -345,6 +353,7 @@ try {
         RecordedViewsFile=$recordedViewsFile;XrSessionProbe=($Mode -eq 'Headset');XrProjection=($Mode -eq 'Headset')
         XrRuntimeManifest=$runtime
         HeadsetScale=$HeadsetScale
+        HeadsetWidth=$HeadsetWidth;HeadsetHeight=$HeadsetHeight;VrRenderScale=$VrRenderScale
         TraceVisibility=$true;ExpandVisibility=$true;RestoreReplayComputeState=$true
         SortReplayVpl=$true;IsolateReplayShadowSampler=$true;NormalizeShadowBindings=$true
         KeepCaptures=[bool]$KeepCaptures;DeferCaptureFinalization=$true

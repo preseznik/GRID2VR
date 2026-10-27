@@ -31,7 +31,8 @@ int main() {
     if(!d3d11) { puts("D3D11 extension unavailable"); return 2; }
     const char* enabled=XR_KHR_D3D11_ENABLE_EXTENSION_NAME;
     XrInstanceCreateInfo create{XR_TYPE_INSTANCE_CREATE_INFO};
-    strcpy_s(create.applicationInfo.applicationName,"GRID2VR compatibility query");
+    // Match the in-game query's application identity for runtime quality profiles.
+    strcpy_s(create.applicationInfo.applicationName,"GRID2VR game-device session probe");
     create.applicationInfo.apiVersion=XR_MAKE_VERSION(1,0,0);
     create.enabledExtensionCount=1; create.enabledExtensionNames=&enabled;
     Instance instance;
@@ -76,7 +77,7 @@ int main() {
     std::vector<XrViewConfigurationView> views(count,{XR_TYPE_VIEW_CONFIGURATION_VIEW});
     if(!Check(xrEnumerateViewConfigurationViews(instance.value,system,XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,count,&count,views.data()),"read_stereo_views") || count!=2) return 7;
     for(uint32_t i=0;i<count;++i)
-        printf("eye%u=%ux%u recommended_samples=%u\n",i,views[i].recommendedImageRectWidth,views[i].recommendedImageRectHeight,views[i].recommendedSwapchainSampleCount);
+        printf("eye%u=%ux%u recommended_samples=%u max=%ux%u\n",i,views[i].recommendedImageRectWidth,views[i].recommendedImageRectHeight,views[i].recommendedSwapchainSampleCount,views[i].maxImageRectWidth,views[i].maxImageRectHeight);
     puts("Query completed. Game-device compatibility, sessions, tracking poses, stereo submission and headset rendering remain untested.");
     return 0;
 }

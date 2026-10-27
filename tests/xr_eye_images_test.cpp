@@ -124,6 +124,13 @@ int main() {
         }
         if (!scaled.Shutdown() || !chains.empty() || protocolError) return 21;
     }
+    // A portrait headset target above the old 4 MP limit must retain its exact
+    // dimensions while upscaling the two independent scene sources.
+    Reset(0);grid2vr::XrEyeImages headset;
+    if (!headset.Initialize(3,device.Get(),DrawNative,2304,2560) || !headset.Copy(1,4,views,sources[0].Get(),sources[1].Get())) return 30;
+    const auto* projection=headset.Projection(1);
+    if (!projection || projection->views[0].subImage.imageRect.extent.width!=2304 || projection->views[1].subImage.imageRect.extent.height!=2560 ||
+        !headset.Shutdown() || !chains.empty() || protocolError) return 31;
     Reset(0);grid2vr::XrEyeImages menu;
     const XrPosef anchor{{0,0,0,1},{1,1.6f,-2}};
     D3D11_TEXTURE2D_DESC backDesc=desc;backDesc.Width=4;backDesc.Height=2;backDesc.BindFlags=D3D11_BIND_RENDER_TARGET;

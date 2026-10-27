@@ -29,12 +29,12 @@ internal static class SelfTests
             Check(defaults.RecenterKey == 121 && defaults.RecenterModifiers == 0 && RecenterShortcut.Label(121, 0) == "F10");
             Directory.CreateDirectory(client.Artifacts);
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-settings.json"), "{\"Car\":\"pag\",\"Track\":\"p2p/okutama/route_1\",\"Runtime\":\"VDXR\"}");
-            Check(client.Load() == (defaults with { ModernInterface = false })); // Existing settings retain Classic and gain F10.
+            Check(client.Load() == (defaults with { ModernInterface = false, Graphics = new() })); // Existing settings retain Classic and gain F10.
             Check(!client.Load().SkipIntro && !client.Load().DiagnosticLogging);
             Check(client.Load().OpponentCars == "same");
             Check(!client.Load().PerformanceDisplay && client.Load().Graphics.HiddenHudElements == 1 && client.Load().Graphics.HudDistance == 1m);
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-settings.json"), "{\"Car\":\"z28\",\"Track\":\"circuits/brands_hatch/route_2\",\"Runtime\":\"SteamVR\",\"RecenterKey\":82,\"RecenterModifiers\":5}");
-            Check(client.Load() == new Choices("z28", "circuits/brands_hatch/route_2", "SteamVR", 82, 5, 1) { ModernInterface = false }); // Old choices gain one lap and retain Classic.
+            Check(client.Load() == new Choices("z28", "circuits/brands_hatch/route_2", "SteamVR", 82, 5, 1) { ModernInterface = false, Graphics = new() }); // Old choices gain one lap and retain Classic.
             Check(client.Load().Graphics == new GraphicsOptions());
             var graphics = new GraphicsOptions(150, false, "4xmsaa", "medium", "high", "low", "high", 175);
             var selection = new Choices("z28", "circuits/brands_hatch/route_2", "SteamVR", 82, 5, 5) { Graphics = graphics };
@@ -87,7 +87,7 @@ internal static class SelfTests
                 Check(command.ArgumentList[command.ArgumentList.IndexOf("-RecenterKey") + 1] == "82");
                 Check(command.ArgumentList[command.ArgumentList.IndexOf("-RecenterModifiers") + 1] == "5");
                 Check(command.ArgumentList[command.ArgumentList.IndexOf("-Laps") + 1] == "5");
-                foreach (var (flag, value) in new[] { ("-RenderScale", "150"), ("-HeadsetScale", "175"), ("-DesktopVSync", "0"), ("-DesktopMsaa", "4xmsaa"), ("-VrMsaa", "off"),
+                foreach (var (flag, value) in new[] { ("-RenderScale", "150"), ("-DesktopVSync", "0"), ("-DesktopMsaa", "4xmsaa"), ("-VrMsaa", "off"),
                     ("-TreeDetail", "medium"), ("-ObjectDetail", "high"), ("-CrowdDetail", "low"), ("-TextureFiltering", "high") })
                     Check(command.ArgumentList[command.ArgumentList.IndexOf(flag) + 1] == value);
                 Check(!command.ArgumentList.Contains("-SkipIntro") && !command.ArgumentList.Contains("-DiagnosticLogging"));
@@ -270,7 +270,7 @@ internal static class SelfTests
                 {
                     var command = client.LaunchCommand(preview with { Graphics = preview.Graphics with { RenderScale = render, HeadsetScale = scale } }, true);
                     Check(command.ArgumentList[command.ArgumentList.IndexOf("-RenderScale") + 1] == render.ToString());
-                    Check(command.ArgumentList[command.ArgumentList.IndexOf("-HeadsetScale") + 1] == scale.ToString());
+                    Check(!command.ArgumentList.Contains("-HeadsetScale") && command.ArgumentList[command.ArgumentList.IndexOf("-VrRenderScale") + 1] == "100");
                 }
             Check(new GraphicsOptions(RenderScale: 300).SceneLabel == "3840 × 2160");
             client.Save(selection with { Graphics = graphics with { RenderScale = 237 } });
@@ -283,9 +283,8 @@ internal static class SelfTests
                 foreach (var modern in new[] { false, true })
                 {
                     LauncherAppearance.Modern = modern; LauncherAppearance.Apply(slider);
-                    var label = slider.Controls.Find("RenderScaleRecommendation", true).Single();
-                    Check(label.Text == "✓ 150% recommended");
-                    if (!SystemInformation.HighContrast) Check(label.ForeColor == LauncherAppearance.Accent);
+                    Check(slider.Controls.Find("RenderScaleRecommendation", true).Length == 0);
+                    Check(!slider.AccessibleDescription!.Contains("recommended"));
                     slider.Value = 150; slider.Size = new Size(420, 72);
                     using var previewImage = new Bitmap(slider.Width, slider.Height);
                     slider.DrawToBitmap(previewImage, slider.ClientRectangle);
@@ -344,6 +343,7 @@ internal static class SelfTests
             DrivingControlsTests.Run(fixture);
             ChaseCameraTests.Run(root, client);
             ResponsiveLayoutTests.Run(root, client);
+            VrResolutionTests.Run(client);
             SaveLauncherPreviews(root, client);
             return 0;
         }
@@ -373,7 +373,7 @@ internal static class SelfTests
                     // An invisible Form suppresses child painting. Render the panel
                     // unattached, like the existing slider fixture, without showing it.
                     content.Visible = true; content.Dock = DockStyle.None; content.Size = new Size(920, 700);
-                    if (title != "Advanced") content.Height = content.GetPreferredSize(new Size(920, 0)).Height;
+                    content.Height = content.GetPreferredSize(new Size(920, 0)).Height;
                     content.PerformLayout();
                     Check(!form.Visible && content.Width > 200 && content.Height > 100);
                     using var preview = new Bitmap(content.Width, content.Height);

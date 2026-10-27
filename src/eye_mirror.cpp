@@ -1,4 +1,5 @@
 #include "eye_mirror.h"
+#include "resolution_limits.h"
 #include <cstdint>
 #include <utility>
 using Microsoft::WRL::ComPtr;
@@ -24,7 +25,7 @@ bool EyeMirror::Copy(ID3D11DeviceContext* context,ID3D11Texture2D* source,ID3D11
     if (contextDevice!=device_ || sourceDevice!=device_ || destinationDevice!=device_ || FAILED(device_->GetDeviceRemovedReason())) return false;
     D3D11_TEXTURE2D_DESC input{},output{};source->GetDesc(&input);destination->GetDesc(&output);
     const auto supported=[](const D3D11_TEXTURE2D_DESC& desc) {
-        return desc.Width && desc.Height && uint64_t(desc.Width)*desc.Height*8<=128ull*1024*1024 &&
+        return resolution::ValidScene(desc.Width,desc.Height) &&
             desc.MipLevels==1 && desc.ArraySize==1 && desc.SampleDesc.Count==1 && desc.SampleDesc.Quality==0 &&
             desc.Usage==D3D11_USAGE_DEFAULT && !desc.CPUAccessFlags &&
             (desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM || desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM || desc.Format==DXGI_FORMAT_B8G8R8A8_UNORM);

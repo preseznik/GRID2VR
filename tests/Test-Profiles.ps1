@@ -16,7 +16,7 @@ try {
     # Texture selection must not force managed careers back to an older renderer.
     $legacy=Join-Path $root 'build/profile-storage-candidate/GRID2VR.dll'
     $preview=Join-Path $root 'build/visibility-headset-candidate/GRID2VR.dll'
-    foreach($renderer in @($legacy,$preview)) {
+    foreach($renderer in @($legacy,$preview,(Get-Grid2Proxy $root))) {
         Check ((Get-CareerProfileProxy -Root $temp -BaseProxy $renderer) -eq $renderer) 'Managed career changed the verified renderer.'
     }
     $foreign=Join-Path $temp 'foreign.dll';[IO.File]::WriteAllText($foreign,'foreign')

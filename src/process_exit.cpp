@@ -16,6 +16,7 @@ DWORD owner{};
 uintptr_t host{};
 std::filesystem::path receipt;
 std::atomic<bool> exiting{};
+std::atomic<bool> windowCloseRequested{};
 enum class Handoff { Idle, Pending, Running, Complete, Expired };
 std::atomic<Handoff> handoff{};
 const char* cleanupResult{};
@@ -60,19 +61,20 @@ void CALLBACK CloseTimer(HWND window,UINT,UINT_PTR timer,DWORD) {
 LRESULT CALLBACK CloseWindowProc(HWND window,UINT message,WPARAM wparam,LPARAM lparam) {
     const auto previous=previousWindowProc.load();
     const bool closing=message==WM_CLOSE || (message==WM_SYSCOMMAND && (wparam&0xfff0)==SC_CLOSE);
+    if(window==closeWindow.load() && closing) windowCloseRequested=true;
     if(window==closeWindow.load() && closing && !closeReleased && !exiting.load()) {
+        if(closeTimer) return 0; // Preserve the first native close message.
         const auto state=handoff.load();
-        if(state==Handoff::Pending || state==Handoff::Running) return 0;
-        if(state==Handoff::Idle) {
+        if(state==Handoff::Idle || state==Handoff::Pending || state==Handoff::Running) {
             closeMessage=message;closeWparam=wparam;closeLparam=lparam;
             closeDeadline=GetTickCount64()+5000;
             closeTimer=SetTimer(window,reinterpret_cast<UINT_PTR>(CloseTimer),15,CloseTimer);
             if(closeTimer) {
                 auto expected=Handoff::Idle;
-                if(handoff.compare_exchange_strong(expected,Handoff::Pending)) {
-                    CloseLog("close requested=1 deferred=1");return 0;
-                }
-                KillTimer(window,closeTimer);closeTimer=0;
+                handoff.compare_exchange_strong(expected,Handoff::Pending);
+                // A menu request may already be pending or running. It still
+                // needs this timer to deliver the exact window-close message.
+                CloseLog("close requested=1 deferred=1");return 0;
             } else CloseLog("close deferred=0 reason=timer_unavailable");
         }
     }
@@ -120,11 +122,24 @@ void WINAPI ExitGame(UINT code) {
         auto idle=Handoff::Idle;
         handoff.compare_exchange_strong(idle,Handoff::Pending);
         const auto deadline=GetTickCount64()+5000;
-        while(handoff.load()!=Handoff::Complete && GetTickCount64()<deadline) Sleep(1);
-        if(handoff.load()==Handoff::Complete) result=cleanupResult;
-        else {
-            auto expected=Handoff::Pending;
-            result=handoff.compare_exchange_strong(expected,Handoff::Expired)?"owner_unavailable":"owner_shutdown_timeout";
+        bool runningTimeout=false;
+        for(;;) {
+            const auto state=handoff.load();
+            if(state==Handoff::Complete) {result=cleanupResult;break;}
+            if(state==Handoff::Expired) {result="owner_unavailable";break;}
+            if(GetTickCount64()>=deadline) {
+                auto expected=Handoff::Pending;
+                if(handoff.compare_exchange_strong(expected,Handoff::Expired)) {
+                    result="owner_unavailable";break;
+                }
+                // Once claimed, the owner must finish before ExitProcess can
+                // terminate it or release graphics objects underneath it.
+                if(expected==Handoff::Running && !runningTimeout) {
+                    runningTimeout=true;
+                    log << "exit cleanup=still_running forwarding=0\n";log.flush();
+                }
+            }
+            Sleep(1);
         }
     }
     log << "exit cleanup=" << (result?result:"unknown") << " forwarding=1\n";
@@ -147,6 +162,37 @@ bool AttachWindow(HWND window) {
     if(!replaced && GetLastError()) {closeWindow=nullptr;return false;}
     if(replaced) previousWindowProc=reinterpret_cast<WNDPROC>(replaced);
     CloseLog("close window_attached=1");return true;
+}
+
+bool RequestCleanup() {
+    if(!original || exiting.load()) return false;
+    auto expected=Handoff::Idle;
+    handoff.compare_exchange_strong(expected,Handoff::Pending);
+    return true;
+}
+
+bool CancelCleanup() {
+    if(!original || exiting.load() || windowCloseRequested.load()) return false;
+    auto expected=Handoff::Pending;
+    if(!handoff.compare_exchange_strong(expected,Handoff::Idle)) return false;
+    // Close/Exit can claim the same request between the flag check and CAS.
+    // Restore its request if so; never withdraw another source or active work.
+    if(exiting.load() || windowCloseRequested.load()) {
+        expected=Handoff::Idle;
+        handoff.compare_exchange_strong(expected,Handoff::Pending);
+        return false;
+    }
+    return true;
+}
+
+bool CleanupReady(ULONGLONG deadline) {
+    auto state=handoff.load();
+    if(state==Handoff::Pending && GetTickCount64()>=deadline) {
+        auto expected=Handoff::Pending;
+        if(handoff.compare_exchange_strong(expected,Handoff::Expired)) state=Handoff::Expired;
+        else state=expected;
+    }
+    return state==Handoff::Complete || state==Handoff::Expired;
 }
 
 void Service() {

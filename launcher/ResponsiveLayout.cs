@@ -74,7 +74,7 @@ internal class SettingRow : Panel
             if (editor is Label label) label.MaximumSize = new Size(editorWidth, 0);
             var editorHeight = editor switch
             {
-                RenderScaleSlider => Px(62), HudDistanceSlider => Px(42),
+                RenderScaleSlider or HudDistanceSlider => Px(42),
                 _ => Math.Max(Px(28), editor.GetPreferredSize(new Size(editorWidth, 0)).Height)
             };
             var labelHeight = string.IsNullOrEmpty(caption.Text) ? 0 : TextRenderer.MeasureText(caption.Text, Font,

@@ -20,15 +20,19 @@ internal sealed class MainForm : LauncherForm
     private ContentItem[] routes = [];
     private readonly ValueSlider laps = new("Laps", 1, 20, 1), opponents = new("Opponents", 1, 7, 7);
     private readonly Label lapsHint = TextLabel("");
-    private readonly RenderScaleSlider renderScale = new();
+    private readonly RenderScaleSlider renderScale = new() { Name = "VrRenderScale", AccessibleName = "VR render scale" };
+    private readonly RenderScaleSlider desktopRenderScale = new() { Name = "DesktopRenderScale", AccessibleName = "Desktop render scale" };
+    private readonly Button refreshHeadset = new() { Name = "RefreshHeadset", Text = "Refresh headset", AutoSize = true };
+    private HeadsetResolution? headsetResolution;
+    private string headsetResolutionStatus = "Connect your headset and select Refresh headset to read its resolution.";
+    private bool queryingHeadset;
+    private readonly Label vrResolutionSummary = TextLabel(""), desktopResolution = TextLabel("");
+    private bool updatingResolution;
     private readonly ComboBox desktopMsaa = Choice("DesktopMSAA"), vrMsaa = Choice("VrMSAA"), treeDetail = Choice("TreeDetail"),
         objectDetail = Choice("ObjectDetail"), crowdDetail = Choice("CrowdDetail"), textureFiltering = Choice("TextureFiltering");
     private readonly CheckBox desktopVSync = new() { Name = "DesktopVSync", Text = "On", AutoSize = true };
     private readonly CheckBox vrMirrorBorderless = new() { Name = "VrMirrorBorderless", Text = "Maximize windowed screen", AutoSize = true };
-    private readonly Label sceneResolution = TextLabel("");
     private readonly Label measuredScene = TextLabel("No measured scene from the last session.");
-    private readonly ComboBox headsetScale = Choice("HeadsetScale");
-    private readonly Label headsetResolution = TextLabel("");
     private readonly AppearanceSwitch modernInterface = new();
     private readonly CheckBox previewVrFixes = new() { Name = "PreviewVrFixes", Text = "Preview VR fixes", AutoSize = true };
     private readonly CheckBox skipIntro = new() { Name = "SkipIntro", AccessibleName = "Skip intro / logos", Text = "On", AutoSize = true };
@@ -124,20 +128,20 @@ internal sealed class MainForm : LauncherForm
         profiles.Controls.Add(HelpLink("Profile"));
         tabs.SelectedIndexChanged += (_, _) => { if (tabs.SelectedTab?.Text == "Profile") profiles.Reload(); };
         var graphicsColumns = Columns(Page(tabs, "Graphics")); var graphics = graphicsColumns.First;
-        Section(graphics, "Rendering");
-        Field(graphics, "Render resolution", renderScale); Field(graphics, "Requested scene", sceneResolution);
+        Section(graphics, "VR rendering");
+        Field(graphics, "VR render scale", renderScale);
+        graphics.Controls.Add(refreshHeadset);
+        vrResolutionSummary.Name = "VrResolutionSummary";
+        Field(graphics, "Next VR launch", vrResolutionSummary);
         Field(graphics, "Measured scene", measuredScene);
-        for (var scale = 25; scale <= 200; scale += 25)
-            headsetScale.Items.Add(new ContentItem(scale.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{scale}%{(scale == 100 ? " (default)" : "")}"));
-        Field(graphics, "Headset texture scale", headsetScale); Field(graphics, "Requested headset", headsetResolution);
         vrMsaa.Items.AddRange(new ContentItem[] { new("off", "Off (default)"), new("2xmsaa", "2× MSAA"), new("4xmsaa", "4× MSAA"), new("8xmsaa", "8× MSAA") });
         Field(graphics, "Anti-aliasing (VR)", vrMsaa);
-        sceneResolution.Tag = headsetResolution.Tag = measuredScene.Tag = "hint";
-        graphics.Controls.Add(TextLabel("Render resolution requests the game scene size; VR also enforces it in the native renderer. Measured scene reports the actual scene target from the current or last session. Headset texture scale separately changes the finished VR image: 100% keeps the working 1280 × 720 per eye. Both width and height scale relative to the working profile."));
+        measuredScene.Tag = vrResolutionSummary.Tag = desktopResolution.Tag = "hint";
+        graphics.Controls.Add(TextLabel("100% renders at the connected headset’s recommended resolution. Lower values trade detail for performance; higher values can improve sharpness and use more GPU time and memory. Headset output stays at 100%. Changes apply on the next VR launch."));
         graphics.Controls.Add(TextLabel("VR anti-aliasing is independent of desktop MSAA and defaults to Off. Higher MSAA uses more GPU time and memory. VR keeps motion blur off with the current shadow, ambient-occlusion and post-processing profile."));
         Section(graphics, "VR mirror");
         graphics.Controls.Add(vrMirrorBorderless);
-        graphics.Controls.Add(TextLabel("Fill the mirror's monitor without borders on the next VR launch. Scene resolution and headset texture scale stay independent of window size."));
+        graphics.Controls.Add(TextLabel("Fill the mirror's monitor without borders on the next VR launch. VR resolution stays independent of window size."));
         graphics = graphicsColumns.Second;
         Section(graphics, "Detail");
         AddQualityChoices(treeDetail, "medium", "high", "ultra"); AddQualityChoices(objectDetail, "medium", "high", "ultra");
@@ -173,15 +177,17 @@ internal sealed class MainForm : LauncherForm
         graphics.Controls.Add(TextLabel("Distance and Follow view apply to the HUD and results text in stereo VR. Individual HUD elements cannot be hidden yet."));
         graphics.Controls.Add(HelpLink("VR HUD"));
         Section(graphics, "Desktop");
+        Field(graphics, "Render resolution", desktopRenderScale); Field(graphics, "Requested desktop", desktopResolution);
         desktopMsaa.Items.AddRange(new ContentItem[] { new("off", "Off"), new("2xmsaa", "2× MSAA"), new("4xmsaa", "4× MSAA"), new("8xmsaa", "8× MSAA") });
         Field(graphics, "VSync", desktopVSync); Field(graphics, "Anti-aliasing (MSAA)", desktopMsaa);
-        graphics.Controls.Add(TextLabel("Launch starts borderless and fills the game window's monitor. Desktop VSync and anti-aliasing apply only to Launch. Launch VR keeps its existing settings."));
+        graphics.Controls.Add(TextLabel("Launch starts borderless and fills the game window's monitor. Desktop resolution, VSync and anti-aliasing apply only to Launch. VR has separate settings."));
         graphics.Controls.Add(graphicsDefaults);
-        graphics.Controls.Add(TextLabel("Defaults reproduce the working profile exactly. Other settings need game/headset checks. Changes apply to the next launch; original game settings are restored afterward."));
-        renderScale.ValueChanged += (_, _) => UpdateSceneResolution();
-        headsetScale.SelectedIndexChanged += (_, _) => UpdateHeadsetResolution();
-        graphicsDefaults.Click += (_, _) => { ApplyGraphics(new()); vrCockpit.Checked = true; cockpitExposure.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
-        ApplyGraphics(new());
+        graphics.Controls.Add(TextLabel("VR defaults to 100% of the connected headset’s recommended resolution. Changes apply to the next launch; original game settings are restored afterward."));
+        renderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
+        refreshHeadset.Click += async (_, _) => await RefreshHeadsetResolution();
+        desktopRenderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
+        graphicsDefaults.Click += (_, _) => { ApplyGraphics(GraphicsOptions.Defaults); vrCockpit.Checked = true; cockpitExposure.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
+        ApplyGraphics(GraphicsOptions.Defaults);
         graphics.Controls.Add(HelpLink("VR rendering"));
         var controlPage = new TabPage("Controls") { Padding = new Padding(8) };
         var controlTabs = new ModernTabs { Name = "ControlTabs", Dock = DockStyle.Fill };
@@ -247,12 +253,8 @@ internal sealed class MainForm : LauncherForm
         settings.Controls.Add(HelpLink("Settings and recovery"));
         Section(settings, "Updates"); settings.Controls.Add(updates);
 
-        var advanced = new TabPage("Advanced") { Padding = new Padding(16), BackColor = BackColor };
-        var advancedLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6 };
-        advancedLayout.ColumnStyles.Add(new(SizeType.Percent, 100));
-        advancedLayout.RowStyles.Add(new(SizeType.AutoSize)); advancedLayout.RowStyles.Add(new(SizeType.AutoSize));
-        advancedLayout.RowStyles.Add(new(SizeType.AutoSize)); advancedLayout.RowStyles.Add(new(SizeType.AutoSize)); advancedLayout.RowStyles.Add(new(SizeType.Percent, 100));
-        advancedLayout.RowStyles.Insert(0, new RowStyle(SizeType.AutoSize));
+        var advancedColumns = Columns(Page(tabs, "Advanced")); var advancedLayout = advancedColumns.First;
+        Section(advancedLayout, "VR presentation");
         Field(advancedLayout, "Performance display", performanceDisplay);
         Field(advancedLayout, "Display placement", performanceFollowView);
         performanceDisplay.CheckedChanged += (_, _) => EnableActions();
@@ -260,8 +262,10 @@ internal sealed class MainForm : LauncherForm
         advancedLayout.Controls.Add(performanceHint);
         Field(advancedLayout, "3D replays", replay3d);
         Field(advancedLayout, "3D menus", garage3d);
-        advancedLayout.SizeChanged += (_, _) => performanceHint.MaximumSize = new Size(Math.Max(1, advancedLayout.ClientSize.Width - 12), 0);
-        advancedLayout.Controls.Add(details); advanced.Controls.Add(advancedLayout); tabs.TabPages.Add(advanced);
+        advancedLayout = advancedColumns.Second;
+        Section(advancedLayout, "Session details");
+        details.Height = 190;
+        advancedLayout.Controls.Add(details);
         notice.Margin = new Padding(0, 10, 0, 8); layout.Controls.Add(notice);
         // Same footer order and labels as DiRT2VR; wraps on smaller windows.
         var logs = Button("Open logs", "OpenLogs");
@@ -284,7 +288,10 @@ internal sealed class MainForm : LauncherForm
         car.SelectedIndexChanged += (_, _) => UpdateRequestedSession();
         carSearch.TextChanged += (_, _) => FilterCars();
         track.SelectedIndexChanged += (_, _) => { UpdateRequestedSession(); EnableActions(); };
-        runtime.SelectedIndexChanged += (_, _) => UpdateRequestedSession();
+        runtime.SelectedIndexChanged += async (_, _) => {
+            UpdateRequestedSession(); UpdateResolutionLabels();
+            if (loaded) await RefreshHeadsetResolution();
+        };
         laps.ValueChanged += (_, _) => UpdateRequestedSession();
         opponents.ValueChanged += (_, _) => UpdateRequestedSession();
         opponentCars.SelectedIndexChanged += (_, _) => UpdateRequestedSession();
@@ -343,6 +350,7 @@ internal sealed class MainForm : LauncherForm
                 if (!loaded) throw new IOException("No compatible installed practice content found.");
             });
             await RefreshStatus(); timer.Start();
+            await RefreshHeadsetResolution();
             await updateCheck;
         };
         ConfigureTooltips(help, logs);
@@ -430,27 +438,56 @@ internal sealed class MainForm : LauncherForm
         .Select(id => new ContentItem(id, System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(id))).ToArray());
     private GraphicsOptions CurrentGraphics() => retainedGraphics with
     {
-        RenderScale = renderScale.Value, DesktopVSync = desktopVSync.Checked, DesktopMsaa = ChoiceId(desktopMsaa), VrMsaa = ChoiceId(vrMsaa),
+        VrRenderScale = renderScale.Value, DesktopVSync = desktopVSync.Checked, DesktopMsaa = ChoiceId(desktopMsaa), VrMsaa = ChoiceId(vrMsaa),
+        DesktopRenderScale = desktopRenderScale.Value == retainedGraphics.RenderScale && retainedGraphics.DesktopRenderScale is null ? null : desktopRenderScale.Value,
         VrMirrorBorderless = vrMirrorBorderless.Checked,
         TreeDetail = ChoiceId(treeDetail), ObjectDetail = ChoiceId(objectDetail), CrowdDetail = ChoiceId(crowdDetail), TextureFiltering = ChoiceId(textureFiltering),
-        HeadsetScale = int.Parse(ChoiceId(headsetScale), System.Globalization.CultureInfo.InvariantCulture), HudDistance = hudDistance.Value, HudFollowView = hudFollow.Checked
+        HudDistance = hudDistance.Value, HudFollowView = hudFollow.Checked
     };
     private void ApplyGraphics(GraphicsOptions value)
     {
-        retainedGraphics = value;
-        renderScale.Value = value.RenderScale;
-        vrMirrorBorderless.Checked = value.VrMirrorBorderless;
-        desktopVSync.Checked = value.DesktopVSync; SelectChoice(desktopMsaa, value.DesktopMsaa);
-        SelectChoice(vrMsaa, value.VrMsaa);
-        SelectChoice(treeDetail, value.TreeDetail); SelectChoice(objectDetail, value.ObjectDetail);
-        SelectChoice(crowdDetail, value.CrowdDetail); SelectChoice(textureFiltering, value.TextureFiltering);
-        SelectChoice(headsetScale, value.HeadsetScale.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        hudDistance.Value = value.HudDistance; hudFollow.Checked = value.HudFollowView;
-        UpdateSceneResolution();
+        updatingResolution = true;
+        try
+        {
+            retainedGraphics = value;
+            renderScale.Value = value.VrRenderScale;
+            desktopRenderScale.Value = value.EffectiveDesktopRenderScale;
+            vrMirrorBorderless.Checked = value.VrMirrorBorderless;
+            desktopVSync.Checked = value.DesktopVSync; SelectChoice(desktopMsaa, value.DesktopMsaa);
+            SelectChoice(vrMsaa, value.VrMsaa);
+            SelectChoice(treeDetail, value.TreeDetail); SelectChoice(objectDetail, value.ObjectDetail);
+            SelectChoice(crowdDetail, value.CrowdDetail); SelectChoice(textureFiltering, value.TextureFiltering);
+            hudDistance.Value = value.HudDistance; hudFollow.Checked = value.HudFollowView;
+        }
+        finally { updatingResolution = false; }
+        UpdateResolutionLabels();
     }
-    private void UpdateSceneResolution()
+    private void UpdateResolutionLabels()
     {
-        sceneResolution.Text = new GraphicsOptions(RenderScale: renderScale.Value).SceneLabel;
+        if (updatingResolution) return;
+        desktopResolution.Text = new GraphicsOptions(RenderScale: desktopRenderScale.Value).SceneLabel;
+        vrResolutionSummary.Text = headsetResolution is not null && headsetResolution.Runtime == runtime.SelectedItem as string
+            ? headsetResolution.Summary(renderScale.Value) : headsetResolutionStatus;
+    }
+    private async Task RefreshHeadsetResolution()
+    {
+        if (!loaded || active || pending || busy || queryingHeadset || IsDisposed || runtime.SelectedItem is not string selectedRuntime) return;
+        queryingHeadset = true;
+        headsetResolution = null;
+        headsetResolutionStatus = "Reading connected headset resolution...";
+        UpdateResolutionLabels(); EnableActions();
+        try {
+            var value = await client.ReadHeadsetResolution(selectedRuntime);
+            if (!IsDisposed && runtime.SelectedItem as string == selectedRuntime) headsetResolution = value;
+        }
+        catch (Exception error) {
+            if (!IsDisposed) headsetResolutionStatus = error.Message;
+        }
+        finally {
+            queryingHeadset = false;
+            if (!IsDisposed) { UpdateResolutionLabels(); EnableActions(); }
+        }
+        if (!IsDisposed && runtime.SelectedItem as string != selectedRuntime) await RefreshHeadsetResolution();
     }
     private void UpdateRecenterLabel()
     {
@@ -459,11 +496,6 @@ internal sealed class MainForm : LauncherForm
         UpdateRequestedSession();
     }
     private void UpdateDeviceRecenter() => deviceRecenterHint.Text = recenterDevice is null ? "No controller / wheel binding." : DrivingInput.Description(recenterDevice);
-    private void UpdateHeadsetResolution()
-    {
-        if (headsetScale.SelectedItem is ContentItem value)
-            headsetResolution.Text = new GraphicsOptions(HeadsetScale: int.Parse(value.Id, System.Globalization.CultureInfo.InvariantCulture)).HeadsetLabel;
-    }
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
         if (!capturingRecenter) return base.ProcessCmdKey(ref message, keyData);
@@ -544,6 +576,10 @@ internal sealed class MainForm : LauncherForm
             if (ReferenceEquals(polledWorker, launchWorker)) UpdateLaunchProgress(data);
             var session = Child(data, "session"); var last = Child(data, "last"); var status = Child(data, "status");
             pending = Flag(data, "pending"); active = Flag(session, "workerAlive") || (Flag(last, "workerAlive") && TextValue(last, "state") == "starting");
+            if (active && TextValue(last, "mode") == "VR" && Child(last, "headset").ValueKind == JsonValueKind.Object && TextValue(last, "runtime") == runtime.SelectedItem as string) {
+                headsetResolution = HeadsetResolution.Parse(Child(last, "headset").GetRawText(), TextValue(last, "runtime"));
+                UpdateResolutionLabels();
+            }
             measuredScene.Text = LauncherPresentation.MeasuredScene(Child(data, "resolution"), pending || active);
             headset = TextValue(session, "mode") == "Headset"; stopped = Flag(data, "stopped");
             rendering = !Flag(status, "failed") && status.TryGetProperty("state", out var phase) && phase.GetInt32() == 0;
@@ -580,6 +616,7 @@ internal sealed class MainForm : LauncherForm
         updates.SetIdle(idle);
         var selected = loaded && car.SelectedItem != null && track.SelectedItem != null && runtime.SelectedItem != null;
         desktop.Enabled = vr.Enabled = selected && idle && !capturingRecenter;
+        vr.Enabled &= !queryingHeadset;
         save.Enabled = selected && !busy && !capturingRecenter;
         launchMode.Enabled = runtime.Enabled = !busy && !active && !pending;
         var normal = ChoiceId(launchMode) == "Normal";
@@ -592,7 +629,7 @@ internal sealed class MainForm : LauncherForm
         recenter.Enabled = drivingControls.Enabled = loaded && idle;
         bindRecenterDevice.Enabled = clearRecenterDevice.Enabled = loaded && idle && !capturingRecenter;
         defaults.Enabled = loaded && idle && !capturingRecenter;
-        foreach (var control in new Control[] { renderScale, headsetScale, modernInterface, previewVrFixes, skipIntro, diagnosticLogging, performanceDisplay, replay3d, garage3d, vrCockpit, keepHorizonLevel,
+        foreach (var control in new Control[] { renderScale, desktopRenderScale, modernInterface, previewVrFixes, skipIntro, diagnosticLogging, performanceDisplay, replay3d, garage3d, vrCockpit, keepHorizonLevel,
             cockpitTextures, hudDistance, hudFollow, desktopVSync, desktopMsaa, vrMsaa, vrMirrorBorderless, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
             control.Enabled = loaded && idle && !capturingRecenter;
         performanceFollowView.Enabled = performanceDisplay.Enabled && performanceDisplay.Checked;
@@ -601,6 +638,7 @@ internal sealed class MainForm : LauncherForm
         seatAlignment.Enabled = cockpitDriver.Enabled;
         stop.Enabled = known && active && headset && !stopped && !busy;
         end.Enabled = known && active && pending && !busy;
+        refreshHeadset.Enabled = loaded && !active && !pending && !busy && !capturingRecenter && !queryingHeadset;
     }
     private async void ShowAbout(string? topic = null)
     {
@@ -641,9 +679,9 @@ internal sealed class MainForm : LauncherForm
         tips.SetToolTip(car, "Your car for Practice or Race. Normal uses the in-game selection.");
         tips.SetToolTip(carSearch, "Filter by car name, manufacturer or game code. Clear the search to show all installed cars.");
         tips.SetToolTip(laps, "Requested lap count for circuit and city routes. Point-to-point routes always use one run.");
-        tips.SetToolTip(renderScale, "Requested scene resolution from 50–300%. 150% (1920 × 1080) is recommended; 300% requests 3840 × 2160. Arrow keys adjust by 1%. Check Measured scene to confirm the actual size. Headset texture scale controls the final image separately.");
+        tips.SetToolTip(renderScale, "100% uses the connected headset’s recommended per-eye resolution. Each percentage scales width and height: 200% is four times the pixels. Output stays at the recommended size. Arrow keys adjust by 1%.");
+        tips.SetToolTip(desktopRenderScale, "Desktop scene rendering from 50–300% of 1280 × 720. Applies on the next desktop Launch only; VR resolution is independent.");
         tips.SetToolTip(measuredScene, "Actual native scene dimensions from the current or last session, compared with that session's request. A requested size alone does not prove the game rendered it. No measurement means the scene has not been observed or the build did not report it.");
-        tips.SetToolTip(headsetScale, "Finished image sent to each eye. 100% keeps 1280 × 720; 200% sends 2560 × 1440 (four times the pixels). Higher values use more memory and cannot add detail missing from the game scene. Applies to the next VR launch only.");
         tips.SetToolTip(modernInterface, "Preview Modern with red accents, or restore Classic. Save settings keeps the appearance; game and VR settings are unchanged.");
         tips.SetToolTip(previewVrFixes, "Use the latest VR fixes with your selected car, track and settings. Off retains the previous VR build. This option does not change your settings.");
         tips.SetToolTip(skipIntro, "Skip startup logos and the pre-race flythrough in Practice and Race. Normal keeps the original startup sequence for career saving; this preference is retained.");
@@ -659,7 +697,7 @@ internal sealed class MainForm : LauncherForm
         tips.SetToolTip(desktopMsaa, "Desktop Launch only. Launch VR uses the separate Anti-aliasing (VR) choice.");
         tips.SetToolTip(vrMsaa, "Smooth jagged geometry edges in VR. Off preserves the working default. 2×, 4× and 8× increase GPU time and memory use. Applies to the next VR launch; desktop MSAA is independent.");
         tips.SetToolTip(graphicsDefaults, "Restore only graphics choices to the working profile, then Save or Launch to keep them.");
-        tips.SetToolTip(vrMirrorBorderless, "Fill the VR mirror's current monitor without borders on the next VR launch. Scene resolution and headset texture scale are unchanged.");
+        tips.SetToolTip(vrMirrorBorderless, "Fill the VR mirror's current monitor without borders on the next VR launch. VR resolution is unchanged.");
         tips.SetToolTip(requestedSession, "Requested choices for the next launch. Check the actual car and track in GRID 2.");
         tips.SetToolTip(runtime, "VDXR connects directly through Virtual Desktop. SteamVR uses SteamVR's OpenXR runtime. Applies to the next session only.");
         tips.SetToolTip(recenter, "Choose the in-game recenter shortcut. Sit comfortably and face forward before pressing it in GRID 2.");

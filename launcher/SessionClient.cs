@@ -6,7 +6,7 @@ namespace GRID2VR;
 
 internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/route_1", string Runtime = "VDXR", int RecenterKey = 121, int RecenterModifiers = 0, int Laps = 1)
 {
-    public GraphicsOptions Graphics { get; init; } = new();
+    public GraphicsOptions Graphics { get; init; } = GraphicsOptions.Defaults;
     public bool ModernInterface { get; init; } = true;
     public bool PreviewVrFixes { get; init; }
     public bool SkipIntro { get; init; }
@@ -55,7 +55,7 @@ internal sealed class SessionClient(string root)
 
     public ProcessStartInfo Command(string script, params string[] arguments)
     {
-        if (script is not ("Start-UserSession.ps1" or "Session-Control.ps1" or "Cockpit-TexturePack.ps1")) throw new ArgumentException("Unknown command.");
+        if (script is not ("Start-UserSession.ps1" or "Session-Control.ps1" or "Cockpit-TexturePack.ps1" or "Get-VrResolution.ps1")) throw new ArgumentException("Unknown command.");
         var shell = AppPaths.Shell(Root);
         if (!File.Exists(shell)) throw new IOException("PowerShell 7 is required for this workspace prototype.");
         var info = new ProcessStartInfo(shell) { WorkingDirectory = Root, UseShellExecute = false, CreateNoWindow = true };
@@ -203,8 +203,7 @@ internal sealed class SessionClient(string root)
             "-RecenterKey", value.RecenterKey.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-RecenterModifiers", value.RecenterModifiers.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-Laps", EffectiveLaps(value.Track, value.Laps).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "-RenderScale", value.Graphics.RenderScale.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "-HeadsetScale", value.Graphics.HeadsetScale.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "-RenderScale", (vr ? value.Graphics.RenderScale : value.Graphics.EffectiveDesktopRenderScale).ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-DesktopVSync", value.Graphics.DesktopVSync ? "1" : "0", "-DesktopMsaa", value.Graphics.DesktopMsaa,
             "-VrMsaa", value.Graphics.VrMsaa,
             "-TreeDetail", value.Graphics.TreeDetail, "-ObjectDetail", value.Graphics.ObjectDetail,
@@ -222,6 +221,10 @@ internal sealed class SessionClient(string root)
                 "-VrGarageMenus", value.VrGarageMenus ? "1" : "0",
                 "-HudFollowView", value.Graphics.HudFollowView ? "1" : "0", "-HudHiddenElements", value.Graphics.HiddenHudElements.ToString(System.Globalization.CultureInfo.InvariantCulture) })
                 command.ArgumentList.Add(arg);
+        }
+        if (vr) {
+            command.ArgumentList.Add("-VrRenderScale");
+            command.ArgumentList.Add(value.Graphics.VrRenderScale.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
         if (vr && value.Graphics.VrMirrorBorderless) command.ArgumentList.Add("-VrMirrorBorderless");
         if (vr && value.PerformanceDisplay)
@@ -325,13 +328,21 @@ internal sealed class SessionClient(string root)
         return $"{LocationLabel(id[..separator])} — {LocationLabel(id[(separator + 1)..])}";
     }
 
-    private static async Task<string> ReadCommand(ProcessStartInfo info)
+    internal async Task<HeadsetResolution> ReadHeadsetResolution(string runtime) => HeadsetResolution.Parse(
+        await ReadCommand(Command("Get-VrResolution.ps1", "-Runtime", runtime), TimeSpan.FromSeconds(25)), runtime);
+
+    private static async Task<string> ReadCommand(ProcessStartInfo info, TimeSpan? timeout = null)
     {
         info.RedirectStandardOutput = info.RedirectStandardError = true;
         using var process = Process.Start(info) ?? throw new IOException("Could not start command.");
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        using var cancellation = new CancellationTokenSource(timeout ?? Timeout.InfiniteTimeSpan);
+        try { await process.WaitForExitAsync(cancellation.Token); }
+        catch (OperationCanceledException) {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            throw new IOException("Headset query timed out. Connect the headset and refresh.");
+        }
         var text = await output; var failure = await error;
         if (process.ExitCode != 0) throw new IOException(string.IsNullOrWhiteSpace(failure) ? text : failure);
         return text;

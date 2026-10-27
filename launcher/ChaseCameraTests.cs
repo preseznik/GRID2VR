@@ -10,7 +10,7 @@ internal static class ChaseCameraTests
             var defaults = new Choices();
             Require(!defaults.ChaseFreeLook && !defaults.ChaseKeepAngle && !defaults.ChaseInvertVertical && defaults.ChaseMouseMode == "right" &&
                 defaults.ChaseMaxZoomOut == 180 && defaults.ChaseMouseSensitivity == 100 && defaults.ChaseStickSensitivity == 100, "Chase defaults changed.");
-            Require(SessionClient.ParseChoices("{}") == (defaults with { ModernInterface = false }), "Older settings did not gain disabled chase defaults.");
+            Require(SessionClient.ParseChoices("{}") == (defaults with { ModernInterface = false, Graphics = new() }), "Older settings did not gain disabled chase defaults.");
             var chosen = defaults with { ChaseFreeLook = true, ChaseKeepAngle = true, ChaseMouseMode = "always", ChaseMaxZoomOut = 1000,
                 ChaseMouseSensitivity = 25, ChaseStickSensitivity = 300, ChaseInvertVertical = true };
             client.Save(chosen); Require(client.Load() == chosen, "Chase preferences did not persist.");

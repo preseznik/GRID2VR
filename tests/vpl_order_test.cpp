@@ -65,6 +65,53 @@ int TestRows(const ComPtr<ID3D11Device>& device,const ComPtr<ID3D11DeviceContext
     }
     return 0;
 }
+int TestHeadsetGrid(ID3D11Device* device,ID3D11DeviceContext* context,unsigned sceneWidth,unsigned sceneHeight) {
+    // Native VPL storage pads width to 16 and uses twice the scene height.
+    // The 150% Quest 3 scene needs 306 tile rows, beyond the former 256 cap.
+    const unsigned width=(sceneWidth+15)/16*16,height=sceneHeight*2;
+    const unsigned groupsX=width/16,groupsY=(height+31)/32;
+    D3D11_TEXTURE2D_DESC desc{};desc.Width=width;desc.Height=height;
+    desc.MipLevels=desc.ArraySize=desc.SampleDesc.Count=1;
+    desc.Format=DXGI_FORMAT_R16_UINT;desc.BindFlags=D3D11_BIND_UNORDERED_ACCESS;
+    ComPtr<ID3D11Texture2D> texture;ComPtr<ID3D11UnorderedAccessView> view;
+    if(FAILED(device->CreateTexture2D(&desc,nullptr,&texture)) || FAILED(device->CreateUnorderedAccessView(texture.Get(),nullptr,&view))) return 12;
+    // Unterminated tiles stay untouched. Exercise actual sorting at all four
+    // corners, including the final partial row, without a full CPU readback.
+    const UINT fill[4]{65535,65535,65535,65535};context->ClearUnorderedAccessViewUint(view.Get(),fill);
+    std::array<uint16_t,512> input;input.fill(65535);
+    const uint16_t prefix[]{7,2,7,1,65535,32,0};std::copy(std::begin(prefix),std::end(prefix),input.begin());
+    auto expected=input;std::sort(expected.begin(),expected.begin()+6);
+    for(unsigned row:{0u,groupsY-1}) for(unsigned column:{0u,groupsX-1}) {
+        const D3D11_BOX box{column*16,row*32,0,(column+1)*16,std::min((row+1)*32,height),1};
+        context->UpdateSubresource(texture.Get(),0,&box,input.data(),32,0);
+    }
+    auto* binding=view.Get();context->CSSetUnorderedAccessViews(1,1,&binding,nullptr);
+    grid2vr::VplOrder sorter;bool restored{};
+    for(const auto groups: {std::array<UINT,3>{groupsX,0,1},{groupsX,513,1},{513,groupsY,1},{groupsX,groupsY,2}})
+        if(sorter.Apply(context,view.Get(),groups[0],groups[1],groups[2],Dispatch,restored)!=E_INVALIDARG || restored) return 13;
+    const auto hr=sorter.Apply(context,view.Get(),groupsX,groupsY,1,Dispatch,restored);
+    if(FAILED(hr) || !restored) {
+        printf("Headset VPL scene=%ux%u texture=%ux%u groups=%ux%u hr=%08lx restored=%u\n",sceneWidth,sceneHeight,width,height,groupsX,groupsY,hr,restored);
+        return 14;
+    }
+    ComPtr<ID3D11UnorderedAccessView> slot0,slot1;
+    context->CSGetUnorderedAccessViews(0,1,&slot0);context->CSGetUnorderedAccessViews(1,1,&slot1);
+    if(slot0 || slot1.Get()!=view.Get()) return 15;
+    binding=nullptr;context->CSSetUnorderedAccessViews(1,1,&binding,nullptr);
+    desc.Width=16;desc.Height=32;desc.BindFlags=0;desc.Usage=D3D11_USAGE_STAGING;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> staging;if(FAILED(device->CreateTexture2D(&desc,nullptr,&staging))) return 16;
+    for(unsigned row:{0u,groupsY-1}) for(unsigned column:{0u,groupsX-1}) {
+        const D3D11_BOX box{column*16,row*32,0,(column+1)*16,std::min((row+1)*32,height),1};
+        context->CopySubresourceRegion(staging.Get(),0,0,0,0,texture.Get(),0,&box);
+        D3D11_MAPPED_SUBRESOURCE mapped{};if(FAILED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped))) return 17;
+        bool equal=true;
+        for(unsigned y=0;y<box.bottom-box.top;++y)
+            equal&=!memcmp(expected.data()+y*16,static_cast<const uint8_t*>(mapped.pData)+y*mapped.RowPitch,32);
+        context->Unmap(staging.Get(),0);if(!equal) return 18;
+    }
+    printf("Headset VPL scene=%ux%u texture=%ux%u groups=%ux%u: sorted corner lists, terminators/tails and UAV restoration verified.\n",sceneWidth,sceneHeight,width,height,groupsX,groupsY);
+    return 0;
+}
 int main() {
     // Explicit system path: the proxy in the test directory is not the device factory.
     auto module=LoadLibraryExW(L"d3d11.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);
@@ -76,6 +123,10 @@ int main() {
     for (unsigned height:{64u,48u,33u}) {
         const int error=TestRows(device,context,height);
         if (error) { printf("VPL row height=%u failed code=%d\n",height,error); return error; }
+    }
+    for(const auto scene: {std::array<unsigned,2>{4608,4896},{6144,6528},{4097,4097}}) {
+        const int error=TestHeadsetGrid(device.Get(),context.Get(),scene[0],scene[1]);
+        if(error) return error;
     }
     puts("GPU VPL sort: full/partial rows, CPU-reference order, duplicates, max prefix, empty/malformed tiles, padding, idempotence and native bindings verified.");
 }

@@ -617,7 +617,14 @@ void AfterCompute(ID3D11DeviceContext* context,const std::string& mark,UINT x,UI
     bool restored{}; const auto hr=vplOrder.Apply(context,view.Get(),x,y,z,dispatch,restored);
     pairHealthy&=SUCCEEDED(hr) && restored;
     log << "vpl_order pass=" << engine::CurrentScene().pass << " applied=" << SUCCEEDED(hr)
-        << " restored=" << restored << " hr=" << Hex(static_cast<uint32_t>(hr)) << " scene=" << engine::CurrentScene().id << " pass=" << engine::CurrentScene().pass << '\n'; log.flush();
+        << " restored=" << restored << " hr=" << Hex(static_cast<uint32_t>(hr)) << " scene=" << engine::CurrentScene().id << " pass=" << engine::CurrentScene().pass;
+    if (FAILED(hr)) {
+        ComPtr<ID3D11Resource> resource;ComPtr<ID3D11Texture2D> texture;D3D11_TEXTURE2D_DESC desc{};
+        if (view) view->GetResource(&resource);
+        if (resource && SUCCEEDED(resource.As(&texture))) texture->GetDesc(&desc);
+        log << " groups=" << x << 'x' << y << 'x' << z << " texture=" << desc.Width << 'x' << desc.Height;
+    }
+    log << '\n';log.flush();
 }
 void ShaderIdentity(ID3D11DeviceChild* shader,uint64_t hash) { shader->SetPrivateData(shaderId,sizeof(hash),&hash); }
 uint64_t ShaderFingerprint(ID3D11DeviceChild* shader) { return ShaderHash(shader); }

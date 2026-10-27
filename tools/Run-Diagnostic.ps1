@@ -26,6 +26,7 @@ param(
     [switch]$XrSessionProbe,
     [switch]$XrProjection,
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
+    [int]$HeadsetWidth=0,[int]$HeadsetHeight=0,[int]$VrRenderScale=0,
     [switch]$DisableMotionBlur,
     [switch]$ScreenUiStereo,
     [switch]$FrontendSceneAudit,
@@ -105,7 +106,13 @@ $chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle
 if($Action -eq 'Run' -and $NormalLaunch -and ($SessionDirectory -or !$RuntimeSession -or $PlayerControlProbe -ne 'Off' -or $RunKind -ne 'Probe')) { throw 'Normal launch requires the guarded runtime without a selected session or input probe.' }
 if($MsaaAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe)) { throw 'MSAA audit requires an isolated bounded desktop diagnostic.' }
 if($Action -eq 'Run' -and $ExposureAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$AutoCaptureFlicker -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe -or $XrProjection -or $NormalLaunch)) { throw 'Exposure audit requires an isolated bounded unattended desktop diagnostic.' }
-if($Action -eq 'Run' -and ($SceneWidth -or $SceneHeight) -and (!$RuntimeSession -or $PlayerControlOnly -or $SceneWidth -lt 640 -or $SceneWidth -gt 3840 -or $SceneHeight -lt 360 -or $SceneHeight -gt 2160)) { throw 'Invalid native VR scene-size request.' }
+if($Action -eq 'Run' -and ($SceneWidth -or $SceneHeight) -and (!$RuntimeSession -or $PlayerControlOnly -or $SceneWidth -lt 320 -or $SceneWidth -gt 8192 -or $SceneHeight -lt 180 -or $SceneHeight -gt 8192 -or [long]$SceneWidth*$SceneHeight -gt 64MB)) { throw 'Invalid native VR scene-size request.' }
+$headsetResolution=$null
+if($HeadsetWidth -or $HeadsetHeight -or $VrRenderScale) {
+    . (Join-Path $PSScriptRoot 'Headset-Resolution.ps1')
+    $headsetResolution=Get-HeadsetResolutionPlan $HeadsetWidth $HeadsetHeight $VrRenderScale
+    if(!$XrProjection -or !$RuntimeSession -or $PlayerControlOnly -or $SceneWidth -ne $headsetResolution.sceneWidth -or $SceneHeight -ne $headsetResolution.sceneHeight) { throw 'Headset and scene resolution requests do not match.' }
+}
 if($Action -eq 'Run' -and $VrMirrorBorderless -and (!$RuntimeSession -or !$UntilExit -or !$XrProjection -or $PlayerControlOnly -or !$SceneWidth -or !$SceneHeight)) { throw 'Borderless VR mirror requires a user VR session with scene resolution enforcement.' }
 if($Action -eq 'Run' -and $ScreenUiStereo -and (!$RuntimeSession -or !$ReplayStereo -or !$ReplayFullPose -or !$ReplayAsymmetricFov -or !$TraceReplayWork)) { throw 'UI stereo candidate requires a fully posed stereo runtime and replay instrumentation.' }
 if($Action -eq 'Run' -and $FlickerObservationSeconds -and (!$TrackedVisibility -or !$VisibilityCapture -or !$AutoCaptureFlicker -or !$RuntimeSession -or !$RecordedViewsFile -or $XrSessionProbe -or $XrProjection -or $UntilExit -or $HeadsetVisibilityCandidate -or $CaptureAfterSeconds+$FlickerObservationSeconds+20 -ge $TimeoutSeconds)) { throw 'Extended observation requires bounded simulated tracked visibility with reduced capture and enough timeout.' }
@@ -281,6 +288,7 @@ if($CockpitTextures -ne 'Off') {
     if(!$focusBinary.Contains('GRID2VR_COCKPIT_TEXTURES_V1')) { throw 'This native build does not support the Cockpit texture pack. Rebuild before launching.' }
 }
 $run=if($RunLogDirectory){Get-Grid2LogDirectory $root $RunLogDirectory}else{New-Grid2LogDirectory $root}
+if($headsetResolution) { Assert-HeadsetResolutionProxy $proxy }
 if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy }
 if(Test-Path -LiteralPath (Join-Path $run 'session.json')) { throw 'Diagnostic run already exists; retained its logs.' }
 $drivingControlsReceipt=Save-DrivingControls $validatedDrivingControls $run
@@ -369,7 +377,9 @@ if ($XrSessionProbe) { [IO.File]::WriteAllText((Join-Path $run 'xr-session.reque
 if ($RecordedViewsFile) { [IO.File]::Copy((Get-Item -LiteralPath $RecordedViewsFile).FullName,(Join-Path $run 'recorded-views.request'),$false) }
 if ($XrProjection) {
     . (Join-Path $PSScriptRoot 'Headset-Settings.ps1')
-    Write-HeadsetRequest (Join-Path $run 'xr-projection.request') $HeadsetScale
+    if($headsetResolution) {
+        Write-HeadsetResolutionRequests $run $HeadsetWidth $HeadsetHeight $VrRenderScale
+    } else { Write-HeadsetRequest (Join-Path $run 'xr-projection.request') $HeadsetScale }
 }
 if ($WaitForStereoStart) { [IO.File]::WriteAllText((Join-Path $run 'wait-stereo-start.request'),'Initialize and warm up first. Require a fresh stereo-start.request after manual unpaused-game confirmation before arming stereo. No input or focus automation.') }
 if ($DisableMotionBlur) { [IO.File]::WriteAllText((Join-Path $run 'disable-motion-blur.request'),'Known final shaders only: zero the two velocity scale values in an owned CB0 copy; restore the original binding after each draw.') }
@@ -482,7 +492,7 @@ $receipt.replayStereo=[bool]$ReplayStereo
 $receipt.compactStereoTrace=[bool]$CompactStereoTrace
 $receipt.xrSessionProbe=[bool]$XrSessionProbe
 $receipt.xrProjection=[bool]$XrProjection
-if ($XrProjection) { $receipt.headsetSettings=Get-HeadsetSettings $HeadsetScale }
+if ($XrProjection) { $receipt.headsetSettings=if($headsetResolution){$headsetResolution}else{Get-HeadsetSettings $HeadsetScale} }
 $receipt.disableMotionBlur=[bool]$DisableMotionBlur
 $receipt.screenUiStereo=[bool]$ScreenUiStereo
 if ($RecordedViewsFile) { $receipt.recordedViewsSha256=(Get-FileHash -LiteralPath (Join-Path $run 'recorded-views.request')).Hash }

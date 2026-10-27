@@ -1,5 +1,6 @@
 #include "xr_eye_images.h"
 #include "tracked_views.h"
+#include "resolution_limits.h"
 #include <algorithm>
 namespace grid2vr {
 bool XrEyeImages::Check(XrResult result,const char* operation) {
@@ -10,7 +11,7 @@ bool XrEyeImages::Refuse(const char* reason) {return Check(XR_ERROR_VALIDATION_F
 bool XrEyeImages::Initialize(XrSession session,ID3D11Device* device,NativeEyeDraw draw,unsigned width,unsigned height) {
     if (thread_ || !session || !device || !draw) return false;
     thread_=GetCurrentThreadId();width_=width;height_=height;
-    if (!width || !height || width>4096 || height>4096 || uint64_t(width)*height>4*1024*1024) return Refuse("image_dimensions");
+    if (!resolution::ValidOutput(width,height)) return Refuse("image_dimensions");
     uint32_t count{};
     if (!Check(xrEnumerateSwapchainFormats(session,0,&count,nullptr),"format_count")) return false;
     if (!count || count>128) return Refuse("format_count_bound");
@@ -24,12 +25,14 @@ bool XrEyeImages::Initialize(XrSession session,ID3D11Device* device,NativeEyeDra
     device->GetImmediateContext(&context_);
     const D3D11_QUERY_DESC completion{D3D11_QUERY_EVENT,0};
     if (FAILED(device->CreateQuery(&completion,&completion_))) return Refuse("completion_query");
+    uint64_t imageBytes=0;
     for (auto& eye:eyes_) {
         XrSwapchainCreateInfo create{XR_TYPE_SWAPCHAIN_CREATE_INFO};create.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
         create.format=format;create.sampleCount=create.faceCount=create.arraySize=create.mipCount=1;create.width=width;create.height=height;
         if (!Check(xrCreateSwapchain(session,&create,&eye.chain),"create_swapchain")) {Shutdown();return false;}
         if (!Check(xrEnumerateSwapchainImages(eye.chain,0,&count,nullptr),"image_count")) {Shutdown();return false;}
-        if (!count || count>16 || uint64_t(count)*width*height*8>128ull*1024*1024) {Refuse("image_count_bound");Shutdown();return false;}
+        imageBytes+=uint64_t(count)*width*height*4;
+        if (!count || count>16 || imageBytes>512ull*1024*1024) {Refuse("image_count_bound");Shutdown();return false;}
         eye.images.resize(count,{XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});eye.targets.resize(count);
         if (!Check(xrEnumerateSwapchainImages(eye.chain,count,&count,reinterpret_cast<XrSwapchainImageBaseHeader*>(eye.images.data())),"images") || count!=eye.images.size()) {
             Refuse("image_count_changed");Shutdown();return false;
@@ -94,8 +97,8 @@ bool XrEyeImages::CopyScreen(uint64_t frame,XrSpace localSpace,const XrPosef& an
     D3D11_TEXTURE2D_DESC desc{};backbuffer->GetDesc(&desc);
     Microsoft::WRL::ComPtr<ID3D11Device> device,sourceDevice;
     context_->GetDevice(&device);backbuffer->GetDevice(&sourceDevice);
-    if (sourceDevice!=device || !desc.Width || !desc.Height || desc.Width>8192 || desc.Height>8192 ||
-        uint64_t(desc.Width)*desc.Height>16ull*1024*1024 || desc.MipLevels!=1 || desc.ArraySize!=1 || desc.SampleDesc.Count!=1 ||
+    if (sourceDevice!=device || !resolution::ValidScene(desc.Width,desc.Height) ||
+        desc.MipLevels!=1 || desc.ArraySize!=1 || desc.SampleDesc.Count!=1 ||
         (desc.Format!=DXGI_FORMAT_R10G10B10A2_UNORM && desc.Format!=DXGI_FORMAT_R8G8B8A8_UNORM && desc.Format!=DXGI_FORMAT_B8G8R8A8_UNORM))
         return Refuse("screen_source_description");
     D3D11_TEXTURE2D_DESC previous{};if(screenSource_)screenSource_->GetDesc(&previous);

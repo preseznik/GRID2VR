@@ -13,6 +13,7 @@ DATA_FILES += ['cockpit-dlc.json']
 SCRIPTS += ['Dlc-Cockpit']
 SCRIPTS += ['Launch-Backend']
 SCRIPTS += ['Chase-Camera']
+SCRIPTS += ['Headset-Resolution', 'Get-VrResolution']
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def copy(source,target):
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
@@ -66,6 +67,7 @@ def stage(a):
     copy(out/'publish/GRID2VR.exe',stage/'GRID2VR.exe')
     (stage/'Start-GRID2VR.cmd').write_text('@echo off\nstart "" "%~dp0GRID2VR.exe"\n',encoding='ascii')
     copy(release_assets.native_path(ROOT,a.native),payload/'d3d11.dll')
+    copy(release_assets.native_path(ROOT,a.native).parent/'xr_runtime_probe.exe',payload/'xr_runtime_probe.exe')
     release_assets.require(sha(payload/'d3d11.dll')==release['nativeSha256'], 'Native renderer changed while staging.')
     copy(ROOT/'build/driving-input-vs-x64/Release/driving_input.dll',payload/'driving_input.dll')
     for name in SCRIPTS:copy(ROOT/f'tools/{name}.ps1',mod/f'tools/{name}.ps1')

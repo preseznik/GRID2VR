@@ -1,4 +1,5 @@
 #include "scene_resolution.h"
+#include "resolution_limits.h"
 #include "guarded_hooks.h"
 #include <array>
 #include <charconv>
@@ -93,11 +94,9 @@ void BeginOperation(Size incoming) {
 void Reject(const char* why) {reason=why;Save();}
 }
 bool ValidSize(Size size) {
-    // Match every launcher percentage, including odd sizes produced by integer
-    // scaling. Reject unrelated dimensions instead of accepting an arbitrary cap.
-    for(unsigned scale=50;scale<=300;++scale)
-        if(size.width==1280*scale/100 && size.height==720*scale/100)return true;
-    return false;
+    // Headsets have different aspect ratios; instruction and ownership guards
+    // still apply to every native write. Bound dimensions to scene-copy limits.
+    return size.width>=320 && size.height>=180 && resolution::ValidScene(size.width,size.height);
 }
 bool ParseSize(std::string_view text,Size& size) {
     if(text.empty() || text.size()>32)return false;

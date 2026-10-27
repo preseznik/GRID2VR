@@ -1,4 +1,5 @@
 #include "eye_textures.h"
+#include "resolution_limits.h"
 #include <utility>
 namespace grid2vr {
 bool EyeTextures::Capture(ID3D11DeviceContext* context,uint64_t frame,unsigned eye,ID3D11Texture2D* source) {
@@ -7,7 +8,7 @@ bool EyeTextures::Capture(ID3D11DeviceContext* context,uint64_t frame,unsigned e
         context->GetType()!=D3D11_DEVICE_CONTEXT_IMMEDIATE) return refuse();
     D3D11_TEXTURE2D_DESC desc{}; source->GetDesc(&desc);
     const bool multisampled=desc.SampleDesc.Count>1;
-    if (!desc.Width || !desc.Height || uint64_t(desc.Width)*desc.Height*8>128ull*1024*1024 ||
+    if (!resolution::ValidScene(desc.Width,desc.Height) ||
         desc.MipLevels!=1 || desc.ArraySize!=1 || desc.SampleDesc.Quality!=0 ||
         (desc.SampleDesc.Count!=1 && desc.SampleDesc.Count!=2 && desc.SampleDesc.Count!=4 && desc.SampleDesc.Count!=8) ||
         (desc.Format!=DXGI_FORMAT_R10G10B10A2_UNORM && desc.Format!=DXGI_FORMAT_R8G8B8A8_UNORM && desc.Format!=DXGI_FORMAT_B8G8R8A8_UNORM)) return refuse();

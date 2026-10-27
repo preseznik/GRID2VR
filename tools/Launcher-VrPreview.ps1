@@ -2,8 +2,18 @@
 # Read-only integrity check of the opt-in launcher candidate. Deployment and recovery
 # remain owned by the existing user-session worker and diagnostic transaction.
 function Get-LauncherVrPreviewProxy {
-    param([string]$Root)
+    param([string]$Root,[switch]$HeadsetResolution)
     if(Test-Grid2Package $Root) { return Get-Grid2Proxy $Root }
+    if($HeadsetResolution) {
+        # Headset resolution with menu-Quit shutdown cleanup. Qualification:
+        # docs/evidence/menu-quit-shutdown-20261027/verification.json.
+        # Attended menu-Quit acceptance remains pending.
+        $current=Get-Grid2Proxy $Root
+        if((Get-FileHash -LiteralPath $current -ErrorAction Stop).Hash -ne 'ef1bb4b7b93575c821c85c3f515865159bf2e002ec01c67f1a9aa50549770a00') {
+            throw 'The headset-resolution preview renderer changed. Rebuild and verify the current candidate before launching.'
+        }
+        return $current
+    }
     $expectedProxy='cdd6e68abcd6e53ee15876f86f952b0e808b2fe515fd443ad80fb05f24fa5da8'
     $focusProxy='fa75274d189e5121cc0e35ccbbc2e2df38b1fee3ef3d5dec3a6b73f559c47495'
     $performanceProxy='9fe9e76f825b34650b64d962fc2e115d4fe09c9190eef0decc90362fbd46fe22'

@@ -90,7 +90,7 @@ int Child() {
     if(!RegisterClassW(&cls))return 2;
     window=CreateWindowExW(0,cls.lpszClassName,L"Never shown",WS_OVERLAPPEDWINDOW,0,0,64,64,nullptr,nullptr,cls.hInstance,nullptr);
     if(!window || grid2vr::processexit::AttachWindow(window))return 3; // Guarded install is required first.
-    const bool sameThread=mode==L"same-thread";
+    const bool sameThread=mode==L"same-thread" || mode==L"menu-canceled";
     std::thread renderer;
     if(sameThread)ready=Initialize(base);
     else {
@@ -109,10 +109,19 @@ int Child() {
     if(mode==L"subclass") {
         subclass=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(window,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(LaterSubclass)));
     }
+    if(mode==L"menu-pending" || mode==L"menu-canceled") {
+        if(!grid2vr::processexit::RequestCleanup())invalid=true;
+        if(mode==L"menu-canceled") {
+            if(!grid2vr::processexit::CancelCleanup())invalid=true;
+            grid2vr::processexit::Service();
+            if(calls || grid2vr::processexit::CleanupReady(GetTickCount64()))invalid=true;
+        }
+    }
     const auto began=GetTickCount64();
     if(mode==L"system")SendMessageW(window,WM_SYSCOMMAND,SC_CLOSE|7,0x456);
     else SendMessageW(window,WM_CLOSE,0x123,0x456);
     if(GetTickCount64()-began>500 || calls || forwarded)invalid=true; // UI must not block waiting for Present.
+    if(mode==L"menu-pending" && grid2vr::processexit::CancelCleanup())invalid=true;
     SendMessageW(window,WM_CLOSE,0x123,0x456); // Duplicate close must retain the original request.
     SendMessageW(window,WM_APP+1,0,0);
     if(heartbeats!=1 || forwarded)invalid=true;
@@ -150,7 +159,7 @@ int wmain(int argc,wchar_t** argv) {
     if(argc!=2)return 20;
     wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
     const auto root=std::filesystem::path(argv[1])/std::to_wstring(GetCurrentProcessId());
-    for(const auto* name:{L"late-only",L"close",L"system",L"same-thread",L"subclass",L"running",L"timeout",L"failure",L"destroy",L"exit"}) {
+    for(const auto* name:{L"late-only",L"close",L"system",L"same-thread",L"menu-pending",L"menu-canceled",L"subclass",L"running",L"timeout",L"failure",L"destroy",L"exit"}) {
         const auto target=root/name;std::filesystem::create_directories(target);
         std::wstring command=L"\""+std::wstring(executable)+L"\" \""+target.wstring()+L"\" "+name;
         STARTUPINFOW startup{sizeof(startup)};PROCESS_INFORMATION process{};
@@ -176,6 +185,6 @@ int wmain(int argc,wchar_t** argv) {
             if(std::count(callback.begin(),callback.end(),'\n')!=1)return 28;
         }
     }
-    puts("Close deferral preserves UI pumping, exact native messages, render-owner WARP cleanup, timeout/refusal, subclass ownership and single exit cleanup.");
+    puts("Close deferral preserves UI pumping, exact messages, owner WARP cleanup, menu cancellation ownership, timeout/refusal, subclass ownership and single exit cleanup.");
     return 0;
 }

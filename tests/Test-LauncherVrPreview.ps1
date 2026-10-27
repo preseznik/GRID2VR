@@ -11,6 +11,12 @@ function Reject([scriptblock]$Action,[string]$Message) {
 }
 function Write-Manifest { $script:manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $script:manifestPath -Encoding utf8 }
 try {
+    $current=Get-Grid2Proxy $root
+    if((Get-LauncherVrPreviewProxy -Root $root -HeadsetResolution) -ne $current) { throw 'Headset resolution selected an older renderer.' }
+    $stale=Join-Path $fixture 'build/win32/bin/RelWithDebInfo/d3d11.dll'
+    New-Item -ItemType Directory -Path (Split-Path $stale -Parent) -Force | Out-Null
+    [IO.File]::WriteAllText($stale,'unqualified renderer')
+    Reject { Get-LauncherVrPreviewProxy -Root $fixture -HeadsetResolution } '*renderer changed*'
     $request=@{Root=$fixture}
     Reject { Get-LauncherVrPreviewProxy @request } '*bundle is missing*'
     $manifest=Get-Content (Join-Path $root 'build/visibility-headset-candidate/manifest.json') -Raw | ConvertFrom-Json

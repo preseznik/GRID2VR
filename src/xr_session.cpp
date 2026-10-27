@@ -104,6 +104,19 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
     std::array<XrViewConfigurationView,2> views{{{XR_TYPE_VIEW_CONFIGURATION_VIEW},{XR_TYPE_VIEW_CONFIGURATION_VIEW}}};
     if (!Check(xrEnumerateViewConfigurationViews(instance_,system,XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,2,&count,views.data()),"stereo_views") || count!=2) {failed_=true;Shutdown();return false;}
     for (unsigned eye=0;eye<2;++eye) Log("eye index=%u recommended=%ux%u samples=%u",eye,views[eye].recommendedImageRectWidth,views[eye].recommendedImageRectHeight,views[eye].recommendedSwapchainSampleCount);
+    const auto resolutionPath=output/L"headset-resolution.request";
+    if (std::filesystem::exists(resolutionPath)) {
+        std::ifstream request(resolutionPath),scene(output/L"scene-size.request");
+        unsigned width{},height{};char extra{};
+        bool valid=std::filesystem::file_size(resolutionPath)<=64 && resolution::Read(request,resolution_) &&
+            (scene>>width>>height) && !(scene>>extra) && width==resolution_.SceneWidth() && height==resolution_.SceneHeight();
+        for (const auto& view:views) valid=valid && view.recommendedImageRectWidth==resolution_.width &&
+            view.recommendedImageRectHeight==resolution_.height && view.maxImageRectWidth>=resolution_.width && view.maxImageRectHeight>=resolution_.height;
+        if (!valid) {
+            failed_=true;Log("session refused reason=headset_resolution_changed_or_invalid relaunch_required=1");Shutdown();return false;
+        }
+        Log("headset_resolution verified=1 output=%ux%u scene=%ux%u scale=%u",resolution_.width,resolution_.height,width,height,resolution_.scale);
+    }
     std::vector<XrEnvironmentBlendMode> blend;
     if (!Check(xrEnumerateEnvironmentBlendModes(instance_,system,XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,0,&count,nullptr),"blend_count")) {Shutdown();return false;}
     blend.resize(count);
@@ -150,6 +163,9 @@ bool XrSessionProbe::Poll() {
 }
 bool XrSessionProbe::InitializeImages(NativeEyeDraw draw,unsigned width,unsigned height) {
     if (!OnThread() || !session_ || failed_ || !draw || imagesAttempted_ || frameOpen_ || frame_) return false;
+    if (resolution_.width && (width!=resolution_.width || height!=resolution_.height)) {
+        failed_=true;Log("images refused reason=headset_resolution_mismatch");return false;
+    }
     imagesAttempted_=true;imagesReady_=images_.Initialize(session_,device_.Get(),draw,width,height);
     Log("images initialized=%u width=%u height=%u failure=%s result=%d",imagesReady_,width,height,images_.Failure()?images_.Failure():"none",images_.LastResult());
     if (!imagesReady_) failed_=true;

@@ -43,6 +43,17 @@ class GraphicsProfileTests(unittest.TestCase):
             self.assertTrue(receipt['isBaseline'])
             self.assertEqual(receipt['changes'], [])
 
+    def test_headset_relative_portrait_and_odd_scene_dimensions(self):
+        for width, height in [(2400, 2600), (3288, 3562), (1200, 1300), (4608, 4896), (6144, 6528), (8192, 8192)]:
+            payload, receipt = self.prepare(scene_width=width, scene_height=height)
+            self.assertEqual(receipt['resolution']['width'], str(width))
+            self.assertEqual(receipt['resolution']['height'], str(height))
+            changed = {key for key, value in attributes(payload).items() if attributes(self.baseline).get(key) != value}
+            self.assertEqual(changed, {('/graphics_card/resolution', 'width'), ('/graphics_card/resolution', 'height')})
+        for options in [dict(scene_width=2400), dict(scene_height=2600), dict(scene_width=8193, scene_height=2000),
+                        dict(scene_width=8192, scene_height=8193), dict(mode='Desktop', scene_width=2400, scene_height=2600)]:
+            with self.assertRaises(ValueError): self.prepare(**options)
+
     def test_desktop_preferences_cannot_change_vr_profile(self):
         for aa in ('off', '2xmsaa', '4xmsaa', '8xmsaa'):
             for vsync in (0, 1):

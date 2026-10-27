@@ -19,6 +19,7 @@ XrPosef lastPerformancePose{};
 bool hidden{};
 const char* runtimeName="SteamVR/test";
 std::wstring expectedRuntimePath;
+unsigned recommendedWidth=100,recommendedHeight=120;
 XrPosef headPose{{0,0,0,1},{0,0,0}},lastScreenPose{};
 XrQuaternionf Multiply(const XrQuaternionf& a,const XrQuaternionf& b) {
     return {a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,
@@ -57,7 +58,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance,const char* name
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateViewConfigurationViews(XrInstance,XrSystemId,XrViewConfigurationType,uint32_t capacity,uint32_t* count,XrViewConfigurationView* out) {
     *count=2;if(capacity<2) return XR_ERROR_SIZE_INSUFFICIENT;
-    for(unsigned i=0;i<2;++i) {out[i].recommendedImageRectWidth=100;out[i].recommendedImageRectHeight=120;out[i].recommendedSwapchainSampleCount=1;}
+    for(unsigned i=0;i<2;++i) {out[i].recommendedImageRectWidth=recommendedWidth;out[i].recommendedImageRectHeight=recommendedHeight;out[i].recommendedSwapchainSampleCount=1;out[i].maxImageRectWidth=8192;out[i].maxImageRectHeight=8192;}
     return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateEnvironmentBlendModes(XrInstance,XrSystemId,XrViewConfigurationType,uint32_t capacity,uint32_t* count,XrEnvironmentBlendMode* out) {
@@ -190,6 +191,21 @@ int main(int argc,char** argv) {
     const auto manifest=folder/L"steamxr_win32.json";std::ofstream(manifest)<<"test-only; fake runtime functions are linked";
     expectedRuntimePath=manifest.wstring();
     SetEnvironmentVariableW(L"XR_RUNTIME_JSON",L"preserve-test-value");
+    const auto resolutionRequest=folder/L"headset-resolution.request",sceneRequest=folder/L"scene-size.request";
+    recommendedWidth=800;recommendedHeight=900;
+    for(unsigned test=0;test<6;++test) {
+        Reset();grid2vr::XrSessionProbe probe;
+        std::ofstream(resolutionRequest)<<(test==2?"801 900 50":test==3?"800 900 301":test==4?"800 900 50 extra":"800 900 50");
+        std::ofstream(sceneRequest)<<(test==1?"800 900":"400 450");
+        const bool initialized=probe.Initialize(device.Get(),manifest,folder);
+        if(initialized!=(test==0 || test==5)) return 100;
+        if(test==0 && !probe.InitializeImages(DrawNative,800,900)) return 101;
+        if(test==5 && (probe.InitializeImages(DrawNative,400,450) || !probe.Failed())) return 102;
+        probe.Shutdown();
+        if(instances || sessions || spaces || protocolError) return 103;
+    }
+    std::filesystem::remove(resolutionRequest);std::filesystem::remove(sceneRequest);
+    recommendedWidth=100;recommendedHeight=120;
     for(unsigned test=0;test<6;++test) {
         Reset();grid2vr::XrSessionProbe probe;
         badAdapter=test==1;badSpace=test==2;discard=test==3;missingFunction=test==5;

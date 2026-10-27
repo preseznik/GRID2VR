@@ -18,11 +18,17 @@ FILTERING = {'off': ('1', '1'), 'low': ('1', '2'), 'high': ('1', '8'), 'ultra': 
 def prepare(output, mode='VR', render_scale=100, desktop_vsync=1, desktop_msaa='off',
             tree_detail='ultra', object_detail='ultra', crowd_detail='ultra', texture_filtering='ultra',
             source=Path(__file__).with_name('practice-settings.xml'),
-            game_root=Path(r'E:\SteamLibrary\steamapps\common\grid 2'), vr_msaa='off'):
+            game_root=Path(r'E:\SteamLibrary\steamapps\common\grid 2'), vr_msaa='off', scene_width=0, scene_height=0):
     if (mode not in ('VR', 'Desktop') or type(render_scale) is not int or render_scale not in RENDER_SCALES or
             type(desktop_vsync) is not int or desktop_vsync not in (0, 1) or desktop_msaa not in MSAA or vr_msaa not in MSAA or
             tree_detail not in DETAIL or object_detail not in DETAIL or crowd_detail not in CROWD or texture_filtering not in FILTERING):
         raise ValueError('Unsupported graphics choice')
+    if scene_width or scene_height:
+        if (mode != 'VR' or type(scene_width) is not int or type(scene_height) is not int or
+                not 320 <= scene_width <= 8192 or not 180 <= scene_height <= 8192 or scene_width * scene_height > 64 * 1024 * 1024):
+            raise ValueError('Unsupported headset-relative scene size')
+    else:
+        scene_width, scene_height = 1280 * render_scale // 100, 720 * render_scale // 100
     source, output, game_root = map(plain_path, (source, output, game_root))
     if output.is_relative_to(game_root) or output == source:
         raise ValueError('Graphics output must be outside the game and baseline profile')
@@ -43,7 +49,7 @@ def prepare(output, mode='VR', render_scale=100, desktop_vsync=1, desktop_msaa='
                 changes.append(dict(path=path, attribute=key, before=node.get(key), after=value))
                 node.set(key, value)
 
-    change('graphics_card/resolution', width=str(1280 * render_scale // 100), height=str(720 * render_scale // 100))
+    change('graphics_card/resolution', width=str(scene_width), height=str(scene_height))
     # Each mode owns its AA choice; VR keeps the accepted VSync policy.
     if mode == 'Desktop':
         change('graphics_card/resolution', vsync=str(desktop_vsync), multisampling=desktop_msaa)
@@ -70,6 +76,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--mode', choices=('VR', 'Desktop'), default='VR')
     parser.add_argument('--render-scale', type=int, choices=RENDER_SCALES, default=100)
+    parser.add_argument('--scene-width', type=int, default=0)
+    parser.add_argument('--scene-height', type=int, default=0)
     parser.add_argument('--desktop-vsync', type=int, choices=(0, 1), default=1)
     parser.add_argument('--desktop-msaa', choices=MSAA, default='off')
     parser.add_argument('--vr-msaa', choices=MSAA, default='off')

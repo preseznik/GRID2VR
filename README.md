@@ -21,6 +21,7 @@ Supported installed DLC appears in the Practice / Race car and track lists. DLC 
 - **F10** recenters your view. Change it or bind a controller/wheel button under **Controls → VR**.
 - Calibrated cars start VR in cockpit view. Adjust their seating position under **Controls → Seat**.
 - Adjust resolution, MSAA and the HUD under **Graphics**. The FPS/GPU display is under **Advanced**.
+- **VR render scale** uses the connected headset's OpenXR recommended per-eye resolution as 100%. Lower values trade detail for performance; higher values render more pixels. Headset output stays at the recommended size automatically. The launcher shows both dimensions and refreshes the recommendation at each VR launch. Old 720p-based VR scales start at 100% under this new control; desktop resolution is preserved.
 - Finish with **Quit** in the game so the launcher can restore its temporary changes. After an interrupted session, use **Restore original files** before launching again.
 
 ## Updates and help
