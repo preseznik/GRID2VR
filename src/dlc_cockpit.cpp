@@ -21,7 +21,7 @@ std::array<uint64_t,25> applied{},rejected{};
 struct Guard {uint32_t rva,length;const char* hash;std::vector<uint32_t> relocations;};
 // Complete native consumers/parsers, including all field offsets, are pinned.
 // Normalize only recorded PE HIGHLOW relocation operands for ASLR.
-const std::array<Guard,30> guards{{
+const std::array<Guard,32> guards{{
     {0x2f9e0,0x131,"18da29f82a8aa7b92ff7759cc87a7d9152517e5c02e8efc0ccd2a5279e51ecab",{0x8,0x27}},
     {0xfb38f,0x3a,"772c73998f620bbb076cab486a088d0b2425ddec6651829b9ce94a2f70c264c5",{0x2,0x20}},
     {0x34a4f0,0x94,"49d7d4b0e7027943dfb8947dca187f46b714cab4b4034c19fdcbfa18c6544d6c",{0x31}},
@@ -52,6 +52,8 @@ const std::array<Guard,30> guards{{
     {0x741b90,0x17f,"d6aea0e9d8f7bd2505acf7d21841fc56e933d3133c4524fbc64834b940c8a1b2",{0x8,0x2e,0x58,0x5f,0x65}},
     {0x130c40,0x59,"ea14133aae08b8828e4da5d84991726c0387619d1c6ea0eceb8835d2ce19e92b",{}},
     {0x1151e0,0x46,"cb2ccadd2639f6ef46bdc6dcf4ce8ae658c378e12b3ed9125d09979b43f25bc2",{}},
+    {0x7af7d0,0x3ba,"75d15df528d190cadc524d88516cd52dee60bbb6aa06a3adde269fc73557e518",{0x119,0x123,0x129,0x131,0x139,0x141,0x182,0x18a,0x2b9,0x2c3,0x2c9,0x2d1,0x2d9,0x2e1,0x322,0x32a}},
+    {0x5dbd50,0x65,"b71fd5f89a85526fe3339f806d15b4852f1c55d39b8c7362be7df45348aa3624",{0x1e}},
 }};
 bool CodeMatches() {
     for(const auto& guard:guards) {
@@ -63,8 +65,10 @@ bool CodeMatches() {
         }
         if(gameexe::Digest(bytes.data(),static_cast<ULONG>(bytes.size()))!=guard.hash)return false;
     }
-    uint32_t parser{};
-    return ReadMemory(reinterpret_cast<void*>(base+mountedTableRva+0x30),&parser,4) && parser==base+0x4b3830;
+    uint32_t parser{},activation{},update{};
+    return ReadMemory(reinterpret_cast<void*>(base+mountedTableRva+0x30),&parser,4) && parser==base+0x4b3830 &&
+        ReadMemory(reinterpret_cast<void*>(base+mountedTableRva+0x6c),&activation,4) && activation==base+0x5dbd50 &&
+        ReadMemory(reinterpret_cast<void*>(base+mountedTableRva+0x70),&update,4) && update==base+0x7af7d0;
 }
 template<class T> bool Read(uintptr_t address,T& value) {
     return ReadMemory(reinterpret_cast<void*>(address),&value,sizeof(value));
@@ -230,6 +234,11 @@ void Present() {
             if(cars[row.car].original[i].flags[field]>=0)
                 written=Store(address+flagOffsets[field],snapshots[i].data()+flagOffsets[field],1);
     }
+    // Fixed cameras retain their previous bonnet pose until native activation
+    // clears this byte. Invalidate once, after both cameras' settings are ready,
+    // so the next native update calculates the cockpit pose without a view cycle.
+    for(size_t i=0;i<2 && written;++i)
+        written=Store(graph.views[i]+poseCacheValidOffset,snapshots[i].data()+poseCacheValidOffset,1);
     if(!written) {failed=true;enabled=false;reason="camera_data_write_failed";WriteStatus();return;}
     ++applied[row.car];++appliedPairs;hasRejected=false;reason="applied_loaded_camera_data";WriteStatus();
 }

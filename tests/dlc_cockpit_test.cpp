@@ -15,9 +15,11 @@ Object ObjectFor(size_t car,size_t view,uint32_t table) {
     const auto& expected=cars[car].original[view];
     for(size_t i=0;i<floatOffsets.size();++i)std::memcpy(bytes.data()+floatOffsets[i],&expected.values[i],4);
     for(size_t i=0;i<flagOffsets.size();++i)if(expected.flags[i]>=0)bytes[flagOffsets[i]]=expected.flags[i];
+    bytes[poseCacheValidOffset]=1; // Native pose already cached before our first Present.
     return bytes;
 }
 bool ChangedByte(size_t offset,size_t car,size_t view) {
+    if(offset==poseCacheValidOffset)return true;
     if(offset>=0xf4 && offset<0xf8)return true;
     for(size_t i=0;i<18;++i)if(offset>=floatOffsets[i] && offset<floatOffsets[i]+4)return true;
     for(size_t i=0;i<flagOffsets.size();++i)if(offset==flagOffsets[i] && cars[car].original[view].flags[i]>=0)return true;
@@ -36,6 +38,7 @@ void PairTests() {
             for(size_t i=0;i<3;++i)CHECK(FloatAt(*object,0x2230+i*4)==row.seat[i]);
             CHECK(FloatAt(*object,0x10)==.02f && FloatAt(*object,0xf4)==.02f);
             CHECK((*object)[0x2266]==1 && (*object)[0x2268]==1 && (*object)[0x2267]==static_cast<uint8_t>(hide));
+            CHECK((*object)[poseCacheValidOffset]==0);
         }
         // Reject either bad view before writing any byte of either object.
         for(size_t field=0;field<floatOffsets.size();++field) {
@@ -48,6 +51,10 @@ void PairTests() {
             CHECK(!PatchPair(forward,reverse,table,row,hide));CHECK(forward==a && reverse==invalid);
         }
         forward=a;reverse=b;reverse[0]^=1;CHECK(!PatchPair(forward,reverse,table,row,hide));CHECK(forward==a);
+        forward=a;reverse=b;reverse[poseCacheValidOffset]=2;const auto invalidCache=reverse;
+        CHECK(!PatchPair(forward,reverse,table,row,hide));CHECK(forward==a && reverse==invalidCache);
+        forward=a;reverse=b;forward[poseCacheValidOffset]=0;reverse[poseCacheValidOffset]=0;
+        CHECK(PatchPair(forward,reverse,table,row,hide));
         forward=a;reverse=b;reverse[0x19]='x';CHECK(!PatchPair(forward,reverse,table,row,hide));
         forward=a;CHECK(!PatchPair(forward,forward,table,row,hide));
         CHECK(!PatchPair(forward,std::span<uint8_t>(forward).subspan(1),table,row,hide));
@@ -74,7 +81,7 @@ uint8_t* Image(const char* fixture) {
     std::ifstream in(fixture,std::ios::binary);CHECK(in.good());
     auto* image=static_cast<uint8_t*>(VirtualAlloc(nullptr,imageBytes,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));CHECK(image);
     const auto base=reinterpret_cast<uintptr_t>(image);std::vector<uint32_t> starts;
-    const auto count=Word(in);CHECK(count==30);
+    const auto count=Word(in);CHECK(count==32);
     for(uint32_t i=0;i<count;++i) {
         const auto rva=Word(in),size=Word(in),relocations=Word(in);CHECK(size<4096 && rva+size<imageBytes && relocations<256);
         in.read(reinterpret_cast<char*>(image+rva),size);CHECK(in.good());starts.push_back(rva);
@@ -83,9 +90,13 @@ uint8_t* Image(const char* fixture) {
             value+=static_cast<uint32_t>(base-0x400000);std::memcpy(image+rva+at,&value,4);
         }
     }
-    Put(image,mountedTableRva+0x30,static_cast<uint32_t>(base+0x4b3830));CHECK(TestCodeMatches(base));
+    Put(image,mountedTableRva+0x30,static_cast<uint32_t>(base+0x4b3830));
+    Put(image,mountedTableRva+0x6c,static_cast<uint32_t>(base+0x5dbd50));
+    Put(image,mountedTableRva+0x70,static_cast<uint32_t>(base+0x7af7d0));CHECK(TestCodeMatches(base));
     for(auto at:starts) {image[at]^=1;CHECK(!TestCodeMatches(base));image[at]^=1;}
-    image[mountedTableRva+0x30]^=1;CHECK(!TestCodeMatches(base));image[mountedTableRva+0x30]^=1;
+    for(auto slot:{0x30,0x6c,0x70}) {
+        image[mountedTableRva+slot]^=1;CHECK(!TestCodeMatches(base));image[mountedTableRva+slot]^=1;
+    }
     return image;
 }
 struct alignas(16) LiveFixture {
@@ -149,17 +160,22 @@ void LiveTests(uint8_t* image) {
         const std::vector<uint8_t> codeBefore(image,image+imageBytes);
         Present();CHECK(TestCounts(car)[0]==1);
         CHECK(PatchedPair(graph.front,graph.rear,graph.base+mountedTableRva,request.rows[car],false));
+        CHECK(graph.front[poseCacheValidOffset]==0 && graph.rear[poseCacheValidOffset]==0);
         CHECK(std::equal(codeBefore.begin(),codeBefore.end(),image));
         for(size_t i=0;i<objectBytes;++i) {
             if(!ChangedByte(i,car,0))CHECK(graph.front[i]==a[i]);
             if(!ChangedByte(i,car,1))CHECK(graph.rear[i]==b[i]);
         }
+        // The engine recomputes the pose on its next update. Do not keep
+        // invalidating it on every Present or override subsequent camera choices.
+        graph.front[poseCacheValidOffset]=1;graph.rear[poseCacheValidOffset]=1;
         const auto patchedFront=graph.front,patchedRear=graph.rear;
         for(unsigned i=0;i<5;++i)Present();
         CHECK(TestCounts(car)[0]==1 && TestCounts(car)[1]==0 && graph.front==patchedFront && graph.rear==patchedRear);
         // An engine reload can reuse the same addresses. Original data must be
         // patched again rather than skipped by a stale address cache.
         graph.Original(car);Present();CHECK(TestCounts(car)[0]==2);
+        CHECK(graph.front[poseCacheValidOffset]==0 && graph.rear[poseCacheValidOffset]==0);
     }
     const auto unchanged=[&] {const auto a=graph.front,b=graph.rear;Present();CHECK(graph.front==a && graph.rear==b);};
     graph.Load(0);Put(graph.car.data(),0x148,Address(graph.manager.data())+16);unchanged();
@@ -184,6 +200,8 @@ void LiveTests(uint8_t* image) {
     CHECK(std::equal(protectedBefore.begin(),protectedBefore.end(),executable));VirtualFree(executable,0,MEM_RELEASE);
     graph.Load(0);graph.rear[0x2266]=2;const auto prior=TestCounts(0)[1];unchanged();unchanged();
     CHECK(TestCounts(0)[1]==prior+1);
+    graph.Load(0);graph.rear[poseCacheValidOffset]=2;unchanged();
+    graph.Load(0);Present();graph.rear[poseCacheValidOffset]=2;unchanged();
     graph.Load(0);Present();const float foreignFov=123.f;Put(graph.front.data(),0x14,foreignFov);unchanged();
     graph.Load(0);Put(image,0xe5917c,0u);Put(image,0xe61010,Address(graph.replay.data()));
     TestSetup(Address(image),request,true);unchanged();
@@ -196,6 +214,6 @@ void LiveTests(uint8_t* image) {
 int main(int argc,char** argv) {
     try {
         CHECK(argc==2);RequestTests();PairTests();auto* image=Image(argv[1]);LiveTests(image);VirtualFree(image,0,MEM_RELEASE);
-        std::cout<<"25 car pairs, 30 relocated code guards, unchanged executable bytes, readiness, live ownership, AI/provider refusal and reloaded graph tests passed.\n";return 0;
+        std::cout<<"25 car pairs, 32 relocated code guards, one-time pose cache refresh, unchanged executable bytes, readiness, live ownership, AI/provider refusal and reloaded graph tests passed.\n";return 0;
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}
 }

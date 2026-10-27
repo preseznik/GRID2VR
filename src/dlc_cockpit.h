@@ -25,6 +25,8 @@ std::array<uint64_t,2> TestCounts(size_t car);
 // executable, instruction sites, vtable, identities and original values first.
 inline constexpr size_t objectBytes=0x2270;
 inline constexpr uint32_t mountedTableRva=0xd09ef0;
+// Mounted::Update skips pose calculation while this cache-valid byte is set.
+inline constexpr size_t poseCacheValidOffset=0x215;
 inline constexpr std::array<size_t,22> floatOffsets{
     0x2230,0x2234,0x2238,0x2240,0x2248,0x10,
     0x2200,0x2204,0x2208,0x2210,0x2214,0x2218,0x2220,0x2224,0x2228,
@@ -106,7 +108,7 @@ inline bool ValidObject(std::span<const uint8_t> object,uint32_t table,size_t ca
     if(object.size()!=objectBytes || car>=cars.size() || view>1)return false;
     uint32_t actual{},hash{};std::memcpy(&actual,object.data(),4);std::memcpy(&hash,object.data()+0x98,4);
     const std::string_view name=view?"bonnet_reverse":"bonnet";
-    if(actual!=table || hash!=NameHash(name) ||
+    if(actual!=table || hash!=NameHash(name) || object[poseCacheValidOffset]>1 ||
        std::memcmp(object.data()+0x19,name.data(),name.size()) || object[0x19+name.size()])return false;
     const auto& expected=cars[car].original[view];
     for(size_t i=0;i<checkedFloatCount;++i) {
@@ -132,6 +134,7 @@ inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint
             if(cars[row.car].original[view].flags[i]<0)continue;
             object[flagOffsets[i]]=i<2?1:(i==2 && hideDriver?1:0);
         }
+        object[poseCacheValidOffset]=0;
     }
     return true;
 }
@@ -148,6 +151,8 @@ inline bool PatchedPair(std::span<const uint8_t> forward,std::span<const uint8_t
             if(original.flags[i]>=0)expected[view][flagOffsets[i]]=original.flags[i];
     }
     if(!PatchPair(expected[0],expected[1],table,row,hideDriver))return false;
+    // A native update may have rebuilt the pose cache. Compare authored fields
+    // only, so subsequent Presents leave that rebuilt cache untouched.
     for(size_t view=0;view<2;++view) {
         const auto object=view?reverse:forward;
         for(auto at:floatOffsets) {
