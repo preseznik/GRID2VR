@@ -78,6 +78,7 @@ class SessionConfigurationTests(unittest.TestCase):
             self.assertFalse(result['playerControlValidated'])
             self.assertEqual(result['steamArguments'][-1], sessions.SESSION_FILENAME)
             self.assertEqual(result['steamArguments'][-2], '-benchmarkAttract' if mode == 'attract' else '-benchmark')
+            self.assertEqual(result['nativeArguments'], result['steamArguments'][2:])
             self.assertEqual(hashlib.sha256((destination/'session.xml').read_bytes()).hexdigest(), result['configurationSha256'])
             with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
                 self.assertEqual(sessions.verify(self.root, destination), result)
@@ -229,6 +230,10 @@ class SessionConfigurationTests(unittest.TestCase):
             data['steamArguments'] = ['-applaunch', '999']
             metadata.write_text(json.dumps(data))
             with self.assertRaises(ValueError):sessions.verify(self.root, destination)
+            data = json.loads(original_metadata)
+            data['nativeArguments'] = ['-benchmarkAttract', 'foreign.xml']
+            metadata.write_text(json.dumps(data))
+            with self.assertRaises(ValueError):sessions.verify(self.root, destination)
             metadata.write_bytes(original_metadata)
             (self.root/'cars/models/z06/cameras.xml').unlink()
             with self.assertRaises(ValueError):sessions.verify(self.root, destination)
@@ -244,6 +249,8 @@ class SessionConfigurationTests(unittest.TestCase):
             self.assertEqual(config.read_bytes(), (destination/'session.xml').read_bytes())
             self.assertEqual(staged['steamArguments'], ['-applaunch', '44350', '-benchmarkAttract', 'GRID2VR.session.xml'])
             self.assertEqual(staged['steamArgumentLine'], '-applaunch 44350 -benchmarkAttract GRID2VR.session.xml')
+            self.assertEqual(staged['nativeArguments'], ['-benchmarkAttract', 'GRID2VR.session.xml'])
+            self.assertEqual(staged['nativeArgumentLine'], '-benchmarkAttract GRID2VR.session.xml')
             self.assertEqual(staged['nativeConfigurationName'], sessions.SESSION_FILENAME)
             self.assertFalse(any(c in staged['steamArguments'][-1] for c in '(<>\\|:?*)!'))
             config.write_bytes(b'foreign existing file')

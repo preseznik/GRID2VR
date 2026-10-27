@@ -13,11 +13,7 @@ internal static class Installation
     internal static void ValidateGame(string game)
     {
         Updates.PlainPath(game);
-        foreach (var name in new[] { "grid2.exe", "grid2_avx.exe" })
-        {
-            var path=Path.Combine(game,name); Updates.PlainPath(path);
-            GameExecutable.Validate(path, name == "grid2_avx.exe");
-        }
+        GameExecutable.ValidateInstallation(game);
     }
     internal static void RequireIdle(string root, bool allowPending = false)
     {
@@ -87,8 +83,15 @@ internal static class Installation
     }
     internal static void Migrate(string root,string source)
     {
-        RequireIdle(root); var data=AppPaths.Data(root); Updates.PlainPath(source);Updates.PlainPath(data);
+        RequireIdle(root);
+        MigrateData(root, source, GameExecutable.ValidateInstallation(AppPaths.Game(root)) == "Steam");
+    }
+    internal static void MigrateData(string root, string source, bool managedProfilesSupported)
+    {
+        var data=AppPaths.Data(root); Updates.PlainPath(source);Updates.PlainPath(data);
         if(new[]{"session-pending.json","diagnostic-pending.json","practice-flow-pending.json","steamvr-theater-pending.json"}.Any(name=>File.Exists(Path.Combine(source,name))))throw new IOException("Recover the source session before importing its data.");
+        if (!managedProfilesSupported && new[] { "profile-selection.json", "profiles" }.Any(name => Path.Exists(Path.Combine(source, name))))
+            throw new IOException(ProfileStore.StandaloneCareerMessage + " Import only launcher preferences, without profile files.");
         var copies=new List<(string source,string destination)>();long total=0;
         // Explicit import only. Never bake this developer's preferences or careers into a release.
         foreach(var name in new[]{"launcher-settings.json","launcher-window.json","driving-controls.json","seat-positions.json","update-preferences.json","profile-selection.json","profiles"})

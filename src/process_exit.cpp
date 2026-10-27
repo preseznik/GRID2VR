@@ -11,6 +11,7 @@ namespace {
 using Exit = void (WINAPI*)(UINT);
 Exit original{};
 BeforeExit beforeExit{};
+BeforeExit observerCleanup{};
 DWORD owner{};
 uintptr_t host{};
 std::filesystem::path receipt;
@@ -34,6 +35,12 @@ void WINAPI ExitGame(UINT code) {
         << " owner=" << owner << " caller_rva=" << std::hex << caller-host << std::dec
         << " owner_thread=" << onOwner << " first=" << first << '\n';
     log.flush();
+    if(first && observerCleanup) {
+        const char* observerResult{};
+        try { observerResult=observerCleanup(); } catch(...) { observerResult="callback_exception"; }
+        log << "exit observer_cleanup=" << (observerResult?observerResult:"unknown") << '\n';
+        log.flush();
+    }
     const char* result="reentrant";
     if(first && onOwner) result=Cleanup();
     else if(first) {
@@ -60,7 +67,7 @@ void Service() {
     handoff=Handoff::Complete;
 }
 
-bool Install(uintptr_t base,const std::filesystem::path& output,BeforeExit callback) {
+bool Install(uintptr_t base,const std::filesystem::path& output,BeforeExit callback,BeforeExit observerCallback) {
     if(original || !base || !callback) return false;
     // Supported AVX finish routine, including its relocated ExitProcess IAT
     // operand. The hashed executable and both runtime guards must agree.
@@ -75,7 +82,7 @@ bool Install(uintptr_t base,const std::filesystem::path& output,BeforeExit callb
     auto target=GetProcAddress(GetModuleHandleW(L"kernel32.dll"),"ExitProcess");
     if(!target) return false;
     receipt=output/L"process-exit.txt";
-    beforeExit=callback;owner=GetCurrentThreadId();host=base;
+    beforeExit=callback;observerCleanup=observerCallback;owner=GetCurrentThreadId();host=base;
     original=reinterpret_cast<Exit>(target);
     if(!SwapGuardedPointer(reinterpret_cast<void**>(slot),reinterpret_cast<void*>(target),reinterpret_cast<void*>(ExitGame))) {
         original=nullptr;return false;

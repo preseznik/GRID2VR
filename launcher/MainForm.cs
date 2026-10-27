@@ -33,6 +33,7 @@ internal sealed class MainForm : LauncherForm
     private readonly CheckBox previewVrFixes = new() { Name = "PreviewVrFixes", Text = "Preview VR fixes", AutoSize = true };
     private readonly CheckBox skipIntro = new() { Name = "SkipIntro", AccessibleName = "Skip intro / logos", Text = "On", AutoSize = true };
     private readonly CheckBox diagnosticLogging = new() { Name = "DiagnosticLogging", AccessibleName = "Diagnostic logging", Text = "On", AutoSize = true };
+    private readonly ChaseCameraPanel chaseCamera = new();
     private readonly CheckBox performanceFollowView = new() { Name = "PerformanceFollowView", AccessibleName = "Performance display follows view", Text = "Follow view", AutoSize = true };
     private readonly CheckBox performanceDisplay = new() { Name = "PerformanceDisplay", AccessibleName = "Performance display", Text = "FPS + GPU usage (VR)", AutoSize = true };
     private readonly CheckBox replay3d = new() { Name = "VrReplayCameras", AccessibleName = "3D replays", Text = "On", Checked = true, AutoSize = true };
@@ -186,6 +187,7 @@ internal sealed class MainForm : LauncherForm
         var controlTabs = new ModernTabs { Name = "ControlTabs", Dock = DockStyle.Fill };
         controlPage.Controls.Add(controlTabs); tabs.TabPages.Add(controlPage);
         var controls = Page(controlTabs, "General");
+        controls.Controls.Add(chaseCamera);
         Section(controls, "Session controls");
         controls.Controls.Add(end);
         controls.Controls.Add(TextLabel("Use Quit in the game for a normal exit. End session stops VR, closes this session's game process and restores original files."));
@@ -389,6 +391,7 @@ internal sealed class MainForm : LauncherForm
         recenterKey = choices.RecenterKey; recenterModifiers = choices.RecenterModifiers; UpdateRecenterLabel();
         recenterDevice = choices.RecenterDevice; UpdateDeviceRecenter();
         keepHorizonLevel.Checked = choices.KeepHorizonLevel;
+        chaseCamera.LoadChoices(choices);
     }
     private void FilterCars()
     {
@@ -414,13 +417,13 @@ internal sealed class MainForm : LauncherForm
             vehicle, track.SelectedItem as ContentItem, runtime.SelectedItem as string, recenterKey, recenterModifiers, laps.Value,
             mode, opponents.Value, rivals) + (!AppPaths.Packaged(client.Root) && previewVrFixes.Checked ? "\nPreview VR fixes enabled" : "");
     }
-    private Choices Current() => new(((ContentItem)car.SelectedItem!).Id, ((ContentItem)track.SelectedItem!).Id, (string)runtime.SelectedItem!, recenterKey, recenterModifiers, (int)laps.Value)
+    private Choices Current() => chaseCamera.ApplyTo(new(((ContentItem)car.SelectedItem!).Id, ((ContentItem)track.SelectedItem!).Id, (string)runtime.SelectedItem!, recenterKey, recenterModifiers, (int)laps.Value)
     {
         Graphics = CurrentGraphics(), ModernInterface = modernInterface.Checked, PreviewVrFixes = previewVrFixes.Checked,
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked,
         VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
-    };
+    });
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
     private static void SelectChoice(ComboBox box, string id) => box.SelectedItem = box.Items.Cast<ContentItem>().Single(x => x.Id == id);
     private static void AddQualityChoices(ComboBox box, params string[] choices) => box.Items.AddRange(choices

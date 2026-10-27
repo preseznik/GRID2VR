@@ -1,3 +1,18 @@
+# GRID2VR 0.1.10 — Experimental
+
+- Look around from the close and far chase cameras with the mouse or right stick, on desktop and in VR, while driving or watching an offline replay. Enable **Free look** under **Controls → General**; it is off by default.
+- Scroll to zoom. Choose hold-left, hold-right or always-on mouse look, invert vertical movement, keep your camera angle and adjust mouse and stick sensitivity separately.
+- Move the replay camera while paused, then return to VR driving. Camera rotation stays centered on the car when nearby scenery pushes the camera closer.
+- Keep the selected VR scene resolution when resizing the desktop mirror. Enable **Graphics → VR mirror → Maximize windowed screen** to fill the monitor with a borderless mirror.
+- Correct the initial cockpit view for supported DLC cars when the race loads.
+- Extend the optional **New cockpit textures** pack to all 76 cars, including the Caterham SP/300.R. The matching pack downloads through the launcher (about 125 MB); **Old cockpit textures** switches back to the originals.
+- Choose your GRID 2 folder during both fresh installation and upgrades, using **Browse GRID 2 Installation**.
+- Support the standalone GRID 2 1.0.85.8679 build with direct launch and optional intro skipping. Use **Current game career** for this build; managed careers and Steam career imports remain available for supported Steam copies.
+
+This is an Experimental pre-release. Broader car/controller coverage, standalone save/load and clean VR shutdown still need testing. No game files are included.
+
+**Known issue:** closing a VR session with **Alt+F4** can report a shutdown fault after successful driving and replay. This remains unresolved.
+
 # GRID2VR 0.1.9 — Experimental
 
 - Add cockpit views and per-car seat adjustment for the 25 supported DLC cars. You still need to own the corresponding DLC.

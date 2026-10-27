@@ -24,6 +24,14 @@ param(
     [switch]$PreviewVrFixes,
     [switch]$SkipIntro,
     [switch]$DiagnosticLogging,
+    [switch]$ChaseCameraObserver,
+    [ValidateSet(0,1)][int]$ChaseFreeLook=0,
+    [ValidateSet(0,1)][int]$ChaseKeepAngle=0,
+    [ValidateSet('left','right','always')][string]$ChaseMouseMode='right',
+    [ValidateRange(180,1000)][ValidateScript({ $_ % 10 -eq 0 })][int]$ChaseMaxZoomOut=180,
+    [ValidateRange(25,300)][int]$ChaseMouseSensitivity=100,
+    [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
+    [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
@@ -42,7 +50,11 @@ param(
     [switch]$Preflight
 )
 $ErrorActionPreference='Stop'
+if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
+. (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
+$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
 if($VrMirrorBorderless -and $Mode -ne 'VR') { throw 'Borderless VR mirror requires a VR launch.' }
+if($ChaseCameraObserver -and ($Mode -ne 'Desktop' -or !$DiagnosticProxy)) { throw 'Chase observation requires Desktop and an explicit diagnostic proxy; camera writes are unavailable.' }
 if($CockpitMode -ne 'Off' -and ($Mode -ne 'VR' -or $CockpitS2000 -ne 'Off')) { throw 'Launcher cockpit mode requires VR and cannot be combined with the legacy S2000 diagnostic.' }
 if($CockpitS2000 -ne 'Off' -and $LaunchMode -ne 'Normal' -and $Car -cne 's20') { throw 'The cockpit prototype is for the Honda S2000 only.' }
 if($PreviewVrFixes -and ($Mode -ne 'VR' -or $DiagnosticProxy -or $HeadsetVisibilityCandidate -or $FlickerDiagnostic)) { throw 'Preview VR fixes require VR and cannot be combined with diagnostic overrides.' }
@@ -72,6 +84,8 @@ try {
     if($LaunchMode -eq 'Normal') { $receipt.car=$null; $receipt.track=$null; $receipt.laps=$null }
     $receipt.opponentCars=if($LaunchMode -eq 'Race'){$OpponentCars.ToLowerInvariant()}else{$null}
     $receipt.desktopBorderlessRequested=($Mode -eq 'Desktop')
+    $receipt.chaseCameraObserver=[bool]$ChaseCameraObserver
+    $receipt.chaseCameraRequested=$chase.requested
     $receipt.vrMirrorBorderlessRequested=($Mode -eq 'VR' -and [bool]$VrMirrorBorderless)
     $receipt.vrHud=@{enabled=($Mode -eq 'VR');distance=$HudDistance;followView=[bool]$HudFollowView;hiddenElements=$HudHiddenElements}
     Write-UserSessionStatus $root $receipt
@@ -141,9 +155,12 @@ try {
         # Request early; the native owner waits for its live renderer, camera,
         # visibility and tracking guards rather than a fixed race-start delay.
         HardwareSettingsFile=$hardware;HeadsetScale=$HeadsetScale;CaptureAfterSeconds=1;TimeoutSeconds=150;PythonPath=$python;
-        FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy;
+        FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy;ChaseCameraObserver=[bool]$ChaseCameraObserver;
         ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
     if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection }
+    $parameters.ChaseFreeLook=$ChaseFreeLook; $parameters.ChaseKeepAngle=$ChaseKeepAngle; $parameters.ChaseMouseMode=$ChaseMouseMode
+    $parameters.ChaseMaxZoomOut=$ChaseMaxZoomOut; $parameters.ChaseMouseSensitivity=$ChaseMouseSensitivity
+    $parameters.ChaseStickSensitivity=$ChaseStickSensitivity; $parameters.ChaseInvertVertical=$ChaseInvertVertical
     $parameters.HudDistance=$HudDistance; $parameters.HudFollowView=$HudFollowView; $parameters.HudHiddenElements=$HudHiddenElements
     $parameters.VrReplayCameras=$VrReplayCameras
     $parameters.VrGarageMenus=$VrGarageMenus

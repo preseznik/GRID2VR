@@ -48,7 +48,7 @@ try {
     Check ((Get-FileHash -LiteralPath (Join-Path $first 'user-session.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $data 'user-session-last.json')).Hash) 'Latest locator differs from per-run status.'
     # The real launch entry point must preserve a useful log even if preparation
     # fails before selection or a native diagnostic run can exist.
-    foreach($name in @('Start-UserSession.ps1','User-Session.ps1','Hardware-Settings.ps1','Paths.ps1')) {
+    foreach($name in @('Start-UserSession.ps1','User-Session.ps1','Hardware-Settings.ps1','Paths.ps1','Chase-Camera.ps1')) {
         Copy-Item -LiteralPath (Join-Path $root ('tools/'+$name)) -Destination (Join-Path $toolFolder $name)
     }
     [IO.File]::WriteAllText((Join-Path $toolFolder 'Profiles.ps1'),"function Get-LaunchProfile { throw 'Injected preparation failure.' }")

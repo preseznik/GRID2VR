@@ -43,7 +43,10 @@ inline bool MenuClipTransition(const CameraContext& entry,const CameraContext& c
         // presentation-only; world replay still requires unchanged clips.
         // Launcher cockpit assets use exactly .02 m to avoid roof clipping.
         // Accept that source only for the same fixed .2/100 menu destination.
-        (entryNear!=0x3ca3d70au && entryNear!=0x3dcccccdu && entryNear!=0x3e4ccccdu && entryNear!=0x3e4cccceu) ||
+        // Chase replay navigation also supplies exactly .11 (frame 4523 of
+        // the 2026-10-27 VR run); all non-clip bytes must still be unchanged.
+        (entryNear!=0x3ca3d70au && entryNear!=0x3dcccccdu && entryNear!=0x3de147aeu &&
+         entryNear!=0x3e4ccccdu && entryNear!=0x3e4cccceu) ||
         !MenuSourceFar(farPlane) || completeNear!=0x3e4ccccdu ||
         CameraWord(complete,0xec)!=0x42c80000u) return false;
     for (auto offset:clipWords) {

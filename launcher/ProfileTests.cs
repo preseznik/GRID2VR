@@ -183,6 +183,43 @@ internal static class ProfileTests
         Check(store.List().Count == 1 && File.ReadAllBytes(sourceSave).SequenceEqual(original));
         Check(closedChecks > 20);
         TestAccountOwnership(fixture, source);
+        TestStandalone(fixture, source);
+    }
+
+    static void TestStandalone(string fixture, string source)
+    {
+        var workspace = Path.Combine(fixture, "standalone-profile-fixture");
+        var steam = new ProfileStore(workspace, () => { }, () => source, () => "123");
+        var managed = steam.Create("Preserved", true);
+        var selection = Path.Combine(workspace, "artifacts", "profile-selection.json");
+        var originalSelection = File.ReadAllBytes(selection);
+        var save = Path.Combine(steam.Root, managed.Id, "remote", "savegame@profile0#1234567890");
+        var originalSave = File.ReadAllBytes(save);
+        string? NoSteam() => throw new InvalidOperationException("Standalone careers must not access Steam.");
+        var direct = new ProfileStore(workspace, () => { }, NoSteam, NoSteam, managedProfilesSupported: false);
+
+        Check(!direct.ManagedProfilesSupported);
+        Check(direct.Read(ProfileStore.CurrentCareer).Status.Contains("by the game"));
+        Check(direct.List().Single().Id == ProfileStore.CurrentCareer);
+        Reject(() => direct.SelectedId()); // Preserve an old selection until the user chooses Current.
+        Reject(() => direct.Read(managed.Id));
+        Reject(() => direct.Select(managed.Id));
+        Reject(() => direct.Create("Fresh"));
+        Reject(() => direct.Create("Copy", true));
+        Reject(() => direct.Delete(managed.Id));
+        Check(File.ReadAllBytes(selection).SequenceEqual(originalSelection));
+        Check(File.ReadAllBytes(save).SequenceEqual(originalSave));
+
+        using var panel = new ProfilePanel(direct);
+        panel.Reload(); panel.SetIdle(true);
+        Check(!panel.Controls.Find("CreateProfile", true).Single().Enabled);
+        Check(!panel.Controls.Find("DeleteProfile", true).Single().Enabled);
+        Check(panel.Controls.Find("UseProfile", true).Single().Enabled);
+        direct.Select(ProfileStore.CurrentCareer);
+        panel.Reload();
+        Check(direct.SelectedId() == ProfileStore.CurrentCareer);
+        Check(!panel.Controls.Find("UseProfile", true).Single().Enabled);
+        Check(File.ReadAllBytes(save).SequenceEqual(originalSave));
     }
 
     static void TestAccountOwnership(string fixture, string source)

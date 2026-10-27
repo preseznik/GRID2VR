@@ -21,6 +21,8 @@
 #include "driving_controls.h"
 #include "player_control.h"
 #include "background_play.h"
+#include "chase_observer.h"
+#include "chase_camera.h"
 #include "solo_race.h"
 #include "guarded_hooks.h"
 #include "instance_capacity.h"
@@ -163,7 +165,7 @@ const char* BeforeGameExit() {
         return "renderer_not_restored";
     }
     runtimeStopped=true;
-    playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();dlccockpit::Stop();
+    playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();
 #ifdef GRID2VR_ENABLE_XR_SESSION
     recenter::Enable(false);
     if(xrRequested && !xrStopped) {
@@ -347,10 +349,15 @@ DrawInstancedFn realDrawInstanced{}; DrawIndexedInstancedFn realDrawIndexedInsta
 ClearColorFn realClearColor{}; ClearDepthFn realClearDepth{};
 void CaptureComputeResource(ID3D11DeviceContext* c,ID3D11Resource* resource,const std::string& name);
 
+const char* StopCameraHooksForExit() {
+    const auto observer=chaseobserver::StopForExit();
+    const auto controls=chasecamera::StopForExit();
+    return std::strcmp(controls,"controls_not_installed")?controls:observer;
+}
 bool EnsureExitHandler() {
     if (!runtimeSession) return true;
     static bool attempted=false,ready=false;
-    if (!attempted) { attempted=true;ready=processexit::Install(gameBase,output,BeforeGameExit);Log("session exit handler installed=%u",ready); }
+    if (!attempted) { attempted=true;ready=processexit::Install(gameBase,output,BeforeGameExit,StopCameraHooksForExit);Log("session exit handler installed=%u",ready); }
     return ready;
 }
 #ifdef GRID2VR_ENABLE_XR_SESSION
@@ -628,6 +635,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     }
 #endif
     const unsigned windowState=WindowState(f+1);
+    if(runtimeSession) {chaseobserver::Present(f+1,windowState);chasecamera::Present(f+1,windowState);}
     bool foregroundStable=foregroundHold.Observe(GetTickCount64(),windowState==5);
     const bool simulatedBackground=UnattendedStereoWindow(windowState,unattendedStereo,runtimeSession,recordedRequested,
 #ifdef GRID2VR_ENABLE_XR_SESSION
@@ -683,7 +691,9 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
             std::filesystem::is_regular_file(output/L"normal-launch.request");
         const bool localRaceReady=nativeLaunch && NormalLocalRaceReady(gameBase);
         static bool nativeHooksInstalled=false;
-        if(runtimeSession && !runtimeStopped && !nativeHooksInstalled) {
+        // Desktop player-only sessions have neither XR nor capture startup.
+        // Establish owning-thread cleanup before installing any native hooks.
+        if(runtimeSession && !runtimeStopped && !nativeHooksInstalled && EnsureExitHandler()) {
             uintptr_t playback{},parent{},table{},begin{},end{},car{};
             const auto readPointer=[](uintptr_t address,uintptr_t& value) {
                 return ReadMemory(reinterpret_cast<void*>(address),&value,sizeof(value)) && value>=0x10000 && value<=UINTPTR_MAX-0x10000;
@@ -693,6 +703,8 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
                readPointer(parent+0xa8,begin) && readPointer(parent+0xac,end) && end-begin==4 && readPointer(begin,car);
             if(nativeLaunch?localRaceReady:(replayReady || NormalSoloRaceReady(gameBase))) {
                 backgroundplay::Install(gameBase,output);
+                chaseobserver::Install();
+                chasecamera::Install();
                 // The old input experiment is specific to recorded playback.
                 // Normal entry uses the game's own local controller unchanged.
                 if(!nativeLaunch && replayReady) playercontrol::Install(gameBase,output);
@@ -762,6 +774,8 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
                 playercontrol::Stop();
                 backgroundplay::Stop();
                 dlccockpit::Stop();
+                chaseobserver::Stop();
+                chasecamera::Stop();
                 if (engine::Continuous() && !engine::StopSession()) engine::FailSession();
                 runtimeStopped=true;
             }
@@ -1662,6 +1676,7 @@ bool Active() {
 #endif
             gameBase=reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
             if(runtimeSession)dlccockpit::Prepare(gameBase,output);
+            if(runtimeSession) {chaseobserver::Prepare(gameBase,output);chasecamera::Prepare(gameBase,output);}
             engine::ObserveFaults(gameBase,output);
             Log("GRID2VR diagnostic supported AVX host; engine replay and game-device OpenXR probe separately opt-in; no headset image submission");
             return true;

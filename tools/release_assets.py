@@ -54,9 +54,19 @@ def verify_native_pack(path, catalog):
             'Native renderer does not contain this texture catalog; rebuild it before packaging.')
 
 
-def prepare(root, out, version, channel, revision, pack=None):
+def native_path(root, native=None):
+    return native if native is not None else root/'build/win32/bin/RelWithDebInfo/d3d11.dll'
+
+
+def prepare(root, out, version, channel, revision, pack=None, native=None, native_sha256=None):
     tag = identity(version, channel)
     require(re.fullmatch('[a-f0-9]{40}', revision), 'A full source commit is required.')
+    require((native is None) == (native_sha256 is None), 'Native path and SHA-256 must be supplied together.')
+    selected_native = native_path(root, native)
+    if native is not None:
+        require(re.fullmatch('[a-f0-9]{64}', native_sha256), 'Invalid native SHA-256.')
+        require(selected_native.is_file() and not selected_native.is_symlink(), 'Missing or linked native renderer.')
+        require(sha(selected_native) == native_sha256, 'Native renderer does not match the requested SHA-256.')
     catalog_path = root/'tools/data/cockpit-texture-pack.json'
     catalog = read(catalog_path)
     require(catalog['schema'] == 1 and re.fullmatch(r'\d+\.\d+\.\d+-preview\.\d+', catalog['version']), 'Invalid texture pack catalog.')
@@ -69,7 +79,7 @@ def prepare(root, out, version, channel, revision, pack=None):
         require(len(archive.infolist()) == len(catalog['files']) and set(archive.namelist()) == {prefix+n for n in catalog['files']}, 'Texture ZIP contents differ from the catalog.')
         for entry, digest in catalog['files'].items():
             require(hashlib.sha256(archive.read(prefix+entry)).hexdigest() == digest, f'Changed texture ZIP entry: {entry}')
-    native = root/'build/win32/bin/RelWithDebInfo/d3d11.dll'
+    native = selected_native
     verify_native_pack(native, catalog)
     out.mkdir(parents=True, exist_ok=True)
     require(not (out/name).exists() and not (out/'release-inputs.json').exists(), 'Release inputs already exist; choose a new package folder.')
@@ -81,11 +91,11 @@ def prepare(root, out, version, channel, revision, pack=None):
     return frozen
 
 
-def check_inputs(root, out, version, channel):
+def check_inputs(root, out, version, channel, native=None):
     frozen = read(out/'release-inputs.json')
     require(frozen['tag'] == identity(version, channel) and frozen['version'] == version and frozen['channel'] == channel, 'Release inputs belong to another build.')
     require(sha(root/'tools/data/cockpit-texture-pack.json') == frozen['catalogSha256'], 'Texture catalog changed during packaging; rebuild the package.')
-    require(sha(root/'build/win32/bin/RelWithDebInfo/d3d11.dll') == frozen['nativeSha256'], 'Native renderer changed during packaging; rebuild the package.')
+    require(sha(native_path(root, native)) == frozen['nativeSha256'], 'Native renderer changed during packaging; rebuild the package.')
     verify_file(out/frozen['cockpitTextures']['name'], frozen['cockpitTextures'])
     return frozen
 
@@ -138,5 +148,7 @@ if __name__ == '__main__':
     parser.add_argument('--channel', required=True)
     parser.add_argument('--revision', required=True)
     parser.add_argument('--pack', type=Path)
+    parser.add_argument('--native', type=Path)
+    parser.add_argument('--native-sha256')
     args = parser.parse_args()
-    print(json.dumps(prepare(ROOT, args.output.resolve(), args.version, args.channel, args.revision, args.pack), indent=2))
+    print(json.dumps(prepare(ROOT, args.output.resolve(), args.version, args.channel, args.revision, args.pack, args.native, args.native_sha256), indent=2))

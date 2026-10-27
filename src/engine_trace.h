@@ -41,6 +41,8 @@ std::string SnapshotPhase(const char* phase);
 CameraStamp CurrentCamera();
 StageStamp CurrentStage();
 SceneStamp CurrentScene();
+// The renderer's second-eye submission is never a camera simulation update.
+bool ReplayingEye();
 bool CurrentCockpitCamera();
 // Borrow the immutable pair only during a fully posed asymmetric stereo replay.
 const SceneViews* CurrentReplayViews();

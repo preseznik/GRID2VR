@@ -13,6 +13,11 @@
 #pragma comment(lib, "bcrypt.lib")
 
 namespace grid2vr::gameexe {
+inline constexpr char avxStandalone[]="825f30a49a668870c7bfab0309c3afb01a396fc1cec0be8df9764e32bf2fb53f";
+inline constexpr char regularStandalone[]="d8ec0c631b453d6e5e9adebae4cfc9b612823fec316344c28544bc65245ba35d";
+inline bool IsStandalone(const std::string& identity) {
+    return identity==avxStandalone || identity==regularStandalone;
+}
 inline std::string Digest(const unsigned char* bytes, ULONG count) {
     BCRYPT_ALG_HANDLE algorithm{}; BCRYPT_HASH_HANDLE hash{};
     bool valid=BCryptOpenAlgorithmProvider(&algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)>=0 &&
@@ -49,6 +54,7 @@ inline bool ValveSigned(const wchar_t* path,HANDLE handle) {
 // Same contract as tools/GameExecutable.cs. Excludes only the observed Steam
 // variation; every other byte before the certificate, including code, imports,
 // data, resources and PE layout, stays pinned. Excluded bytes require Valve trust.
+// Two standalone files are admitted separately by exact complete-file identity.
 // The returned identity always hashes the original file for preservation checks.
 inline std::string Validate(const wchar_t* path,bool avx) {
     struct File {HANDLE handle{INVALID_HANDLE_VALUE};~File(){if(handle!=INVALID_HANDLE_VALUE)CloseHandle(handle);}} file;
@@ -59,10 +65,12 @@ inline std::string Validate(const wchar_t* path,bool avx) {
         const DWORD certificate=avx?0xef8800:0xee7800,security=avx?0x1f0:0x1e0;
         if(!GetFileInformationByHandle(file.handle,&info)||
            (info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))||
-           !GetFileSizeEx(file.handle,&size)||size.QuadPart<certificate+8||size.QuadPart>certificate+65536)return {};
+           !GetFileSizeEx(file.handle,&size)||size.QuadPart<certificate||size.QuadPart>certificate+65536)return {};
         std::vector<unsigned char> bytes(static_cast<std::size_t>(size.QuadPart));DWORD read{};
         if(!ReadFile(file.handle,bytes.data(),static_cast<DWORD>(bytes.size()),&read,nullptr)||read!=bytes.size())return {};
         const auto actual=Digest(bytes.data(),read);
+        if(bytes.size()==certificate && actual==(avx?avxStandalone:regularStandalone))return actual;
+        if(bytes.size()<certificate+8)return {};
         if(actual==(avx?"519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502":
                         "f92c2e1134b5d6d61404131224b41c182089bf563d28731eef0faa7d8096ab4c"))return actual;
         DWORD offset{},length{};std::memcpy(&offset,bytes.data()+security,4);std::memcpy(&length,bytes.data()+security+4,4);

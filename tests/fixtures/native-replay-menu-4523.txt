@@ -1,0 +1,22 @@
+Exact camera inputs from artifacts/logs/20261027-193011-656, 2026-10-27.
+Pagani / Okutama route 1, user VR Practice, VDXR, 100% scene/headset scale.
+Always-on chase mouse look and vertical inversion enabled.
+Native SHA256: 07a0e6241f64ed8c444583a810a5097a37fcd937a3f7cf53de613e9a4c0214f8.
+
+The user reported correct VR driving, camera control during flat replay, and no
+VR recovery on returning to driving. Frame 4523, scene 214008 was refused before
+the first eye with replay_camera_transition after 3301 accepted stereo pairs.
+OpenXR then shut down; the chase adapter continued serving recorded replay.
+
+The entry near scalar is exactly 0x3de147ae (0.10999999940395355), and the
+destination is the native short-pass .2/100 constants. Main far remains 15000.
+Only clipWords change: e8, ec, 138, 148, 198, 1a8, 1b8, 1c8. The center view is
+identical and the native history counter advances once. The source snapshot is
+replay-input-rejection.json; fixture hashes and byte differences are retained in
+docs/evidence/chase-camera-vr-replay-fix-20261027/captured-transition.json.
+
+This fixture qualifies cancellation before either eye, not rendering a changed
+camera or resetting an already failed stereo sequence. The existing guarded
+suspension can reset histories and resume on a fresh stable world camera.
+It does not establish that the corrected binary passes a headset replay round
+trip; that remains a separate user acceptance gate.

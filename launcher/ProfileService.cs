@@ -5,7 +5,13 @@ namespace GRID2VR;
 
 internal static class ProfileService
 {
-    internal static ProfileStore Open(string workspace) => new(workspace, () => RequireClosed(workspace), CurrentSaveRoot, AccountId);
+    internal static ProfileStore Open(string workspace)
+    {
+        // Cache the UI capability for this launcher instance. The session worker
+        // independently revalidates the executable pair before managed save access.
+        var managed = GameExecutable.ValidateInstallation(AppPaths.Game(workspace)) == "Steam";
+        return new(workspace, () => RequireClosed(workspace), CurrentSaveRoot, AccountId, managed);
+    }
 
     internal static string? AccountId()
     {

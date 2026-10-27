@@ -29,6 +29,38 @@ add_library(d3d11 SHARED src/proxy.cpp src/diagnostics.cpp src/engine_trace.cpp 
 target_include_directories(d3d11 PRIVATE "${CMAKE_BINARY_DIR}" src)
 target_link_libraries(d3d11 PRIVATE minhook d3dcompiler dxguid bcrypt psapi)
 target_sources(d3d11 PRIVATE src/motion_blur.cpp src/player_control.cpp src/background_play.cpp)
+target_sources(d3d11 PRIVATE src/chase_observer.cpp)
+target_sources(d3d11 PRIVATE src/chase_camera.cpp)
+target_link_libraries(d3d11 PRIVATE dinput8)
+foreach(component behavior request adapter playback_state transaction collision stereo replay_clock)
+  add_executable(chase_camera_${component}_test tests/chase_camera_${component}_test.cpp)
+  target_include_directories(chase_camera_${component}_test PRIVATE src)
+  add_test(NAME chase_camera_${component} COMMAND chase_camera_${component}_test)
+endforeach()
+add_test(NAME chase_camera_launch_options COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-ChaseCameraOptions.ps1")
+add_executable(chase_camera_test tests/chase_camera_test.cpp src/chase_camera.cpp src/guarded_hooks.cpp)
+target_include_directories(chase_camera_test PRIVATE src)
+target_compile_definitions(chase_camera_test PRIVATE GRID2VR_CHASE_CAMERA_TEST WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_definitions(chase_camera_test PRIVATE GRID2VR_REPLAY_CAPTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/chase-camera-menu-memory.txt")
+target_link_libraries(chase_camera_test PRIVATE dinput8 dxguid)
+add_executable(chase_camera_image_probe tests/chase_camera_image_probe.cpp src/guarded_hooks.cpp)
+target_include_directories(chase_camera_image_probe PRIVATE src)
+target_compile_definitions(chase_camera_image_probe PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+foreach(case absent invalid disabled observer-conflict guard-refusal foreign-before forwarding foreign-after wrong-owner second-eye wrong-provider-caller overlap-aba changed-entity focus stop exit getter-restore deduplicate apply input-clock pause readonly-pose duplicate-provider copy-restore
+    selection-roundtrip look-type1 look-type2 look-other look-focus look-owner look-malformed look-flag look-second-eye
+    native-look-settling rear-alternate rear-no-alternate controller pause-mode1 pause-invalid pause-owner look-paused
+    look-camera-gate look-record-gate look-delta-consumer stop-inflight region-guard-refusal region-history no-device look-no-device
+    embedded-replay2 embedded-replay1 replay-owner driving-stopped7 driving-recording2 replay-unknown replay-override replay-transport1
+    local-race local-provider local-car look-replay replay-input-only vehicle-pivot mouse-always mouse-inverted
+    collision-target collision-neutral collision-caller collision-argument collision-result collision-owner
+    collision-stop collision-second-eye collision-stack collision-invalid collision-guard collision-foreign collision-abi collision-duplicate
+    transaction-roundtrip transaction-copy-caller transaction-copy-stack
+    transaction-back-stack transaction-back-owner transaction-back-eye transaction-stop
+    recorded-play recorded-pause recorded-captured recorded-pause-menu recorded-menu-play recorded-menu-shuttle recorded-menu-scope recorded-flashback recorded-rewind recorded-fast recorded-seek recorded-jump recorded-target
+    recorded-menu recorded-focus recorded-duplicate recorded-eye recorded-caller recorded-exit
+    recorded-collision recorded-look recorded-guards recorded-snapshot recorded-ai-target recorded-offline)
+  add_test(NAME guarded_chase_camera_${case} COMMAND chase_camera_test "${CMAKE_BINARY_DIR}/chase-camera-fixture" ${case})
+endforeach()
 target_sources(d3d11 PRIVATE src/focus_cockpit.cpp)
 target_sources(d3d11 PRIVATE src/dlc_cockpit.cpp)
 add_executable(dlc_cockpit_test tests/dlc_cockpit_test.cpp src/dlc_cockpit.cpp src/guarded_hooks.cpp)
@@ -42,6 +74,30 @@ target_compile_definitions(focus_cockpit_test PRIVATE GRID2VR_FOCUS_COCKPIT_TEST
 target_link_libraries(focus_cockpit_test PRIVATE bcrypt)
 add_test(NAME gpu_focus_cockpit_pack COMMAND focus_cockpit_test "${CMAKE_BINARY_DIR}/focus-cockpit-fixture")
 add_test(NAME focus_cockpit_request COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-FocusCockpit.ps1")
+add_executable(chase_observer_test tests/chase_observer_test.cpp src/chase_observer.cpp src/guarded_hooks.cpp)
+target_include_directories(chase_observer_test PRIVATE src)
+target_compile_definitions(chase_observer_test PRIVATE GRID2VR_CHASE_OBSERVER_TEST WIN32_LEAN_AND_MEAN NOMINMAX)
+foreach(case refusal forwarding recovery foreign inflight busy receipt-failure exit-foreign provenance sampling-retry export-quotas pair-retention writer-order provider-stage provider-context provider-chain provider-stop
+    correlation-six-cameras correlation-cache-retention correlation-burst correlation-burst-limit correlation-same-camera-aba
+    correlation-contention correlation-identity correlation-eviction correlation-overlap correlation-before-selection
+    correlation-other-before-render correlation-foreign-render correlation-shared-output correlation-shared-output-reverse
+    correlation-busy-output correlation-unknown-output correlation-auxiliary-sampled correlation-auxiliary-throttled
+    correlation-unreadable-output correlation-overlapping-output correlation-ledger-full correlation-during-export)
+  add_test(NAME guarded_chase_observer_${case} COMMAND chase_observer_test "${CMAKE_BINARY_DIR}/chase-observer-fixture" ${case})
+endforeach()
+add_executable(chase_observer_destination_test tests/chase_observer_destination_test.cpp)
+target_include_directories(chase_observer_destination_test PRIVATE src)
+add_test(NAME chase_observer_export_destination COMMAND chase_observer_destination_test)
+add_executable(chase_observer_prequery_test tests/chase_observer_prequery_test.cpp)
+target_include_directories(chase_observer_prequery_test PRIVATE src)
+add_test(NAME chase_observer_prequery_snapshot COMMAND chase_observer_prequery_test)
+add_executable(chase_observer_owner_test tests/chase_observer_owner_test.cpp)
+target_include_directories(chase_observer_owner_test PRIVATE src)
+add_test(NAME chase_observer_export_owner COMMAND chase_observer_owner_test)
+add_executable(chase_observer_render_test tests/chase_observer_render_test.cpp)
+target_include_directories(chase_observer_render_test PRIVATE src)
+add_test(NAME chase_observer_render_provenance COMMAND chase_observer_render_test)
+add_test(NAME chase_observer_launch_routes COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-ChaseObserver.ps1")
 target_sources(d3d11 PRIVATE src/exposure_audit.cpp src/cockpit_exposure.cpp)
 add_executable(cockpit_exposure_test tests/cockpit_exposure_test.cpp src/cockpit_exposure.cpp)
 target_include_directories(cockpit_exposure_test PRIVATE src)
@@ -78,6 +134,7 @@ target_include_directories(garage_presentation_test PRIVATE src)
 add_test(NAME guarded_garage_presentation COMMAND garage_presentation_test
     "${CMAKE_SOURCE_DIR}/tests/fixtures/native-garage-state-183323.txt")
 add_test(NAME launcher_launch_modes COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-LaunchModes.ps1")
+add_test(NAME launcher_launch_backends COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-LaunchBackend.ps1")
 add_test(NAME launcher_desktop_borderless COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-DesktopBorderless.ps1")
 add_test(NAME career_profile_routing COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-Profiles.ps1")
 add_executable(profile_storage_test tests/profile_storage_test.cpp src/profile_storage.cpp)
@@ -197,10 +254,17 @@ target_include_directories(visibility_dispatch_test PRIVATE src)
 target_compile_definitions(visibility_dispatch_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_test(NAME alternate_world_visibility_dispatch COMMAND visibility_dispatch_test
   "${CMAKE_SOURCE_DIR}/tests/fixtures/native-visibility-dispatch.bin")
-add_executable(process_exit_test tests/process_exit_test.cpp src/process_exit.cpp src/guarded_hooks.cpp)
+add_executable(process_exit_test tests/process_exit_test.cpp src/process_exit.cpp src/guarded_hooks.cpp src/chase_observer.cpp)
 target_include_directories(process_exit_test PRIVATE src)
 target_compile_definitions(process_exit_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_test(NAME guarded_game_process_exit COMMAND process_exit_test "${CMAKE_BINARY_DIR}/process-exit-fixture")
+add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/native_session_hooks.inc"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/extract_native_session_hooks.py"
+    "${CMAKE_SOURCE_DIR}/src/diagnostics.cpp" "${CMAKE_BINARY_DIR}/native_session_hooks.inc"
+  DEPENDS src/diagnostics.cpp tests/extract_native_session_hooks.py VERBATIM)
+add_executable(native_session_hooks_test tests/native_session_hooks_test.cpp "${CMAKE_BINARY_DIR}/native_session_hooks.inc")
+target_include_directories(native_session_hooks_test PRIVATE "${CMAKE_BINARY_DIR}")
+add_test(NAME desktop_native_hook_exit_lifecycle COMMAND native_session_hooks_test)
 add_executable(stop_receipt_test tests/stop_receipt_test.cpp)
 target_include_directories(stop_receipt_test PRIVATE src)
 target_compile_definitions(stop_receipt_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)

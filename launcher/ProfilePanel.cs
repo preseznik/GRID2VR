@@ -28,8 +28,12 @@ internal sealed class ProfilePanel : VerticalStack
         buttons.Controls.AddRange([use, refresh, create, delete]); Controls.Add(buttons);
         Controls.Add(new SettingRow("Name", name)); Controls.Add(new SettingRow("Career", status));
         Controls.Add(new SettingRow("Last saved", saved)); Controls.Add(new SettingRow("Save files", files));
-        Controls.Add(Label("Graphics settings and launcher controls are shared. Each new profile has separate career saves. Your current Steam career stays available."));
-        Controls.Add(Label("Fresh careers need initial setup in Normal mode. Managed careers stay on this PC; they do not sync to Steam Cloud."));
+        if (store.ManagedProfilesSupported)
+        {
+            Controls.Add(Label("Graphics settings and launcher controls are shared. Each new profile has separate career saves. Your current Steam career stays available."));
+            Controls.Add(Label("Fresh careers need initial setup in Normal mode. Managed careers stay on this PC; they do not sync to Steam Cloud."));
+        }
+        else Controls.Add(Label(ProfileStore.StandaloneCareerMessage));
         Controls.Add(message);
         list.SelectedIndexChanged += (_, _) => Details();
         list.DrawItem += DrawProfile;
@@ -56,9 +60,9 @@ internal sealed class ProfilePanel : VerticalStack
     internal void SetIdle(bool value) { idle = value; Actions(); }
     void Actions()
     {
-        var row = Current(); create.Enabled = idle;
+        var row = Current(); create.Enabled = idle && store.ManagedProfilesSupported;
         use.Enabled = idle && row != null && (row.Entry.Info != null || row.Entry.Id == ProfileStore.CurrentCareer) && !row.Active;
-        delete.Enabled = idle && row?.Entry.Info != null && !row.Active && row.Entry.Id != ProfileStore.CurrentCareer;
+        delete.Enabled = idle && store.ManagedProfilesSupported && row?.Entry.Info != null && !row.Active && row.Entry.Id != ProfileStore.CurrentCareer;
     }
     void Change(Action action)
     {
@@ -97,8 +101,8 @@ internal sealed class ProfilePanel : VerticalStack
     {
         var row = Current(); var info = row?.Entry.Info;
         name.Text = info?.Name ?? ""; status.Text = info?.Status ?? row?.Entry.Error ?? "";
-        saved.Text = info?.LastSavedUtc?.ToLocalTime().ToString("g") ?? "Not saved yet";
-        files.Text = info == null ? "" : $"{info.FileCount} files · {info.Bytes / 1024.0:N1} KiB";
+        saved.Text = !store.ManagedProfilesSupported ? "Managed by the game" : info?.LastSavedUtc?.ToLocalTime().ToString("g") ?? "Not saved yet";
+        files.Text = !store.ManagedProfilesSupported ? "Managed by the game" : info == null ? "" : $"{info.FileCount} files · {info.Bytes / 1024.0:N1} KiB";
         Actions();
     }
     void DrawProfile(object? sender, DrawItemEventArgs e)

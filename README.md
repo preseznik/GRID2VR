@@ -4,7 +4,9 @@ Play GRID 2 in native stereo VR with head tracking and cockpit views.
 
 ## Get started
 
-You need **Windows 10/11 (64-bit)**, the **Steam version of GRID 2** (build 1.0.85.8679), and a headset connected through **Virtual Desktop / VDXR** or **SteamVR**.
+You need **Windows 10/11 (64-bit)**, a supported **GRID 2 build 1.0.85.8679**, and a headset connected through **Virtual Desktop / VDXR** or **SteamVR**. Steam builds remain supported. The Experimental standalone path accepts only the exact audited executable pair; other DVD or modified builds are not automatically compatible.
+
+Standalone installations launch directly and use **Current game career**. Managed careers and Steam career imports require a supported Steam installation. Standalone save/load and headset acceptance are still pending testing.
 
 1. Download the installer from the [latest release](https://github.com/preseznik/GRID2VR/releases/latest).
 2. Close GRID 2 and run the installer. Select your existing GRID 2 game folder.

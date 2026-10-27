@@ -34,6 +34,14 @@ param(
     [switch]$SkipIntro,
     [switch]$RemoveCinemaMatte,
     [switch]$DiagnosticLogging,
+    [switch]$ChaseCameraObserver,
+    [ValidateSet(0,1)][int]$ChaseFreeLook=0,
+    [ValidateSet(0,1)][int]$ChaseKeepAngle=0,
+    [ValidateSet('left','right','always')][string]$ChaseMouseMode='right',
+    [ValidateRange(180,1000)][ValidateScript({ $_ % 10 -eq 0 })][int]$ChaseMaxZoomOut=180,
+    [ValidateRange(25,300)][int]$ChaseMouseSensitivity=100,
+    [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
+    [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
@@ -90,6 +98,10 @@ param(
     [ValidateRange(30,600)][int]$TimeoutSeconds = 90
 )
 $ErrorActionPreference='Stop'
+if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
+if($ChaseFreeLook -and (!$RuntimeSession -or $ProxyMode -ne 'Active')) { throw 'Chase-camera controls require an active user runtime session.' }
+. (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
+$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
 if($Action -eq 'Run' -and $NormalLaunch -and ($SessionDirectory -or !$RuntimeSession -or $PlayerControlProbe -ne 'Off' -or $RunKind -ne 'Probe')) { throw 'Normal launch requires the guarded runtime without a selected session or input probe.' }
 if($MsaaAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe)) { throw 'MSAA audit requires an isolated bounded desktop diagnostic.' }
 if($Action -eq 'Run' -and $ExposureAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$AutoCaptureFlicker -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe -or $XrProjection -or $NormalLaunch)) { throw 'Exposure audit requires an isolated bounded unattended desktop diagnostic.' }
@@ -162,6 +174,10 @@ function Restore-Diagnostic {
     Write-Output 'Diagnostic files removed; any owned practice flow restored and hash checked.'
 }
 if ($Action -eq 'Restore') { Restore-Diagnostic; return }
+. (Join-Path $PSScriptRoot 'Game-Executable.ps1')
+. (Join-Path $PSScriptRoot 'Launch-Backend.ps1')
+$launchBackend=Get-Grid2LaunchBackend $game
+Assert-Grid2LaunchCareer $launchBackend $CareerProfile
 . (Join-Path $PSScriptRoot 'Driving-Controls.ps1')
 $validatedDrivingControls=Read-DrivingControls $DrivingControls
 if (Test-Path -LiteralPath (Join-Path (Get-Grid2DataRoot $root) 'practice-flow-pending.json')) { throw 'Restore the earlier experimental practice flow before launching.' }
@@ -198,6 +214,7 @@ if ($PlayerControlProbe -ne 'Off' -and (!$RuntimeSession -or !$selectedSession -
 if ($selectedSession -and $selectedSession.control -eq 'human' -and (!$RuntimeSession -or $PlayerControlProbe -ne 'Off')) { throw 'Human practice uses the guarded runtime and native controls, with the old input probe off.' }
 if ($PlayerControlOnly -and (($PlayerControlProbe -eq 'Off' -and $BackgroundPlay -eq 'Off') -or $EngineTrace -or $CaptureStageTargets -or $ReplayOnce -or $RecordedViewsFile -or $ProxyMode -ne 'Active' -or $RunKind -ne 'Probe')) { throw 'Non-rendering probes require player control or background-play observations and cannot request engine rendering hooks or captures.' }
 if ($BackgroundPlay -ne 'Off' -and (!$RuntimeSession -or $ProxyMode -ne 'Active')) { throw 'Background play requires an active guarded runtime session.' }
+if($ChaseCameraObserver -and (!$RuntimeSession -or !$PlayerControlOnly -or !$UntilExit -or !$DiagnosticProxy -or $ProxyMode -ne 'Active')) { throw 'Chase observation requires an explicit non-rendering desktop proxy and a user-operated runtime session.' }
 if ($UntilExit -and (!$RuntimeSession -or (!$NormalLaunch -and (!$selectedSession -or $selectedSession.control -ne 'human')) -or $RunKind -ne 'Probe')) { throw 'User-run sessions require guarded human practice/race or explicit Normal launch.' }
 if ($RunKind -eq 'Benchmark' -and !$PSBoundParameters.ContainsKey('TimeoutSeconds')) { $TimeoutSeconds=240 }
 if ($CaptureAfterSeconds -ge $TimeoutSeconds) { throw 'CaptureAfterSeconds must be less than TimeoutSeconds.' }
@@ -243,7 +260,7 @@ $expected=Get-Grid2ExecutableHash (Join-Path $game 'grid2_avx.exe')
 foreach ($name in $allowed + 'dxgi.dll') { if (Test-Path -LiteralPath (Join-Path $game $name)) { throw "Existing $name will not be overwritten." } }
 $proxy=Get-Grid2Proxy $root
 if($DiagnosticProxy) {
-    if(!$FlickerDiagnostic -and $CockpitTextures -eq 'Off') { throw 'A diagnostic proxy override requires FlickerDiagnostic or CockpitTextures.' }
+    if(!$FlickerDiagnostic -and !$ChaseCameraObserver -and !$ChaseFreeLook -and $CockpitTextures -eq 'Off') { throw 'A diagnostic proxy override requires FlickerDiagnostic, ChaseCameraObserver, ChaseFreeLook or CockpitTextures.' }
     $proxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path
 }
 if($FlickerDiagnostic -and (!$RuntimeSession -or !$ReplayStereo)) { throw 'Flicker capture requires the stereo runtime.' }
@@ -267,16 +284,15 @@ $run=if($RunLogDirectory){Get-Grid2LogDirectory $root $RunLogDirectory}else{New-
 if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy }
 if(Test-Path -LiteralPath (Join-Path $run 'session.json')) { throw 'Diagnostic run already exists; retained its logs.' }
 $drivingControlsReceipt=Save-DrivingControls $validatedDrivingControls $run
-$steamArgumentLine=if($NormalLaunch){'-applaunch 44350'}else{'-applaunch 44350 -benchmark example_benchmark.xml'}
 if ($selectedSession) {
     # Freeze a private XML copy for this run. The backend rejects changed inputs,
     # linked paths and existing output. GRID 2 receives an owned relative filename.
     $staged=& $PythonPath (Join-Path $PSScriptRoot 'session_config.py') --game-root $game stage --session $SessionDirectory --run-directory $run
     if ($LASTEXITCODE) { throw 'Selected session staging failed; nothing deployed.' }
     $selectedSession=$staged | ConvertFrom-Json
-    $steamArgumentLine=$selectedSession.steamArgumentLine
     $selectedSession | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'selected-session.json') -Encoding utf8
 }
+$launchPlan=Get-Grid2LaunchPlan -Game $game -Backend $launchBackend -NormalLaunch:$NormalLaunch -SelectedSession $selectedSession -CareerProfile $career.id
 if ($RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'runtime-session.request'),'Sustained same-frame stereo with explicit suspension and bounded logs; guarded experimental runtime.') }
 if($dlcCockpit.cars.Count) { [IO.File]::WriteAllText((Join-Path $run 'dlc-cockpit.request'),$dlcCockpit.text,[Text.Encoding]::ASCII) }
 if($CockpitTextures -ne 'Off') { [IO.File]::WriteAllText((Join-Path $run 'cockpit-textures.request'),$CockpitTextures,[Text.Encoding]::ASCII) }
@@ -316,6 +332,8 @@ if ($RuntimeSession -and $XrProjection) { [IO.File]::WriteAllText((Join-Path $ru
 if ($RuntimeSession -and $XrProjection -and $RecenterTilt) { [IO.File]::WriteAllText((Join-Path $run 'runtime-recenter-tilt.request'),'') }
 if ($PlayerControlProbe -ne 'Off') { [IO.File]::WriteAllText((Join-Path $run 'player-control.request'),$PlayerControlProbe.ToLowerInvariant()) }
 if ($BackgroundPlay -ne 'Off') { [IO.File]::WriteAllText((Join-Path $run 'background-play.request'),$BackgroundPlay.ToLowerInvariant()) }
+if($ChaseCameraObserver) { [IO.File]::WriteAllText((Join-Path $run 'chase-camera-observer.request'),"observe-v1`n") }
+if($RuntimeSession -and !$ChaseCameraObserver) { [IO.File]::WriteAllText((Join-Path $run 'chase-camera.request'),$chase.text,[Text.Encoding]::ASCII) }
 if ($RunKind -eq 'Probe' -and !$RuntimeSession) {
     [IO.File]::WriteAllText((Join-Path $run 'short-probe.request'),'Signal after the first bounded capture window; this does not establish diagnostic success.')
 }
@@ -441,6 +459,7 @@ $receipt.recenterModifiers=$RecenterModifiers
 $receipt.keepHorizonLevel=!$RecenterTilt
 $receipt.untilExit=[bool]$UntilExit
 $receipt.normalLaunch=[bool]$NormalLaunch
+$receipt.launch=$launchPlan
 $receipt.vrReplayCameras=[bool]$VrReplayCameras
 $receipt.vrGarageMenus=[bool]$VrGarageMenus
 $receipt.frontendSceneAudit=[bool]$FrontendSceneAudit
@@ -449,6 +468,8 @@ $receipt.playerControlOnly=[bool]$PlayerControlOnly
 $receipt.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly)
 $receipt.vrMirrorBorderlessRequested=[bool]$VrMirrorBorderless
 $receipt.backgroundPlay=$BackgroundPlay
+$receipt.chaseCameraObserver=[bool]$ChaseCameraObserver
+$receipt.chaseCameraRequested=$chase.requested
 if ($selectedSession) { $receipt.selectedSession=$selectedSession }
 $before=@(Get-ChildItem -LiteralPath (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\GRID 2') -Recurse -File | ForEach-Object {@{path=$_.FullName;sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}})
 $receipt.traceReplayWork=[bool]$TraceReplayWork
@@ -494,8 +515,8 @@ try {
         if ((Get-FileHash -LiteralPath (Join-Path $game $entry.name)).Hash -ne $entry.sha256) { throw "Deployed file changed before launch: $($entry.name)" }
     }
     if ($selectedSession -and (Get-FileHash -LiteralPath $selectedSession.configuration).Hash -ne $selectedSession.configurationSha256) { throw 'Staged session changed before launch.' }
-    if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|Starting GRID 2 through Steam...' }
-    Start-Process -FilePath (Join-Path (Get-Grid2SteamRoot) 'steam.exe') -ArgumentList $steamArgumentLine -WindowStyle Hidden | Out-Null
+    if($UntilExit) { Write-Output $(if($launchBackend -eq 'Steam'){'GRID2VR_LAUNCH|Starting GRID 2 through Steam...'}else{'GRID2VR_LAUNCH|Starting GRID 2...'}) }
+    Start-Grid2Launch $launchPlan
     $gameWindowReported=$false
     $stereoReadyReported=$false
     $captureCompleteAt=$null

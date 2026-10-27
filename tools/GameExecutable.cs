@@ -11,6 +11,22 @@ namespace GRID2VR
     {
         public const string AvxBaseline = "519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502";
         public const string RegularBaseline = "f92c2e1134b5d6d61404131224b41c182089bf563d28731eef0faa7d8096ab4c";
+        public const string AvxStandalone = "825f30a49a668870c7bfab0309c3afb01a396fc1cec0be8df9764e32bf2fb53f";
+        public const string RegularStandalone = "d8ec0c631b453d6e5e9adebae4cfc9b612823fec316344c28544bc65245ba35d";
+
+        public static bool IsStandalone(string identity)
+        {
+            return identity == AvxStandalone || identity == RegularStandalone;
+        }
+
+        public static string ValidateInstallation(string game)
+        {
+            string regular = Validate(Path.Combine(game, "grid2.exe"), false);
+            string avx = Validate(Path.Combine(game, "grid2_avx.exe"), true);
+            if (IsStandalone(regular) != IsStandalone(avx))
+                throw new IOException("Mixed Steam and standalone GRID 2 executables are unsupported.");
+            return IsStandalone(avx) ? "Direct" : "Steam";
+        }
 
         public static string Validate(string path, bool avx)
         {
@@ -23,7 +39,7 @@ namespace GRID2VR
             {
                 int certificate = avx ? 0xef8800 : 0xee7800;
                 int security = avx ? 0x1f0 : 0x1e0;
-                if (file.Length < certificate + 8 || file.Length > certificate + 65536)
+                if (file.Length < certificate || file.Length > certificate + 65536)
                     throw Unsupported(path);
                 var bytes = new byte[(int)file.Length];
                 int read = 0;
@@ -34,6 +50,10 @@ namespace GRID2VR
                     read += count;
                 }
                 string actual = Hash(bytes, bytes.Length);
+                // These two unsigned files are admitted only by complete, variant-specific
+                // identity. Never apply the signed Steam normalization to standalone files.
+                if (file.Length == certificate && actual == (avx ? AvxStandalone : RegularStandalone)) return actual;
+                if (file.Length < certificate + 8) throw Unsupported(path);
                 if (actual == (avx ? AvxBaseline : RegularBaseline)) return actual;
                 uint certificateBytes = BitConverter.ToUInt32(bytes, security + 4);
                 if (BitConverter.ToUInt32(bytes, security) != certificate ||
@@ -58,7 +78,7 @@ namespace GRID2VR
 
         private static IOException Unsupported(string path)
         {
-            return new IOException("Unsupported or changed GRID 2 executable (requires the Valve-signed 1.0.85.8679 build): " + Path.GetFileName(path));
+            return new IOException("Unsupported or changed GRID 2 executable (requires the Valve-signed 1.0.85.8679 build or the exact supported standalone files): " + Path.GetFileName(path));
         }
         private static string Hash(byte[] bytes, int count)
         {

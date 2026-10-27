@@ -1,5 +1,7 @@
 #include "replay_state.h"
 #include "replay_camera.h"
+#include "replay_sequence.h"
+#include "scene_views.h"
 #include <cstdio>
 #include <fstream>
 #include <filesystem>
@@ -66,20 +68,23 @@ int main(int argc,char** argv) {
     if(grid2vr::ReplayCameraSupported(nativeBefore,invalid,nearSub,nearSub,farMain)) return 28;
     invalid=nativeAfter;memcpy(invalid.data()+0xec,&farMain,4);
     if(grid2vr::ReplayCameraSupported(nativeBefore,invalid,nearSub,nearSub,farMain)) return 29;
-    // Exact native menu inputs from four 2026-10-24 user runs. They only
+    // Exact native menu inputs from the retained user runs. They only
     // authorize cancellation before replay, not relaxing the headset guard.
     // Sample 2: diagnostic-20261024-132135-387, frame 3789, native far 4900.
     // Sample 3: diagnostic-20261024-145553-087, frame 7677, replay navigation;
     // near .2 rounded up one ULP, world far 2500, fixed .2/100 destination.
+    // Sample 5: 20261027-193011-656, frame 4523, chase replay navigation;
+    // near .11, world far 15000, the same fixed .2/100 destination.
     const auto fixtures=std::filesystem::path(argv[1]).parent_path();
-    for (unsigned sample=0;sample<5;++sample) {
+    for (unsigned sample=0;sample<6;++sample) {
         grid2vr::CameraContext entry{},done{};
-        const auto prefix=sample==3?std::string("native-replay-menu-7677"):"native-pause-"+std::to_string(sample==4?0:sample);
+        const auto prefix=sample==5?std::string("native-replay-menu-4523"):
+            sample==3?std::string("native-replay-menu-7677"):"native-pause-"+std::to_string(sample==4?0:sample);
         std::ifstream before(fixtures/(prefix+"-entry.bin"),std::ios::binary);
         std::ifstream after(fixtures/(prefix+"-complete.bin"),std::ios::binary);
         if(!before.read(reinterpret_cast<char*>(entry.data()),entry.size()) || !after.read(reinterpret_cast<char*>(done.data()),done.size())) return 34;
-        const uint32_t near=sample==4?0x3ca3d70au:sample==3?0x3e4cccceu:sample?nearSub:nearMain,
-            far=sample==3?0x451c4000u:sample==2?0x45992000u:0x469c4000u;
+        const uint32_t near=sample==5?0x3de147aeu:sample==4?0x3ca3d70au:sample==3?0x3e4cccceu:sample?nearSub:nearMain,
+            far=sample==5?farMain:sample==3?0x451c4000u:sample==2?0x45992000u:0x469c4000u;
         // Synthetic cockpit clip variant of the native pause fixture. This
         // tests classification/byte guards, not a new live pause witness.
         if(sample==4) memcpy(entry.data()+0xe8,&near,4);
@@ -108,11 +113,41 @@ int main(int argc,char** argv) {
         }
         if(grid2vr::MenuCamera(entry,done,near,nearSub,farSub) ||
             grid2vr::MenuCamera(done,done,nearMain,nearMain,far)) return 40;
-        for(uint32_t badNear:{0u,0xbf800000u,0x3ca3d709u,0x3ca3d70bu,0x3e4cccccu,0x3e4ccccfu,0x7f800000u,nan}) {
+        for(uint32_t badNear:{0u,0xbf800000u,0x3ca3d709u,0x3ca3d70bu,0x3de147adu,0x3de147afu,0x3e4cccccu,0x3e4ccccfu,0x7f800000u,nan}) {
             auto badEntry=entry;memcpy(badEntry.data()+0xe8,&badNear,4);
             if(grid2vr::MenuClipTransition(badEntry,done,badNear,nearSub,far)) return 41;
         }
-        if(sample==3 && grid2vr::ReplayCameraSupported(entry,done,near,nearSub,far,true)) return 42;
+        if((sample==3 || sample==5) && grid2vr::ReplayCameraSupported(entry,done,near,nearSub,far,true)) return 42;
+        if(sample==5) {
+            // Captured transition -> stable replay camera -> transition back
+            // to driving. Cancel before Begin so no failed pair poisons XR.
+            grid2vr::ReplaySequence session;
+            grid2vr::SceneViewFrame frozen;
+            grid2vr::SceneViews eyes{{grid2vr::ScenePose{},grid2vr::ScenePose{}},
+                {grid2vr::diagnosticFrustum,grid2vr::diagnosticFrustum}};
+            if(!session.ConfigureSession() || !session.Resume() ||
+                !frozen.Freeze(4522,eyes) || !session.Begin(4522)) return 43;
+            session.Finish(true);
+            if(!frozen.Finish(4522,true)) return 44;
+            for(uint64_t frame:{4523u,5001u}) {
+                if(!frozen.Freeze(frame,eyes) ||
+                    !grid2vr::MenuCamera(entry,done,near,nearSub,far) ||
+                    !frozen.CancelBeforeReplay(frame) || !session.Suspend() ||
+                    !frozen.ResetEpoch() || frozen.Get(frame)) return 45;
+                const auto next=frame==4523?5000u:6000u;
+                if(grid2vr::MenuCamera(entry,entry,near,near,far) ||
+                    !grid2vr::ReplayCameraSupported(entry,entry,near,near,far,false) ||
+                    !session.Resume() || !frozen.Freeze(next,eyes) || !session.Begin(next)) return 46;
+                session.Finish(true);
+                if(!frozen.Finish(next,true)) return 47;
+            }
+            if(session.Attempts()!=3 || session.Completed()!=3 || session.Epoch()!=3 ||
+                session.EpochCompleted()!=1 || !session.Available()) return 48;
+            // Genuine failures still cannot resume; this is not a retry path.
+            if(!session.Begin(6001)) return 49;
+            session.Finish(false);
+            if(session.Resume() || session.Suspend()) return 50;
+        }
     }
     grid2vr::HistoryState entry{},complete{},prepared{};
     grid2vr::SceneView original{},view{};

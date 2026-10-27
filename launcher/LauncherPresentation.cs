@@ -73,7 +73,7 @@ internal static class LauncherPresentation
             "4. Car and track selection has been confirmed working. Not every installed combination has been driven; circuit lap counts still need an in-game completion check.\n\n" +
             "The session runs until you quit. Closing the launcher leaves the game running; reopen it to see session status."),
         new("Profile", "Profile selects the career used by every Normal, Practice and Race launch, on desktop or in VR. Close GRID 2 before creating, switching or deleting profiles. Selection is saved immediately.\n\n" +
-            "Current game career uses your ordinary Steam save. Create new profile offers a fresh career or a separate copy of that current career. Fresh careers need initial setup in Normal mode. Profile names contain 1–24 letters or numbers.\n\n" +
+            "Current game career uses the game's existing save. Supported standalone installations use this selection only; the game manages its own saves. Steam installations also offer Create new profile for a fresh career or a separate copy of the current career. Fresh careers need initial setup in Normal mode. Profile names contain 1–24 letters or numbers.\n\n" +
             "Managed careers are stored in the launcher user-data folder and belong to the Steam account that created them. They do not sync to Steam Cloud. Graphics and launcher controls are shared. A verified 100% GRID 2 career template is not bundled.\n\n" +
             "To delete a managed career, first select another profile, then Delete profile and confirm. Current game career cannot be deleted here."),
         new("Controls", $"Recenter: {RecenterShortcut.Label(key, modifiers)}\n\n" +

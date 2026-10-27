@@ -215,6 +215,7 @@ def prepare(game_root, output, practice_bundle=None, **selection):
                   configurationSha256=hashlib.sha256(payload).hexdigest(), selection=selection,
                   carContent=car_content(installed, selection['car']),
                   control=control, playerControlValidated=False,
+                  nativeArguments=[launch_flag(mode), SESSION_FILENAME],
                   steamArguments=['-applaunch', '44350', launch_flag(mode), SESSION_FILENAME],
                   limits='Generated configuration only. Selected-content loading and player-control handoff require runtime evidence.')
     if practice_bundle is not None:
@@ -266,6 +267,8 @@ def verify(game_root, session):
     arguments = ['-applaunch', '44350', flag, str(config) if data['schema'] == 1 else SESSION_FILENAME]
     if payload != expected or hashlib.sha256(payload).hexdigest() != data.get('configurationSha256') or data.get('steamArguments') != arguments:
         raise ValueError('Prepared session was changed; regenerate it instead')
+    if 'nativeArguments' in data and data['nativeArguments'] != [flag, SESSION_FILENAME]:
+        raise ValueError('Prepared native launch arguments were changed; regenerate the session')
     return data
 
 
@@ -282,7 +285,8 @@ def stage(game_root, session, run_directory):
     # GRID 2's VFS rejects ':' and '\\' in the filename (validator RVA 0x564de0).
     # An absolute workspace path silently falls back to the shipped demo XML.
     # Deployment copies this snapshot to the owned game-root name before launch.
-    arguments = [*data['steamArguments'][:3], SESSION_FILENAME]
+    native_arguments = [launch_flag(data['selection'].get('mode', 'benchmark')), SESSION_FILENAME]
+    arguments = ['-applaunch', '44350', *native_arguments]
     command_line = subprocess.list2cmdline(arguments)
     flow_payload = None
     flow_output = plain_path(run/'practice-flow.bin')
@@ -302,6 +306,7 @@ def stage(game_root, session, run_directory):
                 configurationSha256=data['configurationSha256'], selection=data['selection'],
                 carContent=data.get('carContent', dict(dlc=False, cockpitAvailable=True)),
                 control=data['control'], playerControlValidated=False,
+                nativeArguments=native_arguments, nativeArgumentLine=subprocess.list2cmdline(native_arguments),
                 steamArguments=arguments, steamArgumentLine=command_line,
                 nativeConfigurationName=SESSION_FILENAME)
     if flow_payload is not None:

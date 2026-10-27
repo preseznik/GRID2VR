@@ -1,4 +1,5 @@
 . (Join-Path $PSScriptRoot 'Paths.ps1')
+. (Join-Path $PSScriptRoot 'Game-Executable.ps1')
 # Managed careers never replace the ordinary Steam save directory.
 function Get-ProfileAccountId {
     param([switch]$AllowUnavailable)
@@ -31,6 +32,9 @@ function Get-LaunchProfile {
     }
     if($Id -ceq 'current') { return @{id='current';name='Current game career';remote=$null;accountId=$null} }
     if($Id -cnotmatch '^[0-9a-f]{32}$') { throw 'Invalid career identifier.' }
+    if((Get-Grid2LaunchBackend (Get-Grid2GameRoot $Root)) -eq 'Direct') {
+        throw 'Standalone installations use Current game career. Select it in the launcher; separate launcher profiles are unavailable.'
+    }
     $folder=Join-Path (Get-Grid2DataRoot $Root) "profiles/$Id"
     $info=Read-ProfileJson (Join-Path $folder 'profile.json')
     if(!$AccountId) {

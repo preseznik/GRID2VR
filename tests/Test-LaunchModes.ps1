@@ -218,13 +218,12 @@ try {
     $exposure=Find-TestStatement $diagnostic "'cockpit-exposure.request'"
     . $exposure
     if(Test-Path -LiteralPath (Join-Path $run 'cockpit-exposure.request')) { throw 'Original DLC camera received a cockpit exposure override.' }
-    $steam=$diagnostic.Find({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$steamArgumentLine'},$false)
-    if(!$steam) { throw 'Steam route assignment missing.' }
-    $steamRoute=[scriptblock]::Create($steam.Extent.Text)
-    $NormalLaunch=$true; . $steamRoute
-    if($steamArgumentLine -cne '-applaunch 44350') { throw 'Normal launch acquired a benchmark route.' }
-    $NormalLaunch=$false; . $steamRoute
-    if($steamArgumentLine -cne '-applaunch 44350 -benchmark example_benchmark.xml') { throw 'Legacy diagnostic route changed.' }
+    . (Join-Path $root 'tools/Launch-Backend.ps1')
+    function Get-Grid2SteamRoot { return 'C:\Fixture Steam' }
+    $plan=Get-Grid2LaunchPlan -Game 'C:\Fixture Game' -Backend Steam -NormalLaunch
+    if(($plan.arguments -join ' ') -cne '-applaunch 44350') { throw 'Normal launch acquired a benchmark route.' }
+    $plan=Get-Grid2LaunchPlan -Game 'C:\Fixture Game' -Backend Steam
+    if(($plan.arguments -join ' ') -cne '-applaunch 44350 -benchmark example_benchmark.xml') { throw 'Legacy diagnostic route changed.' }
 
     # The real deployment gate must not even prepare a flow backup in Normal.
     $flow=Find-TestStatement $diagnostic '$practiceFlow=New-PracticeFlowDeployment'

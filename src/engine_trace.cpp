@@ -1787,6 +1787,7 @@ StageStamp CurrentStage() { return currentStage; }
 SceneStamp CurrentScene() {
     return pendingScene.valid && pendingScene.frame==frame.load() ? SceneStamp{pendingScene.id,inReplay,replayPass}:SceneStamp{};
 }
+bool ReplayingEye() { return inReplay; }
 const SceneViews* CurrentReplayViews() {
     return inReplay && dualEyes && fullEyePose && asymmetricEyeFov ? frozenViews.Get(frame.load()):nullptr;
 }

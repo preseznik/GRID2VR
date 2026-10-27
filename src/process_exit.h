@@ -4,10 +4,14 @@
 #include <filesystem>
 
 namespace grid2vr::processexit {
-// Called only on the thread that installs the handler, before the game's own
+// The primary cleanup runs only on the installing thread, before the game's own
 // ExitProcess import. The caller must already have verified the AVX image hash.
 using BeforeExit = const char* (*)();
-bool Install(uintptr_t gameBase, const std::filesystem::path& output, BeforeExit callback);
+// Optional observer cleanup runs once on the exit-calling thread before the
+// owner handoff. It must only restore thread-safe static hooks, with bounded
+// lock acquisition; it must not touch renderer/XR objects or report their stop.
+bool Install(uintptr_t gameBase, const std::filesystem::path& output, BeforeExit callback,
+             BeforeExit observerCleanup=nullptr);
 // Pump only at a restored render boundary. Foreign exit callers wait briefly
 // for this owner; timeout preserves native exit without cross-thread XR calls.
 void Service();

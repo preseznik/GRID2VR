@@ -203,6 +203,37 @@ class ReleasePublication(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'rebuild'):
             self.prepare()
 
+    def test_pinned_candidate_is_used_instead_of_default_native(self):
+        candidate = self.root/'accepted.dll'
+        candidate.write_bytes(self.native.read_bytes()+b'accepted camera controls')
+        digest = assets.sha(candidate)
+        frozen = assets.prepare(self.root, self.out, '0.1.10', 'Experimental', 'a'*40, self.pack, candidate, digest)
+        self.assertEqual(frozen['nativeSha256'], digest)
+        self.assertEqual(assets.check_inputs(self.root, self.out, '0.1.10', 'Experimental', candidate), frozen)
+        with self.assertRaisesRegex(ValueError, 'renderer changed'):
+            assets.check_inputs(self.root, self.out, '0.1.10', 'Experimental')
+        candidate.write_bytes(candidate.read_bytes()+b'changed after acceptance')
+        with self.assertRaisesRegex(ValueError, 'renderer changed'):
+            assets.check_inputs(self.root, self.out, '0.1.10', 'Experimental', candidate)
+
+    def test_native_override_requires_matching_pin_before_creating_output(self):
+        for native, digest, message in [(self.native, None, 'supplied together'),
+                                        (None, assets.sha(self.native), 'supplied together'),
+                                        (self.native, 'invalid', 'Invalid native'),
+                                        (self.native, '0'*64, 'requested SHA-256')]:
+            with self.subTest(native=native, digest=digest), self.assertRaisesRegex(ValueError, message):
+                assets.prepare(self.root, self.out, '0.1.10', 'Experimental', 'a'*40, self.pack, native, digest)
+            self.assertFalse(self.out.exists())
+
+    def test_finalization_rejects_a_different_staged_native(self):
+        self.complete()
+        staged = self.out/'stage/GRID2VR/payload/d3d11.dll'
+        staged.write_bytes(b'another native build')
+        frozen = assets.read(self.out/'release-inputs.json')
+        package = dict(version=frozen['version'], channel=frozen['channel'], releaseTag=frozen['tag'], cockpitTextures=frozen['cockpitTextures'])
+        with self.assertRaisesRegex(ValueError, 'Packaged native renderer differs'):
+            assets.finalize(self.out, package, self.out/'GRID2VR-0.1.10-Setup.exe', self.out/'GRID2VR-0.1.10.zip')
+
     def test_each_core_build_owns_its_pack_url(self):
         older = self.prepare()
         newer = self.prepare(version='0.1.11', out=self.root/'next')

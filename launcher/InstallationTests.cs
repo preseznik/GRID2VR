@@ -30,9 +30,20 @@ internal static class InstallationTests
             // First install imports preferences/profiles without embedding them in a release.
             var source=Path.Combine(fixture,"import");Directory.CreateDirectory(Path.Combine(source,"profiles","career"));
             File.WriteAllText(Path.Combine(source,"launcher-settings.json"),"{\"Car\":\"s20\"}");File.WriteAllText(Path.Combine(source,"profiles","career","save.dat"),"career bytes");
-            Installation.Migrate(root,source);
+            Installation.MigrateData(root,source,managedProfilesSupported:true);
             Check(File.ReadAllText(Path.Combine(AppPaths.Data(root),"profiles","career","save.dat"))=="career bytes");
-            Reject(()=>Installation.Migrate(root,source));
+            Reject(()=>Installation.MigrateData(root,source,managedProfilesSupported:true));
+            var standaloneRoot=Path.Combine(fixture,"standalone-import");
+            Reject(()=>Installation.MigrateData(standaloneRoot,source,managedProfilesSupported:false));
+            Check(!Directory.Exists(AppPaths.Data(standaloneRoot)));
+            var preferences=Path.Combine(fixture,"preferences-only");Directory.CreateDirectory(preferences);
+            File.WriteAllText(Path.Combine(preferences,"launcher-settings.json"),"{\"Car\":\"s20\"}");
+            File.WriteAllText(Path.Combine(preferences,"profile-selection.json"),"{\"schema\":1,\"id\":\"current\"}");
+            Reject(()=>Installation.MigrateData(standaloneRoot,preferences,managedProfilesSupported:false));
+            Check(!Directory.Exists(AppPaths.Data(standaloneRoot)));
+            File.Delete(Path.Combine(preferences,"profile-selection.json"));
+            Installation.MigrateData(standaloneRoot,preferences,managedProfilesSupported:false);
+            Check(File.ReadAllText(Path.Combine(AppPaths.Data(standaloneRoot),"launcher-settings.json"))=="{\"Car\":\"s20\"}");
             var pending=Path.Combine(AppPaths.Data(root),"session-pending.json");File.WriteAllText(pending,"{}");
             Check(Installation.HasPending(root));Reject(()=>Installation.RequireIdle(root));File.Delete(pending);
             var client=new SessionClient(root);

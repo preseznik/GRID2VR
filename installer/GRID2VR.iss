@@ -12,6 +12,8 @@ AppPublisher=Bohloney
 AppPublisherURL=https://github.com/preseznik/GRID2VR
 DefaultDirName={code:DefaultGameDir}
 AppendDefaultDirName=no
+; Keep the optional target change available when upgrading an existing install.
+DisableDirPage=no
 DisableProgramGroupPage=yes
 DirExistsWarning=no
 PrivilegesRequired=admin
@@ -31,6 +33,13 @@ AppMutex=Global\GRID2VR.Session
 SetupLogging=yes
 SetupIconFile=..\launcher\assets\GRID2VR.ico
 InfoBeforeFile={#Stage}\GRID2VR\ReleaseNotes.txt
+
+[Messages]
+WizardSelectDir=Browse GRID 2 Installation
+SelectDirDesc=Keep the detected folder or choose a different GRID 2 installation.
+SelectDirBrowseLabel=Click Next to use this folder, or Browse to choose another installation.
+BrowseDialogTitle=Browse GRID 2 Installation
+BrowseDialogLabel=Select the GRID 2 folder containing grid2.exe and grid2_avx.exe.
 
 [Files]
 Source: "{#Stage}\GRID2VR.exe"; DestDir: "{app}"; Flags: ignoreversion

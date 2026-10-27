@@ -24,6 +24,13 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public string CockpitTextures { get; init; } = "Off";
     public DrivingBinding? RecenterDevice { get; init; }
     public bool KeepHorizonLevel { get; init; } = true;
+    public bool ChaseFreeLook { get; init; }
+    public bool ChaseKeepAngle { get; init; }
+    public string ChaseMouseMode { get; init; } = "right";
+    public int ChaseMaxZoomOut { get; init; } = 180;
+    public int ChaseMouseSensitivity { get; init; } = 100;
+    public int ChaseStickSensitivity { get; init; } = 100;
+    public bool ChaseInvertVertical { get; init; }
 }
 internal sealed record ContentItem(string Id, string Label, string? ClassId = null, string? ClassName = null, bool CockpitAvailable = true, bool Dlc = false)
 {
@@ -70,6 +77,9 @@ internal sealed class SessionClient(string root)
         if (!RecenterShortcut.Valid(value.RecenterKey, value.RecenterModifiers)) throw new ArgumentException("Invalid recenter shortcut; system shortcuts are reserved.");
         if (value.Laps is < 1 or > 20) throw new ArgumentException("Choose between 1 and 20 circuit laps.");
         if (value.Graphics == null) throw new ArgumentException("Graphics settings are missing.");
+        if (value.ChaseMouseMode is not ("left" or "right" or "always")) throw new ArgumentException("Choose Hold left, Hold right or Always on for mouse look.");
+        if (value.ChaseMaxZoomOut is < 180 or > 1000 || value.ChaseMaxZoomOut % 10 != 0) throw new ArgumentException("Choose maximum zoom out between 180% and 1000%, in 10% steps.");
+        if (value.ChaseMouseSensitivity is < 25 or > 300 || value.ChaseStickSensitivity is < 25 or > 300) throw new ArgumentException("Choose chase-camera sensitivity between 25% and 300%.");
         value.Graphics.Validate();
         if (value.RecenterDevice is not null) DeviceRecenter.Validate(value.RecenterDevice);
     }
@@ -199,6 +209,11 @@ internal sealed class SessionClient(string root)
             "-VrMsaa", value.Graphics.VrMsaa,
             "-TreeDetail", value.Graphics.TreeDetail, "-ObjectDetail", value.Graphics.ObjectDetail,
             "-CrowdDetail", value.Graphics.CrowdDetail, "-TextureFiltering", value.Graphics.TextureFiltering);
+        foreach (var arg in new[] { "-ChaseFreeLook", value.ChaseFreeLook ? "1" : "0", "-ChaseKeepAngle", value.ChaseKeepAngle ? "1" : "0",
+            "-ChaseMouseMode", value.ChaseMouseMode, "-ChaseMaxZoomOut", value.ChaseMaxZoomOut.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "-ChaseMouseSensitivity", value.ChaseMouseSensitivity.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "-ChaseStickSensitivity", value.ChaseStickSensitivity.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "-ChaseInvertVertical", value.ChaseInvertVertical ? "1" : "0" }) command.ArgumentList.Add(arg);
         if (vr)
         {
             foreach (var arg in new[] { "-HudDistance", value.Graphics.HudDistance.ToString(System.Globalization.CultureInfo.InvariantCulture),

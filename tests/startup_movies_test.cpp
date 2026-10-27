@@ -10,9 +10,9 @@ using namespace grid2vr::startupmovies;
 namespace {
 void Check(bool value,const char* what){if(!value)throw std::runtime_error(what);}
 void Put(std::vector<std::uint8_t>& image,std::size_t at,std::uint32_t value){std::memcpy(image.data()+at,&value,4);}
-void Game(std::vector<std::uint8_t>& image,bool avx){
+void Game(std::vector<std::uint8_t>& image,bool avx,bool standalone=false){
     std::fill(image.begin(),image.end(),0);image[0]='M';image[1]='Z';
-    const std::uint32_t pe=avx?0x158:0x148,d=avx?0xd89498:0xd77680;
+    const std::uint32_t pe=standalone?0x50:(avx?0x158:0x148),d=avx?0xd89498:0xd77680;
     Put(image,0x3c,pe);Put(image,pe,IMAGE_NT_SIGNATURE);Put(image,pe+8,avx?0x524b8944:0x524b87ac);Put(image,pe+0x50,avx?0x100e000:0xffd000);
     const auto name=avx?0xd8b540:0xd7973c;Put(image,d,avx?0xd89c4c:0xd77e38);Put(image,d+12,name);Put(image,d+16,avx?0xb1673c:0xb04740);
     std::memcpy(image.data()+name,"bink2w32.dll",13);
@@ -64,8 +64,11 @@ int main(){try{
     for(const char* path:{"sting.bk2","video/sting.bik.old","video/sting.bk2.old","video/../video/sting.bk2","other/video/sting.bk2","video/sc01.bk2","video/sc01.bik","video/race_type_race.bk2","F:/Games/grid 2/video/sting.bk2"})
         Check(MovieForPath(path,"E:\\Games\\grid 2")==Movie::None,"other movies and paths unchanged");
     std::vector<std::uint8_t> image(0x100e000);
-    for(bool avx:{true,false}){
-        Game(image,avx);Check(ValidGameLayout(image.data(),image.size(),0x400000),"exact game layout");
+    for(bool avx:{true,false})for(bool standalone:{false,true}){
+        Game(image,avx,standalone);Check(ValidGameLayout(image.data(),image.size(),0x400000),"exact game layout");
+        const auto pe=standalone?0x50:(avx?0x158:0x148);
+        Put(image,0x3c,0x70);Check(!ValidGameLayout(image.data(),image.size(),0x400000),"unknown PE layout refused");Put(image,0x3c,pe);
+        image[pe+8]^=1;Check(!ValidGameLayout(image.data(),image.size(),0x400000),"changed build stamp refused");image[pe+8]^=1;
         Check(!ValidGameLayout(image.data(),100,0x400000)&&!ValidGameLayout(image.data(),image.size(),0x500000),"bounds and relocation guard");
         const auto call=avx?0x98ff6c:0x98170c;image[call]^=1;Check(!ValidGameLayout(image.data(),image.size(),0x400000),"changed call refused");image[call]^=1;
         Check(!InstallImportRoutes(image.data(),image.size(),0x400000,reinterpret_cast<void*>(0x1111),reinterpret_cast<void*>(0x2222),reinterpret_cast<void*>(0x9999),

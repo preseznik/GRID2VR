@@ -2,6 +2,9 @@ $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'tools/User-Session.ps1')
 . (Join-Path $root 'tools/Profiles.ps1')
+# Routing tests use synthetic profile data; executable classification has its own
+# file-based acceptance tests. The Direct branch is exercised below as well.
+function Get-Grid2LaunchBackend([string]$Game) { return 'Steam' }
 $temp=Join-Path $root ('build/profiles-test-'+[Guid]::NewGuid().ToString('N'))
 function Check($value,$message) { if(!$value) { throw $message } }
 function Refuses([scriptblock]$action) {
@@ -81,6 +84,18 @@ try {
     [IO.File]::WriteAllText((Join-Path $temp 'artifacts/profile-selection.json'), '{broken')
     Refuses { Get-LaunchProfile -Root $temp -AccountId '123' }
     Check ((Get-LaunchProfile -Root $temp -Id 'current').id -ceq 'current') 'Explicit current selection must remain possible.'
+    $savedSelection=[IO.File]::ReadAllBytes((Join-Path $temp 'artifacts/profile-selection.json'))
+    $originalAccountReader=${function:Get-ProfileAccountId}
+    try {
+        function Get-Grid2LaunchBackend([string]$Game) { return 'Direct' }
+        function Get-ProfileAccountId { param([switch]$AllowUnavailable); throw 'Standalone must not access a Steam account.' }
+        Check ((Get-LaunchProfile -Root $temp -Id 'current').id -ceq 'current') 'Standalone current career required Steam.'
+        Refuses { Get-LaunchProfile -Root $temp -Id $id -AccountId '123' }
+        Check ([Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $temp 'artifacts/profile-selection.json'))) -ceq [Convert]::ToBase64String($savedSelection)) 'Standalone refusal changed the selected career.'
+    } finally {
+        ${function:Get-ProfileAccountId}=$originalAccountReader
+        function Get-Grid2LaunchBackend([string]$Game) { return 'Steam' }
+    }
     foreach($script in @('Start-UserSession.ps1','Run-StereoProbe.ps1','Run-Diagnostic.ps1','Profiles.ps1')) {
         $tokens=$null; $errors=$null
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $root "tools/$script"),[ref]$tokens,[ref]$errors)

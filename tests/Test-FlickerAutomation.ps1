@@ -11,13 +11,14 @@ function Status($State,$Accepted,$Attempted,$Failed=$false) {
     @{state=$State;acceptedPairs=$Accepted;attemptedPairs=$Attempted;failed=$Failed} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixture 'runtime-status.json')
 }
 function Reject-SignInvocation([string]$Script,[hashtable]$Parameters,[string]$Expected) {
-    # Exact script copies have no dependencies beside them. A guard regression
-    # therefore cannot reach the installed game while exercising these cases.
+    # Only the launch-independent options helper is supplied. Missing session
+    # dependencies still prevent a guard regression from reaching the game.
     $message=''
     try { & (Join-Path $fixture $Script) @Parameters | Out-Null } catch { $message=$_.Exception.Message }
     if($message -notlike $Expected) { throw "Unexpected sign-target validation for ${Script}: $message" }
 }
 try {
+    Copy-Item -LiteralPath (Join-Path $root 'tools/Chase-Camera.ps1') -Destination (Join-Path $fixture 'Chase-Camera.ps1')
     foreach($name in @('Run-AutomatedFlicker.ps1','Run-StereoProbe.ps1','Run-Diagnostic.ps1','Start-UserSession.ps1')) {
         $script=Join-Path $root "tools/$name"
         $tokens=$null;$parseErrors=$null

@@ -13,6 +13,14 @@ param(
     [switch]$SkipIntro,
     [switch]$RemoveCinemaMatte,
     [switch]$DiagnosticLogging,
+    [switch]$ChaseCameraObserver,
+    [ValidateSet(0,1)][int]$ChaseFreeLook=0,
+    [ValidateSet(0,1)][int]$ChaseKeepAngle=0,
+    [ValidateSet('left','right','always')][string]$ChaseMouseMode='right',
+    [ValidateRange(180,1000)][ValidateScript({ $_ % 10 -eq 0 })][int]$ChaseMaxZoomOut=180,
+    [ValidateRange(25,300)][int]$ChaseMouseSensitivity=100,
+    [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
+    [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
@@ -59,6 +67,10 @@ param(
     [string]$PythonPath=''
 )
 $ErrorActionPreference='Stop'
+if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
+if($ChaseFreeLook -and !$RuntimeSession) { throw 'Chase-camera controls require a user runtime session.' }
+. (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
+$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
 if($VrMirrorBorderless -and ($Mode -notin @('Headset','Preflight') -or !$RuntimeSession -or !$UntilExit -or $PlayerControlOnly -or !$ForceSceneResolution)) { throw 'Borderless VR mirror requires a user VR session with scene resolution enforcement.' }
 if($NormalLaunch -and ($SessionDirectory -or !$RuntimeSession -or $PlayerControlProbe -ne 'Off')) { throw 'Normal launch requires the guarded runtime without a selected session or input probe.' }
 $RemoveCinemaMatte=$RemoveCinemaMatte -or ($Mode -eq 'Headset' -and $RuntimeSession)
@@ -91,13 +103,16 @@ Assert-RecenterKey $RecenterKey $RecenterModifiers
 Assert-RecenterDevice (Split-Path $PSScriptRoot -Parent) $RecenterDeviceBase64
 $artifacts=Get-Grid2DataRoot $root
 $game=Get-Grid2GameRoot $root
-$steam=Get-Grid2SteamRoot
+. (Join-Path $PSScriptRoot 'Game-Executable.ps1')
+. (Join-Path $PSScriptRoot 'Launch-Backend.ps1')
+$launchBackend=Get-Grid2LaunchBackend $game
+Assert-Grid2LaunchCareer $launchBackend $CareerProfile
 . (Join-Path $PSScriptRoot 'OpenXR-Runtime.ps1')
 . (Join-Path $PSScriptRoot 'User-Session.ps1')
-$runtime=Get-Grid2VrRuntimeManifest $XrRuntime
+$runtime=if($Mode -ne 'Desktop'){Get-Grid2VrRuntimeManifest $XrRuntime}else{$null}
 $proxy=Get-Grid2Proxy $root
 if($DiagnosticProxy) {
-    if(!$FlickerDiagnostic -and $CockpitTextures -eq 'Off') { throw 'A diagnostic proxy override requires FlickerDiagnostic or CockpitTextures.' }
+    if(!$FlickerDiagnostic -and !$ChaseCameraObserver -and !$ChaseFreeLook -and $CockpitTextures -eq 'Off') { throw 'A diagnostic proxy override requires FlickerDiagnostic, ChaseCameraObserver, ChaseFreeLook or CockpitTextures.' }
     $proxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path
 }
 if($FlickerDiagnostic -and (!$RuntimeSession -or $PlayerControlOnly)) { throw 'Flicker capture requires the stereo runtime.' }
@@ -111,6 +126,7 @@ if ($RecordedViewsFile -and $Mode -ne 'Desktop') { throw 'Recorded input is only
 if ($RuntimeSession -and ($WaitForStereoStart -or $KeepCaptures)) { throw 'Runtime sessions do not use the diagnostic chat gate or capture retention.' }
 if ($PlayerControlOnly -and (($PlayerControlProbe -eq 'Off' -and $BackgroundPlay -eq 'Off') -or $RecordedViewsFile)) { throw 'Non-rendering checks require a player control or background-play probe and no recorded headset views.' }
 if ($BackgroundPlay -ne 'Off' -and !$RuntimeSession) { throw 'Background play requires a guarded runtime session.' }
+if($ChaseCameraObserver -and ($Mode -notin @('Preflight','Desktop') -or !$RuntimeSession -or !$PlayerControlOnly -or !$UntilExit -or !$DiagnosticProxy)) { throw 'Chase observation requires an explicit desktop diagnostic proxy and a user-operated runtime session.' }
 if (Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Existing game session retained.' }
 if (Test-Path -LiteralPath (Join-Path $artifacts 'diagnostic-pending.json')) { throw 'Restore the pending diagnostic first.' }
 if (Test-Path -LiteralPath (Join-Path $artifacts 'practice-flow-pending.json')) { throw 'Restore the earlier experimental practice flow first.' }
@@ -126,7 +142,7 @@ $expected=@{
 # Desktop runs need no installed headset runtime. Preflight validates the selection.
 if($UntilExit -and $Mode -eq 'Headset') { Write-Output 'GRID2VR_LAUNCH|Checking the selected OpenXR runtime...' }
 $runtimeInfo=if($Mode -ne 'Desktop'){Resolve-Grid2VrRuntime $runtime}else{$null}
-$suppressTheater=$Mode -eq 'Headset' -and $runtimeInfo.theaterSuppression
+$suppressTheater=$launchBackend -eq 'Steam' -and $Mode -eq 'Headset' -and $runtimeInfo.theaterSuppression
 if(!(Test-Grid2Package $root)) {
     $cache=Get-Content -LiteralPath (Join-Path $root 'build/win32/CMakeCache.txt') -Raw
     if($cache -notmatch '(?m)^GRID2VR_ENABLE_XR_SESSION:BOOL=ON\r?$') { throw 'Build with GRID2VR_ENABLE_XR_SESSION=ON first.' }
@@ -170,13 +186,16 @@ if($CockpitMode -ne 'Off') {
 }
 $hardwarePaths=@((Join-Path $documents 'hardware_settings_config.xml'),(Join-Path $documents 'hardware_settings_info.xml'))
 $protectedPaths=@($hardwarePaths)
-foreach($account in Get-ChildItem -LiteralPath (Join-Path $steam 'userdata') -Directory) {
-    $saveRoot=Join-Path $account.FullName '44350'
-    if(Test-Path -LiteralPath $saveRoot) {
-        if((Get-Item -LiteralPath $saveRoot -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked save root is unsupported.' }
-        $items=@(Get-ChildItem -LiteralPath $saveRoot -Recurse -Force)
-        if(@($items | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Linked save data is unsupported.' }
-        $protectedPaths+=@($items | Where-Object { !$_.PSIsContainer } | ForEach-Object { $_.FullName })
+if($launchBackend -eq 'Steam') {
+    $steam=Get-Grid2SteamRoot
+    foreach($account in Get-ChildItem -LiteralPath (Join-Path $steam 'userdata') -Directory) {
+        $saveRoot=Join-Path $account.FullName '44350'
+        if(Test-Path -LiteralPath $saveRoot) {
+            if((Get-Item -LiteralPath $saveRoot -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked save root is unsupported.' }
+            $items=@(Get-ChildItem -LiteralPath $saveRoot -Recurse -Force)
+            if(@($items | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Linked save data is unsupported.' }
+            $protectedPaths+=@($items | Where-Object { !$_.PSIsContainer } | ForEach-Object { $_.FullName })
+        }
     }
 }
 if($RemoveCinemaMatte) { $protectedPaths+=Join-Path $game 'frontend/databases/overlayPersistent.pssg' }
@@ -193,6 +212,7 @@ $preflight=[ordered]@{mode=$Mode;frames=$Frames;captureAfterSeconds=$CaptureAfte
 if($selectedSession) { $preflight.selectedSession=$selectedSession }
 $preflight.runtimeSession=[bool]$RuntimeSession
 $preflight.normalLaunch=[bool]$NormalLaunch
+$preflight.launch=Get-Grid2LaunchPlan -Game $game -Backend $launchBackend -NormalLaunch:$NormalLaunch -SelectedSession $selectedSession -CareerProfile $CareerProfile
 $preflight.cockpitS2000=$CockpitS2000
 $preflight.cockpitMode=$CockpitMode
 $preflight.cockpitTextures=$CockpitTextures
@@ -262,6 +282,8 @@ $preflight.playerControlOnly=[bool]$PlayerControlOnly
 $preflight.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly)
 $preflight.vrMirrorBorderlessRequested=[bool]$VrMirrorBorderless
 $preflight.backgroundPlay=$BackgroundPlay
+$preflight.chaseCameraObserver=[bool]$ChaseCameraObserver
+$preflight.chaseCameraRequested=$chase.requested
 $preflight.xrRuntime=$XrRuntime
 $preflight.headsetSettings=Get-HeadsetSettings $HeadsetScale
 $preflight.runtimeInfo=$runtimeInfo
@@ -365,9 +387,13 @@ try {
     }
     $parameters.CareerProfile=$career.id
     $parameters.RunLogDirectory=$RunLogDirectory
+    $parameters.ChaseCameraObserver=[bool]$ChaseCameraObserver
+    $parameters.ChaseFreeLook=$ChaseFreeLook; $parameters.ChaseKeepAngle=$ChaseKeepAngle; $parameters.ChaseMouseMode=$ChaseMouseMode
+    $parameters.ChaseMaxZoomOut=$ChaseMaxZoomOut; $parameters.ChaseMouseSensitivity=$ChaseMouseSensitivity
+    $parameters.ChaseStickSensitivity=$ChaseStickSensitivity; $parameters.ChaseInvertVertical=$ChaseInvertVertical
     $parameters.CockpitTextures=$CockpitTextures
     # The non-rendering desktop branch also needs the explicitly selected DLL.
-    if($CockpitTextures -ne 'Off') { $parameters.DiagnosticProxy=$DiagnosticProxy }
+    if($ChaseCameraObserver -or $ChaseFreeLook -or $CockpitTextures -ne 'Off') { $parameters.DiagnosticProxy=$DiagnosticProxy }
     & (Join-Path $PSScriptRoot 'Run-Diagnostic.ps1') @parameters | ForEach-Object {
         $output.Add($_)
         if ($UntilExit -and $_ -is [string] -and $_ -like 'Diagnostic evidence: *') {

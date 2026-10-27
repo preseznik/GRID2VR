@@ -7,6 +7,13 @@ function Get-Grid2ExecutableHash([string]$Path,[ValidateSet('Avx','Regular')][st
     return [GRID2VR.GameExecutable]::Validate($Path, $Variant -eq 'Avx')
 }
 
+function Get-Grid2LaunchBackend([string]$Game) {
+    if(!('GRID2VR.GameExecutable' -as [type])) {
+        Add-Type -Path (Join-Path $PSScriptRoot 'GameExecutable.cs') -ErrorAction Stop
+    }
+    return [GRID2VR.GameExecutable]::ValidateInstallation($Game)
+}
+
 if($Grid2ExecutablePath) {
     $ErrorActionPreference='Stop'
     try { Get-Grid2ExecutableHash $Grid2ExecutablePath $Grid2ExecutableVariant }

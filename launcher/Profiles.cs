@@ -23,15 +23,18 @@ internal sealed record ProfileEntry(string Id, ProfileInfo? Info, string? Error)
 
 // Separate careers live in the workspace. The game worker routes Steam save calls
 // here; this store never replaces or rewrites the user's normal Steam career.
-internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, Func<string?> currentSaveRoot, Func<string?>? currentAccountId = null)
+internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, Func<string?> currentSaveRoot, Func<string?>? currentAccountId = null,
+    bool managedProfilesSupported = true)
 {
     internal const string CurrentCareer = "current";
+    internal const string StandaloneCareerMessage = "Standalone installations use Current game career. The game manages its existing saves; separate launcher profiles are unavailable.";
     internal const int MaxFiles = 64;
     internal const long MaxBytes = 64L * 1024 * 1024;
     internal const int MaxLocalDirectories = 16;
     internal const int MaxLocalDepth = 4;
     internal const string SessionMutex = @"Global\GRID2VR.Session";
     public string Root { get; } = Path.Combine(AppPaths.Data(Path.GetFullPath(workspaceRoot)), "profiles");
+    public bool ManagedProfilesSupported { get; } = managedProfilesSupported;
     readonly string selection = Path.Combine(AppPaths.Data(Path.GetFullPath(workspaceRoot)), "profile-selection.json");
     sealed record Selection([property: JsonPropertyName("schema")] int Schema, [property: JsonPropertyName("id")] string Id);
     sealed record SaveFile(string Path, string Name, long Bytes, DateTime LastWriteUtc);
@@ -54,6 +57,11 @@ internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, F
         var id = currentAccountId?.Invoke();
         if (id != null && !ValidAccountId(id)) throw new InvalidDataException("The active Steam account identifier is invalid.");
         return id;
+    }
+
+    void RequireManagedProfiles()
+    {
+        if (!ManagedProfilesSupported) throw new IOException(StandaloneCareerMessage);
     }
 
     internal static void NoLinks(string path)
@@ -209,12 +217,14 @@ internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, F
     {
         if (id != CurrentCareer)
         {
+            RequireManagedProfiles();
             var info = ReadInfo(id);
             if (info.AccountId != null && info.AccountId != AccountId())
                 throw new IOException("This profile belongs to a different Steam account. Sign in to its original account or choose another profile.");
             return WithDetails(info, CombinedSaves(ProfileRoot(id)));
         }
         var current = new ProfileInfo(1, CurrentCareer, "Current game career", "current", DateTime.UnixEpoch);
+        if (!ManagedProfilesSupported) return current with { Status = "Existing career — saved and loaded by the game" };
         var source = currentSaveRoot();
         if (source == null) return current with { Status = "Normal game career — no local Steam save found" };
         return WithDetails(current, ScanRemote(source));
@@ -238,6 +248,7 @@ internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, F
     {
         NoLinks(Root);
         var entries = new List<ProfileEntry> { Entry(CurrentCareer) };
+        if (!ManagedProfilesSupported) return entries;
         if (Directory.Exists(Root))
             foreach (var directory in Directory.EnumerateDirectories(Root))
             {
@@ -263,6 +274,7 @@ internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, F
 
     public ProfileInfo Create(string name, bool copyCurrent = false)
     {
+        RequireManagedProfiles();
         using var guard = new EditGuard(requireClosed);
         if (!IsValidNewName(name)) throw new ArgumentException("Use 1–24 letters (A–Z) or numbers (0–9), without spaces or symbols.");
         SelectedId(); // Never replace a broken selection without an explicit switch.
@@ -338,6 +350,7 @@ internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, F
 
     public void Delete(string id)
     {
+        RequireManagedProfiles();
         using var guard = new EditGuard(requireClosed);
         if (id == CurrentCareer) throw new IOException("The current game career cannot be deleted here.");
         if (id == SelectedId()) throw new IOException("Use another profile before deleting this one.");

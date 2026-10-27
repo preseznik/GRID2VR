@@ -20,13 +20,19 @@ constexpr Layout avx{0x158,0x524b8944,0x100e000,0xd89498,0xd89c4c,0xd8b540,0xb16
 constexpr Layout regular{0x148,0x524b87ac,0xffd000,0xd77680,0xd77e38,0xd7973c,0xb04740,
     0xb04750,0xb04788,0xb04778,{0x98170c,0x9890ed,0x988b9f,0x9889c5},
     "f92c2e1134b5d6d61404131224b41c182089bf563d28731eef0faa7d8096ab4c"};
+// These exact standalone files retain the audited import/call map. Keep their
+// header layouts separate so lazy file validation also checks the same family.
+constexpr Layout standaloneAvx=[]{auto layout=avx;layout.pe=0x50;
+    layout.hash=gameexe::avxStandalone;return layout;}();
+constexpr Layout standaloneRegular=[]{auto layout=regular;layout.pe=0x50;
+    layout.hash=gameexe::regularStandalone;return layout;}();
 constexpr char binkHash[]="03f9c695d4c45186d7b43ab64926fcb0933ca9a02eed43fd67cd8775ffac81e9";
 constexpr std::uint32_t binkBytes=0x69000;
 constexpr std::uint32_t openRva=0x117c0,waitRva=0x134f0,closeRva=0x12fd0,gotoRva=0x12ca0,asyncWaitRva=0x18140;
 std::uint32_t U32(const std::uint8_t* p){std::uint32_t n{};std::memcpy(&n,p,4);return n;}
 const Layout* HeaderLayout(const std::uint8_t* image,std::size_t bytes){
     if(!image||bytes<0x200||image[0]!='M'||image[1]!='Z')return nullptr;
-    for(const auto* layout:{&avx,&regular}){
+    for(const auto* layout:{&avx,&regular,&standaloneAvx,&standaloneRegular}){
         if(bytes>=layout->imageBytes&&U32(image+0x3c)==layout->pe&&
            U32(image+layout->pe)==IMAGE_NT_SIGNATURE&&
            U32(image+layout->pe+8)==layout->stamp&&
@@ -164,7 +170,10 @@ bool HashEquals(const wchar_t* path,const char* expected){
 }
 BOOL CALLBACK Verify(PINIT_ONCE,void*,void**){
     wchar_t binkFile[1024]{},gameRoot[1024]{},path[1200]{};
-    if(!GetModuleFileNameW(binkModule,binkFile,1024)||gameexe::Validate(hostFile,hostLayout==&avx).empty()||!HashEquals(binkFile,binkHash)){
+    const auto identity=gameexe::Validate(hostFile,hostLayout->stamp==avx.stamp);
+    const bool standalone=hostLayout==&standaloneAvx||hostLayout==&standaloneRegular;
+    if(!GetModuleFileNameW(binkModule,binkFile,1024)||identity.empty()||
+       standalone!=gameexe::IsStandalone(identity)||(standalone&&identity!=hostLayout->hash)||!HashEquals(binkFile,binkHash)){
         Failed("unsupported_binary");Receipt("refused");return TRUE;}
     wcscpy_s(gameRoot,hostFile);auto slash=wcsrchr(gameRoot,L'\\');if(!slash){Failed("invalid_game_path");Receipt("refused");return TRUE;}*slash=0;
     // Leave save checks intact and refuse to seek when a legacy state-file

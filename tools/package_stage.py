@@ -11,6 +11,8 @@ SCRIPTS += ['Focus-CockpitPack', 'Cockpit-TexturePack']
 DATA_FILES += ['cockpit-texture-pack.json']
 DATA_FILES += ['cockpit-dlc.json']
 SCRIPTS += ['Dlc-Cockpit']
+SCRIPTS += ['Launch-Backend']
+SCRIPTS += ['Chase-Camera']
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def copy(source,target):
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
@@ -59,11 +61,12 @@ def package_apphost(output, assembly, resources, runtime):
                     '-Output',str(output),'-Assembly',assembly,'-Resources',str(resources),
                     '-RuntimeVersion',runtime],check=True)
 def stage(a):
-    release=release_assets.check_inputs(ROOT,a.output.resolve(),a.version,a.channel)
+    release=release_assets.check_inputs(ROOT,a.output.resolve(),a.version,a.channel,a.native)
     out=a.output.resolve();stage=out/'stage';mod=stage/'GRID2VR';payload=mod/'payload';payload.mkdir(parents=True)
     copy(out/'publish/GRID2VR.exe',stage/'GRID2VR.exe')
     (stage/'Start-GRID2VR.cmd').write_text('@echo off\nstart "" "%~dp0GRID2VR.exe"\n',encoding='ascii')
-    copy(ROOT/'build/win32/bin/RelWithDebInfo/d3d11.dll',payload/'d3d11.dll')
+    copy(release_assets.native_path(ROOT,a.native),payload/'d3d11.dll')
+    release_assets.require(sha(payload/'d3d11.dll')==release['nativeSha256'], 'Native renderer changed while staging.')
     copy(ROOT/'build/driving-input-vs-x64/Release/driving_input.dll',payload/'driving_input.dll')
     for name in SCRIPTS:copy(ROOT/f'tools/{name}.ps1',mod/f'tools/{name}.ps1')
     copy(ROOT/'tools/GameExecutable.cs',mod/'tools/GameExecutable.cs')
@@ -146,5 +149,5 @@ def finalize(out):
     release=release_assets.finalize(out,manifest,setup,archive)
     print(json.dumps({'installer':str(setup),'zip':str(archive),'textures':release['cockpitTextures'],'channel':manifest['channel'],'published':False}))
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--output',type=Path);p.add_argument('--python',type=Path);p.add_argument('--version');p.add_argument('--channel');p.add_argument('--revision');p.add_argument('--built');p.add_argument('--finalize',type=Path);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--output',type=Path);p.add_argument('--python',type=Path);p.add_argument('--version');p.add_argument('--channel');p.add_argument('--revision');p.add_argument('--built');p.add_argument('--native',type=Path);p.add_argument('--finalize',type=Path);a=p.parse_args()
     finalize(a.finalize) if a.finalize else stage(a)
