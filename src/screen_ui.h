@@ -7,6 +7,25 @@
 #include <tuple>
 
 namespace grid2vr {
+// Flat native menus only. Correct the two verified UI camera families before
+// clipping, using owned bindings; restore every changed binding after the draw.
+class FlatScreenUi {
+public:
+    bool Configure(const std::filesystem::path& folder);
+    bool Enabled() const { return width_!=0; }
+    bool Apply(ID3D11DeviceContext* context,uint64_t shader);
+    bool Restore(ID3D11DeviceContext* context);
+    bool Reset();
+    bool Pending() const { return pending_; }
+private:
+    unsigned width_{},height_{},seedAttempts_{};
+    ID3D11DeviceContext* owner_{};
+    DWORD thread_{};
+    Microsoft::WRL::ComPtr<ID3D11Buffer> replacement_,originalVs_,originalPs_;
+    std::array<D3D11_RECT,D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE> scissors_{};
+    UINT scissorCount_{};
+    bool pending_{},changedPs_{},changedScissors_{};
+};
 // Verified native UI shaders/cameras only. Post-VS projection preserves native
 // artwork varyings and original canvas clipping. Scoped to one triangle draw.
 class ScreenUi {

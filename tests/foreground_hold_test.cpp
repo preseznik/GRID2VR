@@ -11,17 +11,17 @@ int main() {
         const bool expected=state==4 && flags==7;
         if(grid2vr::UnattendedStereoWindow(state,flags&1,flags&2,flags&4,flags&8)!=expected)return 5;
     }
-    // Only live Normal garage rendering can use XR focus instead of desktop
-    // ownership. Recorded diagnostics, hidden/minimized/unknown windows,
-    // inactive/unreadable garages and unready XR views keep their old gate.
+    // Live Normal rendering can use XR focus with a guarded active garage or
+    // a fresh native world. Recorded diagnostics, hidden/minimized/unknown
+    // windows and unready XR views keep their old gate.
     constexpr unsigned states[]{0,1,2,3,4,5,6,7,~0u};
-    for(unsigned state:states)for(unsigned flags=0;flags<64;++flags) {
-        const bool expected=(state==4 || state==5) && flags==59;
-        if(grid2vr::NormalGarageXrWindow(state,flags&1,flags&2,flags&4,flags&8,flags&16,flags&32)!=expected)return 6;
+    for(unsigned state:states)for(unsigned flags=0;flags<128;++flags) {
+        const bool expected=(state==4 || state==5) && (flags==59 || flags==91 || flags==123);
+        if(grid2vr::NormalXrRenderWindow(state,flags&1,flags&2,flags&4,flags&8,flags&16,flags&32,flags&64)!=expected)return 6;
     }
     grid2vr::ForegroundHold garage;
     const auto observe=[&](uint64_t now,unsigned state,bool xrReady,bool activeGarage) {
-        return garage.Observe(now,grid2vr::NormalGarageXrWindow(state,true,true,false,true,xrReady,activeGarage));
+        return garage.Observe(now,grid2vr::NormalXrRenderWindow(state,true,true,false,true,xrReady,activeGarage,false));
     };
     // The desktop may change owners while the game stays visible and XR stays
     // focused. An overlay or lost tracking/shouldRender must reset the hold.
@@ -46,4 +46,20 @@ int main() {
         window(11499,false,true) || !window(11500,false,true))return 11;
     // Closing the background path must not leave a stale garage exception.
     if(window(11501,false,false) || window(12000,true,false) || !window(13500,true,false))return 12;
+    // Normal -> loading -> custom race while the desktop is owned by VDXR.
+    // Native world readiness admits rendering without installing background
+    // input hooks. Missing camera/visibility, lost focus and minimization reset
+    // the hold; the race can recover from each with fresh evidence.
+    grid2vr::ForegroundHold normal;
+    const auto race=[&](uint64_t now,unsigned state,bool focused,bool garageActive,bool worldReady) {
+        return normal.Observe(now,grid2vr::NormalXrRenderWindow(state,true,true,false,true,focused,garageActive,worldReady));
+    };
+    if(race(0,4,true,true,false) || !race(1500,4,true,true,false) ||
+        race(1501,4,true,false,false) || race(2000,4,true,false,true) ||
+        race(3499,4,true,false,true) || !race(3500,4,true,false,true))return 13;
+    if(race(3501,4,true,false,false) || race(3600,4,true,false,true) ||
+        !race(5100,4,true,false,true) || race(5101,4,false,false,true) ||
+        race(5200,4,true,false,true) || !race(6700,4,true,false,true))return 14;
+    if(race(6701,6,true,false,true) || race(6800,4,true,false,true) ||
+        !race(8300,4,true,false,true) || !race(8301,4,true,true,false))return 15;
 }

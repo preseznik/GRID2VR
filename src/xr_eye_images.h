@@ -9,7 +9,7 @@ namespace grid2vr {
 // to render both accepted eyes. Shutdown is explicit on the owning render thread.
 class XrEyeImages {
 public:
-    bool Initialize(XrSession session,ID3D11Device* device,NativeEyeDraw draw,unsigned width,unsigned height);
+    bool Initialize(XrSession session,ID3D11Device* device,NativeEyeDraw draw,unsigned width,unsigned height,bool widescreenMenus=false);
     bool Copy(uint64_t frame,XrSpace space,const std::array<XrView,2>& views,ID3D11Texture2D* left,ID3D11Texture2D* right);
     bool CopyScreen(uint64_t frame,XrSpace localSpace,const XrPosef& anchor,ID3D11Texture2D* backbuffer);
     const XrCompositionLayerProjection* Projection(uint64_t frame) const { return ready_ && !screenReady_ && frame==frame_?&layer_:nullptr; }
@@ -41,7 +41,7 @@ private:
     DWORD thread_{};
     unsigned width_{},height_{};
     uint64_t frame_{};
-    bool initialized_{},ready_{},screenReady_{},gpuUsed_{};
+    bool initialized_{},ready_{},screenReady_{},gpuUsed_{},widescreenMenus_{};
     const char* failure_{};
     XrResult result_{XR_SUCCESS};
 };

@@ -6,6 +6,8 @@
 #include "camera_shader.h"
 #include "engine_trace.h"
 #include "replay_trace.h"
+#include "spotlight_witness.h"
+#include "cockpit_animation.h"
 #include "texture_digest.h"
 #include "eye_textures.h"
 #include "eye_mirror.h"
@@ -28,9 +30,9 @@
 #include "instance_capacity.h"
 #include "headset_visibility_candidate.h"
 #include "process_exit.h"
-#include "menu_exit.h"
 #include "stop_receipt.h"
 #include "scene_resolution.h"
+#include "frontend_video_resize.h"
 #include "exposure_audit.h"
 #ifdef GRID2VR_ENABLE_XR_SESSION
 #include "xr_session.h"
@@ -87,6 +89,7 @@ LateScreenUi lateUi;
 bool lateUiEnabled{};
 ScreenUiNativeWitness nativeUiWitness;
 bool nativeUiWitnessEnabled{};
+FlatScreenUi flatMenuUi;
 SceneViews acquiredViews;
 uint64_t acquiredViewsFrame{},lateUiScene{};
 void FinishLateUi(bool present);
@@ -166,7 +169,8 @@ const char* BeforeGameExit() {
         return "renderer_not_restored";
     }
     runtimeStopped=true;
-    playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();
+    playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();cockpitanimation::Stop();
+    if (!flatMenuUi.Reset()) return "flat_menu_not_restored";
 #ifdef GRID2VR_ENABLE_XR_SESSION
     recenter::Enable(false);
     if(xrRequested && !xrStopped) {
@@ -196,7 +200,7 @@ HWND diagnosticWindow{};
 bool manualStereoStart{},manualStereoReady{},manualStereoReleased{};
 ForegroundHold foregroundHold;
 ForegroundHold backgroundHold;
-ForegroundHold garageXrHold;
+ForegroundHold normalXrHold;
 unsigned WindowState(uint64_t frameId,bool force=false) {
     if (!diagnosticWindow) return ~0u;
     DWORD foregroundProcess{};GetWindowThreadProcessId(GetForegroundWindow(),&foregroundProcess);
@@ -370,7 +374,10 @@ void InitializeXr(ID3D11Device* device) {
     xrProjection=std::filesystem::exists(output/L"xr-projection.request");
     if (!xrRequested) return;
     std::wifstream request(output/L"xr-session.request");std::wstring runtime;std::getline(request,runtime);
-    const bool closeReady=EnsureExitHandler() && processexit::AttachWindow(diagnosticWindow) && menuexit::Install(gameBase,output);
+    // Early menu-state hooks regressed native loading before stereo starts.
+    // Keep the established window/ExitProcess cleanup path; the menu gate is
+    // restricted to its isolated fixture until live startup safety is proven.
+    const bool closeReady=EnsureExitHandler() && processexit::AttachWindow(diagnosticWindow);
     Log("session close handler attached=%u",closeReady);
     bool initialized=closeReady && !std::filesystem::exists(output/L"recorded-views.request") && xrSession.Initialize(device,runtime,output);
     if (initialized && xrProjection) {
@@ -634,6 +641,10 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     // An early window-close request has stopped XR at this restored boundary.
     // Forward native Presents without rearming input, eye rendering or overlays.
     if(runtimeStopped) return realPresent(chain,sync,flags);
+#ifdef GRID2VR_ENABLE_XR_SESSION
+    if(runtimeSession && xrProjection && !xrStopped && !engine::SessionFailed())
+        cockpitanimation::Tick(engine::NativeWorldReady());
+#endif
     flicker::Poll();
 #ifdef GRID2VR_ENABLE_XR_SESSION
     if (runtimeSession && f==0) {
@@ -654,24 +665,25 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     bool nativeWindowReady=backgroundHold.Observe(GetTickCount64(),backgroundplay::WindowEligible(windowState,backgroundplay::Enabled()) || simulatedBackground);
     static const bool normalLaunch=std::filesystem::is_regular_file(output/L"normal-launch.request");
     auto normalGarageState=GarageMenuState::Unavailable;
-    bool normalLiveXr=false,focusedGarageViews=false;
+    bool normalLiveXr=false,focusedNormalViews=false;
 #ifdef GRID2VR_ENABLE_XR_SESSION
     normalLiveXr=runtimeSession && normalLaunch && !recordedRequested && xrRequested && xrProjection && !xrStopped;
     if(normalLiveXr) {
         // Read current XR focus before evaluating the hold. The existing
         // dashboard suspension and per-frame view-provider guards still apply.
         xrSession.Poll();
-        focusedGarageViews=xrSession.ReadyForViews(true);
-        if(focusedGarageViews && (windowState==4 || windowState==5))
+        focusedNormalViews=xrSession.ReadyForViews(true);
+        if(focusedNormalViews && (windowState==4 || windowState==5))
             normalGarageState=ReadGarageMenu(gameBase,[](uintptr_t at,void* value,size_t size) {
                 return ReadMemory(reinterpret_cast<void*>(at),value,size);
             }).state;
     }
 #endif
-    const bool garageXrEligible=NormalGarageXrWindow(windowState,runtimeSession,normalLaunch,recordedRequested,
-        normalLiveXr,focusedGarageViews,normalGarageState==GarageMenuState::Active);
-    bool garageXrStable=garageXrHold.Observe(GetTickCount64(),garageXrEligible);
-    bool renderWindowReady=nativeWindowReady || garageXrStable;
+    const bool nativeWorldReady=normalLiveXr && engine::NativeWorldReady();
+    const bool normalXrEligible=NormalXrRenderWindow(windowState,runtimeSession,normalLaunch,recordedRequested,
+        normalLiveXr,focusedNormalViews,normalGarageState==GarageMenuState::Active,nativeWorldReady);
+    bool normalXrStable=normalXrHold.Observe(GetTickCount64(),normalXrEligible);
+    bool renderWindowReady=nativeWindowReady || normalXrStable;
     backgroundplay::ObserveWindow(windowState);
     dlccockpit::Present();
     LARGE_INTEGER now{},frequency{}; QueryPerformanceCounter(&now); QueryPerformanceFrequency(&frequency);
@@ -781,6 +793,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
                 playercontrol::Stop();
                 backgroundplay::Stop();
                 dlccockpit::Stop();
+                cockpitanimation::Stop();
                 chaseobserver::Stop();
                 chasecamera::Stop();
                 if (engine::Continuous() && !engine::StopSession()) engine::FailSession();
@@ -828,10 +841,10 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
             manualStereoReleased=true;
             foregroundHold.Reset();
             backgroundHold.Reset();
-            garageXrHold.Reset();
+            normalXrHold.Reset();
             foregroundStable=false;
             nativeWindowReady=false;
-            garageXrStable=false;
+            normalXrStable=false;
             renderWindowReady=false;
             Log("manual_stereo_start frame=%llu released=1",f+1);
             WindowState(f+1,true);
@@ -898,9 +911,10 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
                 << "\",\"windowState\":" << windowState << ",\"foregroundStable\":" << (foregroundStable?"true":"false")
                 << ",\"renderWindowReady\":" << (renderWindowReady?"true":"false") << ",\"backgroundPlay\":" << (backgroundplay::Enabled()?"true":"false")
                 << ",\"nativeWindowReady\":" << (nativeWindowReady?"true":"false")
+                << ",\"nativeWorldReady\":" << (nativeWorldReady?"true":"false")
                 << ",\"garageState\":\"" << (normalGarageState==GarageMenuState::Active?"active":normalGarageState==GarageMenuState::Inactive?"inactive":"unavailable")
-                << "\",\"garageXrEligible\":" << (garageXrEligible?"true":"false") << ",\"garageXrStable\":" << (garageXrStable?"true":"false")
-                << ",\"garageXrFocusedViews\":" << (focusedGarageViews?"true":"false")
+                << "\",\"normalXrEligible\":" << (normalXrEligible?"true":"false") << ",\"normalXrStable\":" << (normalXrStable?"true":"false")
+                << ",\"normalXrFocusedViews\":" << (focusedNormalViews?"true":"false")
                 << ",\"xrReady\":" << (xrReady?"true":"false") << ",\"recordedReady\":" << (recordedReady?"true":"false") << "}\n";
         }
         if (changed) {
@@ -953,11 +967,42 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     return hr;
 }
 
+bool InstallFrontendVideoResize();
 void PrepareSwapchainChange() {
+    // Native reset reaches the front-end target rebuild after this DXGI call.
+    // Leave initial startup/target creation entirely outside the new hook.
+    if (runtimeSession && std::filesystem::is_regular_file(output/L"scene-size.request") && !InstallFrontendVideoResize())
+        Log("session frontend_video_reset hook refused");
     nativeUiWitness.End(true);
     FinishLateUi(false);lateUi.Reset();
     previewFrame.Reset();
-    if (runtimeSession && engine::Continuous() && !engine::SuspendSession()) engine::FailSession();
+    if (runtimeSession && engine::Continuous()) {
+        const bool suspended=engine::SuspendForSwapchainChange();
+        Log("session swapchain prepared=%u frame=%llu",suspended,frame.load());
+        if (!suspended) engine::FailSession();
+    }
+}
+using FrontendVideoResizeFn=void(__thiscall*)(void*,unsigned,unsigned,bool);
+FrontendVideoResizeFn realFrontendVideoResize{};
+void __fastcall FrontendVideoResize(void* camera,void*,unsigned width,unsigned height,bool force) {
+    const auto caller=reinterpret_cast<uintptr_t>(_ReturnAddress());
+    if (caller==gameBase+frontendvideo::resetReturnRva) {
+        const auto incomingWidth=width,incomingHeight=height;
+        const bool owned=sceneresolution::OwnsNativeResize(gameBase);
+        const bool corrected=owned && frontendvideo::ResetArguments(gameBase,caller,camera,width,height,force);
+        Log("session frontend_video_reset corrected=%u owned=%u incoming=%ux%u base=%ux%u",
+            corrected,owned,incomingWidth,incomingHeight,width,height);
+    }
+    realFrontendVideoResize(camera,width,height,force);
+}
+bool InstallFrontendVideoResize() {
+    if (realFrontendVideoResize) return true;
+    if (!frontendvideo::InstructionsMatch(gameBase)) return false;
+    auto* target=reinterpret_cast<void*>(gameBase+frontendvideo::resizeRva);
+    if (MH_CreateHook(target,reinterpret_cast<void*>(FrontendVideoResize),reinterpret_cast<void**>(&realFrontendVideoResize))!=MH_OK) return false;
+    if (MH_EnableHook(target)!=MH_OK) {MH_RemoveHook(target);realFrontendVideoResize=nullptr;return false;}
+    Log("session frontend_video_reset installed=1");
+    return true;
 }
 HRESULT STDMETHODCALLTYPE Resize(IDXGISwapChain* chain,UINT count,UINT width,UINT height,DXGI_FORMAT format,UINT flags) {
     const auto incomingWidth=width,incomingHeight=height;
@@ -1054,6 +1099,12 @@ using Texture2DFn=HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*,const D3D11_TEXTURE2
 Texture2DFn realTexture2D{};
 HRESULT STDMETHODCALLTYPE CreateTexture2D(ID3D11Device* device,const D3D11_TEXTURE2D_DESC* desc,const D3D11_SUBRESOURCE_DATA* data,ID3D11Texture2D** texture) {
     const auto hr=realTexture2D(device,desc,data,texture);
+    static std::atomic<unsigned> failures{};
+    if (runtimeSession && FAILED(hr) && desc && failures.fetch_add(1)<16) {
+        Log("session texture_create failed hr=0x%08lx size=%ux%u format=%u samples=%u quality=%u mips=%u array=%u bind=0x%x usage=%u removed=0x%08lx caller=%p",
+            hr,desc->Width,desc->Height,desc->Format,desc->SampleDesc.Count,desc->SampleDesc.Quality,
+            desc->MipLevels,desc->ArraySize,desc->BindFlags,desc->Usage,device->GetDeviceRemovedReason(),_ReturnAddress());
+    }
     if(SUCCEEDED(hr) && texture)focusCockpit.TextureCreated(device,desc,data,*texture,realTexture2D,uintptr_t(_ReturnAddress())-gameBase);
     msaaaudit::TextureCreated(desc,hr,SUCCEEDED(hr) && texture?*texture:nullptr,uintptr_t(_ReturnAddress()));return hr;
 }
@@ -1063,6 +1114,11 @@ HRESULT STDMETHODCALLTYPE CreateResourceView(ID3D11Device* device,ID3D11Resource
 }
 HRESULT STDMETHODCALLTYPE CreateBuffer(ID3D11Device* device,const D3D11_BUFFER_DESC* desc,const D3D11_SUBRESOURCE_DATA* data,ID3D11Buffer** buffer) {
     const auto hr=realBuffer(device,desc,data,buffer);
+    if (SUCCEEDED(hr) && flatMenuUi.Enabled() && desc && data && buffer && *buffer &&
+        desc->BindFlags==D3D11_BIND_CONSTANT_BUFFER && desc->ByteWidth==320)
+        ScreenUi::Upload(*buffer,data->pSysMem,desc->ByteWidth);
+    if (SUCCEEDED(hr) && desc && data && buffer && *buffer)
+        spotlightwitness::Upload(*buffer,data->pSysMem,desc->ByteWidth);
     instancecapacity::BufferCreated(desc,hr,SUCCEEDED(hr) && buffer?*buffer:nullptr,uintptr_t(_ReturnAddress()));return hr;
 }
 HRESULT STDMETHODCALLTYPE CreateVS(ID3D11Device* d,const void* b,SIZE_T n,ID3D11ClassLinkage* l,ID3D11VertexShader** s) {
@@ -1085,16 +1141,18 @@ thread_local std::vector<Mapped> mappings;
 HRESULT STDMETHODCALLTYPE Map(ID3D11DeviceContext* c,ID3D11Resource* resource,UINT sub,D3D11_MAP kind,UINT flags,D3D11_MAPPED_SUBRESOURCE* mapped) {
     const auto hr=realMap(c,resource,sub,kind,flags,mapped);
     const bool witness=flicker::Observing();
-    const bool screenUi=replaytrace::ScreenUiEnabled();
+    const bool screenUi=replaytrace::ScreenUiEnabled() || flatMenuUi.Enabled();
+    const bool lighting=spotlightwitness::Enabled();
     const bool legacy=captureUntil.load()>frame.load() && (traceReplayWork || cameraSamples.load()<64);
-    if (SUCCEEDED(hr) && mapped && kind!=D3D11_MAP_READ && (witness || legacy || screenUi)) {
+    if (SUCCEEDED(hr) && mapped && kind!=D3D11_MAP_READ && (witness || legacy || screenUi || lighting)) {
         ComPtr<ID3D11Buffer> buffer;
         if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(&buffer)))) {
             D3D11_BUFFER_DESC desc{}; buffer->GetDesc(&desc);
             // These are candidates only. The draw trace separately verifies the
             // shader's named camera binding; unused trailing fields may be absent.
             const bool camera=legacy && (desc.ByteWidth==320 || desc.ByteWidth==368);
-            if ((desc.BindFlags&D3D11_BIND_CONSTANT_BUFFER) && (camera || traceReplayWork || witness) && desc.ByteWidth<=65536 && mappings.size()<32)
+            if ((desc.BindFlags&D3D11_BIND_CONSTANT_BUFFER) && (camera || traceReplayWork || witness || (screenUi && desc.ByteWidth==320) ||
+                (lighting && spotlightwitness::TracksSize(desc.ByteWidth))) && desc.ByteWidth<=65536 && mappings.size()<32)
                 mappings.push_back({c,resource,sub,mapped->pData,desc.ByteWidth,camera});
         }
     }
@@ -1104,6 +1162,9 @@ void STDMETHODCALLTYPE Unmap(ID3D11DeviceContext* c,ID3D11Resource* resource,UIN
     for (auto it=mappings.begin();it!=mappings.end();++it) {
         if (it->context==c && it->resource==resource && it->subresource==sub) {
             if (traceReplayWork) replaytrace::Upload(resource,it->data,it->bytes);
+            else spotlightwitness::Upload(resource,it->data,it->bytes);
+            if (flatMenuUi.Enabled() && (!traceReplayWork || !replaytrace::ScreenUiEnabled()))
+                ScreenUi::Upload(resource,it->data,it->bytes);
             flicker::Upload(resource,it->data,it->bytes);
             const auto sample=it->camera?cameraSamples.fetch_add(1):64;
             if (sample<64) {
@@ -1481,12 +1542,31 @@ void LateDraw(ID3D11DeviceContext* context,unsigned kind,std::span<const UINT> a
         Log("screen_ui late_draw_failed=1 frame=%llu",frame.load());engine::FailSession();
     }
 }
+bool BeginFlatMenu(ID3D11DeviceContext* context) {
+    if (!flatMenuUi.Enabled() || runtimeStopped || engine::SessionFailed() ||
+        engine::SessionRendering() || engine::ReplayingEye()) return false;
+    ComPtr<ID3D11VertexShader> shader;context->VSGetShader(&shader,nullptr,nullptr);
+    const auto hash=replaytrace::ShaderFingerprint(shader.Get());
+    const bool applied=flatMenuUi.Apply(context,hash);
+    static bool reported{};
+    if (applied && !reported) {
+        reported=true;Log("session flat_menu camera corrected=1 canvas=16:9 frame=%llu shader=%016llx",frame.load(),hash);
+    }
+    return applied;
+}
+void EndFlatMenu(ID3D11DeviceContext* context,bool applied) {
+    if (applied && !flatMenuUi.Restore(context)) {
+        Log("flat_menu restore_failed=1 frame=%llu",frame.load());engine::FailSession();
+    }
+}
 void STDMETHODCALLTYPE Draw(ID3D11DeviceContext* c,UINT n,UINT start) {
     profile::Scope measure(profile::DrawHook);
     ++draws; CameraDraw(c); const UINT args[]{n,start}; const auto mark=replaytrace::Work(c,"Draw",args);
     CaptureDrawInputs(c,mark);
     auto repeat=PrepareProducerRepeat(c,mark,true,n,start);
+    const bool flatMenu=BeginFlatMenu(c);
     {profile::Scope driver(profile::DrawDriver);realDraw(c,n,start);}
+    EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     CompleteProducerRepeat(c,mark,repeat,true,n,start);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,0,args);
@@ -1496,7 +1576,9 @@ void STDMETHODCALLTYPE DrawIndexed(ID3D11DeviceContext* c,UINT n,UINT start,INT 
     ++draws; CameraDraw(c); const UINT args[]{n,start,static_cast<UINT>(base)}; const auto mark=replaytrace::Work(c,"Indexed",args);
     CaptureDrawInputs(c,mark);
     auto repeat=PrepareProducerRepeat(c,mark,false,n,start,base);
+    const bool flatMenu=BeginFlatMenu(c);
     {profile::Scope driver(profile::DrawDriver);realDrawIndexed(c,n,start,base);}
+    EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     CompleteProducerRepeat(c,mark,repeat,false,n,start,base);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,1,args);
@@ -1505,7 +1587,9 @@ void STDMETHODCALLTYPE DrawInstanced(ID3D11DeviceContext* c,UINT n,UINT count,UI
     profile::Scope measure(profile::DrawHook);
     ++draws; CameraDraw(c); const UINT args[]{n,count,start,instance}; const auto mark=replaytrace::Work(c,"Instanced",args);
     CaptureDrawInputs(c,mark);
+    const bool flatMenu=BeginFlatMenu(c);
     {profile::Scope driver(profile::DrawDriver);realDrawInstanced(c,n,count,start,instance);}
+    EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,2,args);
 }
@@ -1513,7 +1597,9 @@ void STDMETHODCALLTYPE DrawIndexedInstanced(ID3D11DeviceContext* c,UINT n,UINT c
     profile::Scope measure(profile::DrawHook);
     ++draws; CameraDraw(c); const UINT args[]{n,count,start,static_cast<UINT>(base),instance}; const auto mark=replaytrace::Work(c,"IndexedInstanced",args);
     CaptureDrawInputs(c,mark);
+    const bool flatMenu=BeginFlatMenu(c);
     {profile::Scope driver(profile::DrawDriver);realDrawIndexedInstanced(c,n,count,start,base,instance);}
+    EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,3,args);
 }
@@ -1669,6 +1755,10 @@ bool Active() {
                 std::filesystem::is_regular_file(output/L"flicker-unattended.request");
 #ifdef GRID2VR_ENABLE_XR_SESSION
             if (runtimeSession && std::filesystem::exists(output/L"xr-projection.request")) {
+                // UI camera uploads start before the first Present/replay setup.
+                // Only the explicit headset-relative session needs a 16:9 canvas
+                // independent of its per-eye pixel aspect.
+                flatMenuUi.Configure(output);
                 recenterKeepHorizonLevel=!std::filesystem::exists(output/L"runtime-recenter-tilt.request");
                 recenterBindingValid=true;
                 const auto bindingPath=output/L"runtime-recenter-key.txt";
@@ -1696,8 +1786,9 @@ void Attach(ID3D11Device* device,ID3D11DeviceContext* context,IDXGISwapChain* ch
     std::lock_guard lock(attachMutex);
     static const bool initialized=[] { const auto s=MH_Initialize(); return s==MH_OK || s==MH_ERROR_ALREADY_INITIALIZED; }();
     if (!initialized) return;
+    if(!cockpitanimation::Install(gameBase,output)) {Log("cockpit animation qualification refused");return;}
     if(!msaaaudit::Install(gameBase,output)) {Log("MSAA audit startup hook refused");return;}
-    if((msaaaudit::Enabled() || focusCockpit.Enabled()) && !Hook(device,5,reinterpret_cast<void*>(CreateTexture2D),realTexture2D)) {
+    if((runtimeSession || msaaaudit::Enabled() || focusCockpit.Enabled()) && !Hook(device,5,reinterpret_cast<void*>(CreateTexture2D),realTexture2D)) {
         focusCockpit.HookFailed();Log("texture observation hook refused");if(msaaaudit::Enabled())return;
     }
     if(focusCockpit.Enabled() && !Hook(device,7,reinterpret_cast<void*>(CreateResourceView),realResourceView)) {

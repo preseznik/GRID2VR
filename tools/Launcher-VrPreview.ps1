@@ -5,11 +5,11 @@ function Get-LauncherVrPreviewProxy {
     param([string]$Root,[switch]$HeadsetResolution)
     if(Test-Grid2Package $Root) { return Get-Grid2Proxy $Root }
     if($HeadsetResolution) {
-        # Headset resolution with menu-Quit shutdown cleanup. Qualification:
-        # docs/evidence/menu-quit-shutdown-20261027/verification.json.
-        # Attended menu-Quit acceptance remains pending.
+        # GPU headlight correction using same-frame light snapshots. Qualification:
+        # docs/evidence/headlight-render-correction-20261028/verification.json.
+        # Headlight pixel/state tests passed; headset acceptance pending. Native light hook remains excluded.
         $current=Get-Grid2Proxy $Root
-        if((Get-FileHash -LiteralPath $current -ErrorAction Stop).Hash -ne 'ef1bb4b7b93575c821c85c3f515865159bf2e002ec01c67f1a9aa50549770a00') {
+        if((Get-FileHash -LiteralPath $current -ErrorAction Stop).Hash -ne '28ef53ff0c6c3ee4722ba8f2a37d06c23b5fe34dc3626e1c1d1a7751b2062196') {
             throw 'The headset-resolution preview renderer changed. Rebuild and verify the current candidate before launching.'
         }
         return $current

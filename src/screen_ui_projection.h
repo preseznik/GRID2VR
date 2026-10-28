@@ -46,6 +46,58 @@ inline uint64_t ScreenUiCameraIdentity(std::span<const uint8_t> data) {
     return hash==0x56b67c51213d9ad8ull || hash==0xf1fb9ea46321746full?hash:0;
 }
 inline bool ScreenUiCamera(std::span<const uint8_t> data) { return ScreenUiCameraIdentity(data)!=0; }
+// The two retained native UI camera families use the renderer's pixel aspect,
+// even when hardware_settings_config requests 16:9. Restore their logical
+// widescreen canvas before vertex clipping, independently of eye texture size.
+// Every other camera byte remains guarded by the existing exact identities.
+inline bool FlatScreenUiCamera(std::span<const uint8_t> source,unsigned width,unsigned height,std::array<uint8_t,320>& output) {
+    if (source.size()!=320 || !width || !height || width>8192 || height>8192) return false;
+    const auto value=[&](size_t offset) {float f;memcpy(&f,source.data()+offset,4);return f;};
+    const float px=value(0),py=value(20);
+    if (!std::isfinite(px) || !std::isfinite(py) || px<=.01f || px>16 || py<=.01f || py>16 ||
+        std::abs(double(py)/px-double(width)/height)>1e-5) return false;
+    const bool ortho=value(60)==1;
+    const float originalX=ortho?.1403159201145172f:1.4894007444381714f;
+    const float originalY=ortho?.24945054948329926f:2.6478235721588135f;
+    if (ortho && py!=originalY) return false;
+    const double sx=px/originalX,sy=py/originalY;
+    struct Field {unsigned offset,bits;int axis;}; // +/-1=X, +/-2=Y; negative is inverse
+    constexpr Field orthographic[]={{0,0x3e0faefa,1},{64,0x3e0faefa,1},{240,0x40e40e8a,-1},
+        {260,0x4080482d,0},{280,0xc69c4000,0},{296,0x461c4000,0},{300,0x3f800000,0}};
+    constexpr Field perspective[]={{0,0x3fbea4af,1},{20,0x402975f1,2},{64,0x3fbea4af,1},{68,0xa90055a1,2},
+        {84,0x402975f1,2},{96,0xb425e79c,1},{100,0xb493788a,2},{112,0x93bea4b0,1},{116,0x9fdbdf63,2},
+        {240,0x3f2be197,-1},{260,0x3ec15dc9,-2}};
+    std::array<uint8_t,320> candidate{};std::copy(source.begin(),source.end(),candidate.begin());
+    const std::span<const Field> fields=ortho?std::span<const Field>(orthographic):std::span<const Field>(perspective);
+    for (const auto& field:fields) {
+        float original;memcpy(&original,&field.bits,4);
+        const double scale=std::abs(field.axis)==1?sx:std::abs(field.axis)==2?sy:1.;
+        const double expected=field.axis<0?original/scale:original*scale,actual=value(field.offset);
+        if (!std::isfinite(actual) || std::abs(actual-expected)>std::max(1e-35,std::abs(expected)*2e-6)) return false;
+        memcpy(candidate.data()+field.offset,&field.bits,4);
+    }
+    if (!ScreenUiCamera(candidate)) return false;
+    output=candidate;return true;
+}
+// Stereo retains the native vertex shader and artwork varyings. Only its clip
+// position is mapped back to the verified 16:9 canvas by the post-VS plane.
+// The aspect-dependent camera must match the actual viewport; unknown camera
+// fields still have to pass the complete canonical identity above.
+inline uint64_t ScreenUiCanvasIdentity(std::span<const uint8_t> source,unsigned width,unsigned height,std::array<float,2>& scale) {
+    if (const auto identity=ScreenUiCameraIdentity(source)) {scale={1,1};return identity;}
+    std::array<uint8_t,320> canonical{};
+    if (!FlatScreenUiCamera(source,width,height,canonical)) return 0;
+    std::array<float,2> candidate{};
+    for (unsigned axis=0;axis<2;++axis) {
+        float before{},after{};memcpy(&before,source.data()+axis*20,4);memcpy(&after,canonical.data()+axis*20,4);
+        candidate[axis]=after/before;
+    }
+    // An unmodified 16:9 lens requires the original exact camera identity.
+    // Do not turn the aspect family's rounding allowance into a weaker legacy
+    // guard for a camera with an unrelated one-bit change to its matrix.
+    if (candidate[0]==1 && candidate[1]==1) return 0;
+    scale=candidate;return ScreenUiCameraIdentity(canonical);
+}
 struct ScreenUiOptions {
     // Preserve legacy request-less diagnostics. The launcher supplies its own
     // explicit defaults (one metre, fixed to the native car camera).

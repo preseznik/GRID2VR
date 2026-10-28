@@ -166,7 +166,7 @@ bool XrSessionProbe::InitializeImages(NativeEyeDraw draw,unsigned width,unsigned
     if (resolution_.width && (width!=resolution_.width || height!=resolution_.height)) {
         failed_=true;Log("images refused reason=headset_resolution_mismatch");return false;
     }
-    imagesAttempted_=true;imagesReady_=images_.Initialize(session_,device_.Get(),draw,width,height);
+    imagesAttempted_=true;imagesReady_=images_.Initialize(session_,device_.Get(),draw,width,height,resolution_.width!=0);
     Log("images initialized=%u width=%u height=%u failure=%s result=%d",imagesReady_,width,height,images_.Failure()?images_.Failure():"none",images_.LastResult());
     if (!imagesReady_) failed_=true;
     return imagesReady_;

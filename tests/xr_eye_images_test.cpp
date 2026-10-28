@@ -150,6 +150,35 @@ int main() {
     const UINT pixel=*static_cast<const UINT*>(mapped.pData);context->Unmap(staging.Get(),0);
     if (pixel!=0xff0000ff || !menu.Copy(2,4,views,sources[0].Get(),sources[1].Get()) || menu.Screen(2) || !menu.Projection(2) ||
         !menu.CopyScreen(3,4,anchor,back.Get()) || !menu.Screen(3) || menu.Projection(3) || !menu.Shutdown() || !chains.empty() || protocolError) return 26;
+    // A Quest-like portrait texture still carries the game's complete 16:9
+    // menu canvas. Check both edge bands at 100% and 150%, not just its center.
+    for (unsigned scale:{100u,150u}) {
+        Reset(0);grid2vr::XrEyeImages portraitMenu;
+        auto sourceDesc=backDesc;sourceDesc.Width=96*scale/100;sourceDesc.Height=102*scale/100;
+        std::vector<UINT> pixels(sourceDesc.Width*sourceDesc.Height,0xc00ffc00);
+        for (unsigned y=0;y<sourceDesc.Height;++y) for (unsigned x=0;x<sourceDesc.Width;++x)
+            if (x<sourceDesc.Width/4 || x>=sourceDesc.Width*3/4) pixels[y*sourceDesc.Width+x]=x<sourceDesc.Width/4?0xc00003ff:0xfff00000;
+        const D3D11_SUBRESOURCE_DATA data{pixels.data(),sourceDesc.Width*4,0};ComPtr<ID3D11Texture2D> portraitSource;
+        if (FAILED(device->CreateTexture2D(&sourceDesc,&data,&portraitSource)) ||
+            !portraitMenu.Initialize(3,device.Get(),DrawNative,96,102,true) || !portraitMenu.CopyScreen(1,4,anchor,portraitSource.Get())) return 32;
+        const auto* quad=portraitMenu.Screen(1);
+        if (!quad || quad->size.width!=2.4f || quad->size.height!=1.35f ||
+            quad->subImage.imageRect.offset.x || quad->subImage.imageRect.offset.y ||
+            quad->subImage.imageRect.extent.width!=96 || quad->subImage.imageRect.extent.height!=102) return 33;
+        auto pixelDesc=read;pixelDesc.Width=pixelDesc.Height=1;ComPtr<ID3D11Texture2D> pixelRead;
+        if (FAILED(device->CreateTexture2D(&pixelDesc,nullptr,&pixelRead))) return 34;
+        for (unsigned y:{0u,51u,101u}) for (unsigned x:{0u,48u,95u}) {
+            const D3D11_BOX box{x,y,0,x+1,y+1,1};
+            context->CopySubresourceRegion(pixelRead.Get(),0,0,0,0,chains[10].textures[0].Get(),0,&box);
+            D3D11_MAPPED_SUBRESOURCE map{};if (FAILED(context->Map(pixelRead.Get(),0,D3D11_MAP_READ,0,&map))) return 35;
+            const UINT value=*static_cast<const UINT*>(map.pData);context->Unmap(pixelRead.Get(),0);
+            if (value!=(x==0?0xff0000ff:x==48?0xff00ff00:0xffff0000)) return 36;
+        }
+        if (!portraitMenu.Copy(2,4,views,sources[0].Get(),sources[1].Get()) || portraitMenu.Screen(2)) return 37;
+        const auto* stereo=portraitMenu.Projection(2);
+        if (!stereo || stereo->views[0].subImage.imageRect.extent.width!=96 || stereo->views[1].subImage.imageRect.extent.height!=102 ||
+            !portraitMenu.Shutdown() || !chains.empty() || protocolError) return 38;
+    }
     for (int mode=7;mode<=9;++mode) {
         Reset(mode);grid2vr::XrEyeImages failedMenu;
         if (!failedMenu.Initialize(3,device.Get(),DrawNative,2,2) || failedMenu.CopyScreen(1,4,anchor,back.Get()) ||
@@ -160,5 +189,5 @@ int main() {
     auto invalidAnchor=anchor;invalidAnchor.orientation.w=0;
     if (!invalidMenu.Initialize(3,device.Get(),DrawNative,2,2) || invalidMenu.CopyScreen(1,4,invalidAnchor,back.Get()) ||
         invalidMenu.Screen(1) || acquires || !invalidMenu.Shutdown() || protocolError) return 29;
-    puts("XR eye images: headset scales, stereo pixels, shared-eye menu pixels/aspect, transitions, protocol and cleanup passed without a runtime.");
+    puts("XR eye images: headset scales, stereo pixels, complete widescreen menus from portrait sources, transitions, protocol and cleanup passed without a runtime.");
 }

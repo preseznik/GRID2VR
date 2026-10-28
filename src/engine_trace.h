@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <array>
 #include <filesystem>
 #include "scene_views.h"
 
@@ -23,6 +24,9 @@ bool SessionRendering();
 bool SessionFailed();
 bool ResumeSession();
 bool SuspendSession();
+// Graphics Apply may resize after visibility preparation but before any scene
+// draw. Cancel only that unrendered view pair before releasing GPU history.
+bool SuspendForSwapchainChange();
 bool StopSession();
 void FailSession();
 void Frame(uint64_t nextFrame);
@@ -46,4 +50,6 @@ bool ReplayingEye();
 bool CurrentCockpitCamera();
 // Borrow the immutable pair only during a fully posed asymmetric stereo replay.
 const SceneViews* CurrentReplayViews();
+// Immutable original/main-eye contexts, never an auxiliary camera or live pointer.
+bool CurrentLightCameras(std::array<uint8_t,512>& center,std::array<uint8_t,512>& eye);
 }

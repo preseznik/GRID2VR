@@ -115,7 +115,10 @@ int wmain(int argc,wchar_t** argv) {
     if(argc!=2)return 1;
     wchar_t executable[32768]{};
     if(!GetModuleFileNameW(nullptr,executable,32768))return 10;
-    const auto root=std::filesystem::path(argv[1])/std::to_wstring(GetCurrentProcessId());
+    // Windows reuses PIDs across repeated test runs. Appended receipts from a
+    // previous process must not look like duplicate callbacks in this run.
+    const auto root=std::filesystem::path(argv[1])/
+        (std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
     for(const auto* mode:{L"owner",L"handoff",L"slow-handoff",L"timeout",L"observer-timeout",L"observer-throw",L"observer-refusal"}) {
         const auto target=root/mode;
         std::filesystem::create_directories(target);

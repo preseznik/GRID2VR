@@ -60,4 +60,6 @@ void CompleteResize(const Change& change,HRESULT result) noexcept;
 void ObserveSwapchain(IDXGISwapChain* chain) noexcept;
 // The slot-100 final colour target establishes the actual per-eye scene size.
 void ObserveScene(unsigned width,unsigned height) noexcept;
+// A native reset correction may act only on this session's verified renderer.
+bool OwnsNativeResize(uintptr_t gameBase) noexcept;
 }

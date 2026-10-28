@@ -1,4 +1,5 @@
 #include "screen_ui.h"
+#include "resolution_limits.h"
 #include <algorithm>
 #include <fstream>
 #include <d3dcompiler.h>
@@ -37,6 +38,114 @@ std::string GeometrySource(unsigned mask) {
     return source+"stream.Append(o);}stream.RestartStrip();}";
 }
 }
+bool FlatScreenUi::Configure(const std::filesystem::path& folder) {
+    if (pending_ || width_) return false;
+    std::error_code error;
+    for (const auto* name:{L"headset-resolution.request",L"scene-size.request"}) {
+        const auto bytes=std::filesystem::file_size(folder/name,error);
+        if (error || !bytes || bytes>64) return false;
+    }
+    resolution::Plan request;
+    std::ifstream headset(folder/L"headset-resolution.request"),scene(folder/L"scene-size.request");
+    unsigned width{},height{};char extra{};
+    if (!resolution::Read(headset,request) || !(scene>>width>>height) || (scene>>extra) ||
+        width!=request.SceneWidth() || height!=request.SceneHeight()) return false;
+    width_=width;height_=height;return true;
+}
+bool FlatScreenUi::Apply(ID3D11DeviceContext* context,uint64_t shader) {
+    if (!Enabled() || pending_ || !context || !ScreenUiWitnessShader(shader) ||
+        context->GetType()!=D3D11_DEVICE_CONTEXT_IMMEDIATE ||
+        (owner_ && (owner_!=context || thread_!=GetCurrentThreadId()))) return false;
+    std::array<ID3D11RenderTargetView*,8> rawTargets{};context->OMGetRenderTargets(UINT(rawTargets.size()),rawTargets.data(),nullptr);
+    std::array<ComPtr<ID3D11RenderTargetView>,8> targets;
+    for (unsigned i=0;i<targets.size();++i) targets[i].Attach(rawTargets[i]);
+    if (std::any_of(targets.begin()+1,targets.end(),[](const auto& target){return bool(target);})) return false;
+    const auto& target=targets[0];
+    ComPtr<ID3D11Resource> targetResource;if (target) target->GetResource(&targetResource);
+    ComPtr<ID3D11Texture2D> texture;D3D11_TEXTURE2D_DESC td{};
+    if (!targetResource || FAILED(targetResource.As(&texture))) return false;
+    texture->GetDesc(&td);
+    UINT count=1;D3D11_VIEWPORT viewport{};context->RSGetViewports(&count,&viewport);
+    if (td.Width!=width_ || td.Height!=height_ || td.Format!=DXGI_FORMAT_R10G10B10A2_UNORM ||
+        td.ArraySize!=1 || td.MipLevels!=1 || td.SampleDesc.Count!=1 || count!=1 || viewport.TopLeftX || viewport.TopLeftY ||
+        viewport.Width!=float(width_) || viewport.Height!=float(height_)) return false;
+    ComPtr<ID3D11GeometryShader> gs;ComPtr<ID3D11HullShader> hs;ComPtr<ID3D11DomainShader> ds;
+    context->GSGetShader(&gs,nullptr,nullptr);context->HSGetShader(&hs,nullptr,nullptr);context->DSGetShader(&ds,nullptr,nullptr);
+    if (gs || hs || ds) return false;
+    ComPtr<ID3D11Buffer> source;context->VSGetConstantBuffers(3,1,&source);
+    D3D11_BUFFER_DESC bd{};if (source) source->GetDesc(&bd);
+    if (!source || !SupportedBuffer(bd)) return false;
+    std::array<uint8_t,320> native{},corrected{};UINT bytes=UINT(native.size());
+    ComPtr<ID3D11Device> device;context->GetDevice(&device);
+    if (FAILED(source->GetPrivateData(uiUpload,&bytes,native.data())) || bytes!=native.size()) {
+        // Cameras made before the first Present need one bounded seed. Native
+        // dynamic uploads replace this private copy before every later draw.
+        if (seedAttempts_>=32) return false;
+        ++seedAttempts_;
+        auto sd=bd;sd.Usage=D3D11_USAGE_STAGING;sd.BindFlags=0;sd.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Buffer> staging;if (FAILED(device->CreateBuffer(&sd,nullptr,&staging))) return false;
+        ComPtr<ID3D11Predicate> predicate;BOOL value{};context->GetPredication(&predicate,&value);
+        context->SetPredication(nullptr,FALSE);context->CopyResource(staging.Get(),source.Get());context->SetPredication(predicate.Get(),value);
+        D3D11_MAPPED_SUBRESOURCE mapped{};if (FAILED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped))) return false;
+        memcpy(native.data(),mapped.pData,native.size());context->Unmap(staging.Get(),0);
+        ScreenUi::Upload(source.Get(),native.data(),UINT(native.size()));
+    }
+    if (!FlatScreenUiCamera(native,width_,height_,corrected) || native==corrected) return false;
+    if (!replacement_) {
+        if (FAILED(device->CreateBuffer(&bd,nullptr,&replacement_))) return false;
+        owner_=context;thread_=GetCurrentThreadId();
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(context->Map(replacement_.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped))) return false;
+    memcpy(mapped.pData,corrected.data(),corrected.size());context->Unmap(replacement_.Get(),0);
+    changedScissors_=false;
+    ComPtr<ID3D11RasterizerState> raster;D3D11_RASTERIZER_DESC rd{};context->RSGetState(&raster);if(raster)raster->GetDesc(&rd);
+    if (rd.ScissorEnable) {
+        scissorCount_=UINT(scissors_.size());context->RSGetScissorRects(&scissorCount_,scissors_.data());
+        if (!scissorCount_) return false;
+        for (UINT i=0;i<scissorCount_;++i) {
+            const auto& r=scissors_[i];
+            if (r.left<0 || r.top<0 || r.right>LONG(width_) || r.bottom>LONG(height_)) return false;
+        }
+        auto transformed=scissors_;
+        float oldX{},oldY{},newX{},newY{};memcpy(&oldX,native.data(),4);memcpy(&oldY,native.data()+20,4);
+        memcpy(&newX,corrected.data(),4);memcpy(&newY,corrected.data()+20,4);
+        for (UINT i=0;i<scissorCount_;++i) {
+            auto& r=transformed[i];
+            // Full-axis clipping is the viewport, not a list/control clip.
+            // Widen it so formerly offscreen menu geometry can re-enter.
+            if (r.left>0) r.left=LONG(std::floor((r.left-width_*.5)*newX/oldX+width_*.5));
+            if (r.right<LONG(width_)) r.right=LONG(std::ceil((r.right-width_*.5)*newX/oldX+width_*.5));
+            if (r.top>0) r.top=LONG(std::floor((r.top-height_*.5)*newY/oldY+height_*.5));
+            if (r.bottom<LONG(height_)) r.bottom=LONG(std::ceil((r.bottom-height_*.5)*newY/oldY+height_*.5));
+            if (scissors_[i].right<=scissors_[i].left) r.right=r.left;
+            if (scissors_[i].bottom<=scissors_[i].top) r.bottom=r.top;
+        }
+        context->RSSetScissorRects(scissorCount_,transformed.data());changedScissors_=true;
+    }
+    originalVs_=source;context->PSGetConstantBuffers(3,1,&originalPs_);changedPs_=originalPs_==source;
+    auto* binding=replacement_.Get();context->VSSetConstantBuffers(3,1,&binding);
+    if (changedPs_) context->PSSetConstantBuffers(3,1,&binding);
+    pending_=true;return true;
+}
+bool FlatScreenUi::Restore(ID3D11DeviceContext* context) {
+    if (!pending_ || context!=owner_ || thread_!=GetCurrentThreadId()) return false;
+    auto* binding=originalVs_.Get();context->VSSetConstantBuffers(3,1,&binding);
+    if (changedPs_) {binding=originalPs_.Get();context->PSSetConstantBuffers(3,1,&binding);}
+    if (changedScissors_) context->RSSetScissorRects(scissorCount_,scissors_.data());
+    ComPtr<ID3D11Buffer> vs,ps;context->VSGetConstantBuffers(3,1,&vs);context->PSGetConstantBuffers(3,1,&ps);
+    bool restored=vs==originalVs_ && ps==originalPs_;
+    if (changedScissors_) {
+        auto actual=scissors_;UINT count=UINT(actual.size());context->RSGetScissorRects(&count,actual.data());
+        restored=restored && count==scissorCount_ && !memcmp(actual.data(),scissors_.data(),count*sizeof(D3D11_RECT));
+    }
+    originalVs_.Reset();originalPs_.Reset();pending_=changedPs_=changedScissors_=false;return restored;
+}
+bool FlatScreenUi::Reset() {
+    if (pending_ || (owner_ && thread_!=GetCurrentThreadId())) return false;
+    replacement_.Reset();originalVs_.Reset();originalPs_.Reset();owner_=nullptr;thread_=0;
+    width_=height_=seedAttempts_=0;return true;
+}
 void ScreenUi::Diagnose(const std::filesystem::path& folder,bool late) {
     output_=folder;options_={};invalidOptions_=false;late_=late;
     std::ifstream request(folder/L"vr-hud.request");
@@ -65,6 +174,11 @@ void ScreenUi::Record(ID3D11DeviceContext* context,ID3D11Buffer* buffer,uint64_t
     if (!buffer || samples_.size()>=64 || (late_ && !nativeTarget)) return;
     D3D11_BUFFER_DESC desc{};buffer->GetDesc(&desc);
     if (desc.ByteWidth!=320 && desc.ByteWidth!=368) return;
+    UINT viewCount=1;D3D11_VIEWPORT viewport{};context->RSGetViewports(&viewCount,&viewport);
+    const bool validViewport=viewCount==1 && viewport.TopLeftX==0 && viewport.TopLeftY==0 &&
+        std::isfinite(viewport.Width) && std::isfinite(viewport.Height) && viewport.Width>=1 && viewport.Height>=1 &&
+        viewport.Width<=8192 && viewport.Height<=8192 && std::floor(viewport.Width)==viewport.Width && std::floor(viewport.Height)==viewport.Height;
+    const unsigned width=validViewport?unsigned(viewport.Width):0,height=validViewport?unsigned(viewport.Height):0;
     std::array<uint8_t,368> data{};UINT bytes=desc.ByteWidth;
     bool uploaded=SUCCEEDED(buffer->GetPrivateData(uiUpload,&bytes,data.data())) && bytes==desc.ByteWidth;
     if (!uploaded) {
@@ -82,9 +196,11 @@ void ScreenUi::Record(ID3D11DeviceContext* context,ID3D11Buffer* buffer,uint64_t
         context->SetPredication(nullptr,FALSE);context->CopyResource(staging.Get(),buffer);context->SetPredication(predicate.Get(),value);
         D3D11_MAPPED_SUBRESOURCE mapped{};if (FAILED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped))) return;
         memcpy(data.data(),mapped.pData,desc.ByteWidth);context->Unmap(staging.Get(),0);bytes=desc.ByteWidth;
-        if (SupportedBuffer(desc) && ScreenUiCamera(std::span(data).first(bytes))) Upload(buffer,data.data(),bytes);
+        std::array<float,2> scale{};
+        if (SupportedBuffer(desc) && ScreenUiCanvasIdentity(std::span(data).first(bytes),width,height,scale)) Upload(buffer,data.data(),bytes);
     }
-    const auto identity=ScreenUiCameraIdentity(std::span(data).first(bytes));
+    std::array<float,2> scale{};
+    const auto identity=ScreenUiCanvasIdentity(std::span(data).first(bytes),width,height,scale);
     if (output_.empty() || (!nativeTarget && samples_.contains({shader,identity,false}))) return;
     ComPtr<ID3D11RenderTargetView> target;ComPtr<ID3D11DepthStencilView> depth;context->OMGetRenderTargets(1,&target,&depth);
     ComPtr<ID3D11Resource> resource;if (target) target->GetResource(&resource);
@@ -95,7 +211,6 @@ void ScreenUi::Record(ID3D11DeviceContext* context,ID3D11Buffer* buffer,uint64_t
     constexpr char digits[]="0123456789abcdef";std::string hex;hex.reserve(bytes*2);
     for (UINT i=0;i<bytes;++i) { hex+=digits[data[i]>>4];hex+=digits[data[i]&15]; }
     std::ofstream log(output_/L"screen-ui-cameras.jsonl",std::ios::app);
-    UINT viewCount=1;D3D11_VIEWPORT viewport{};context->RSGetViewports(&viewCount,&viewport);
     ComPtr<ID3D11Texture2D> texture;D3D11_TEXTURE2D_DESC td{};if (resource && SUCCEEDED(resource.As(&texture))) texture->GetDesc(&td);
     log << "{\"fnv64\":\"" << name << "\",\"dataHex\":\"" << hex << "\",\"bytes\":" << bytes << ",\"usage\":" << desc.Usage << ",\"cpuAccess\":" << desc.CPUAccessFlags
         << ",\"bindFlags\":" << desc.BindFlags << ",\"uploaded\":" << (uploaded?"true":"false")
@@ -120,14 +235,22 @@ ScreenUi::Result ScreenUi::Apply(ID3D11DeviceContext* context,uint64_t vertexSha
     D3D11_BUFFER_DESC desc{};if (source) source->GetDesc(&desc);
     if (!source || !SupportedBuffer(desc)) return Result::Skipped;
     std::array<uint8_t,320> native{};UINT bytes=UINT(native.size());
-    if (FAILED(source->GetPrivateData(uiUpload,&bytes,native.data())) || bytes!=native.size() || !ScreenUiCamera(native)) return Result::Skipped;
+    if (FAILED(source->GetPrivateData(uiUpload,&bytes,native.data())) || bytes!=native.size()) return Result::Skipped;
     // Only verified vertex/pixel programs with no later native stages.
     ComPtr<ID3D11GeometryShader> gs;ComPtr<ID3D11HullShader> hs;ComPtr<ID3D11DomainShader> ds;
     context->GSGetShader(&gs,nullptr,nullptr);context->HSGetShader(&hs,nullptr,nullptr);context->DSGetShader(&ds,nullptr,nullptr);
     if (gs || hs || ds) return Result::Skipped;
     UINT count=1;D3D11_VIEWPORT vp{};context->RSGetViewports(&count,&vp);
     if (count!=1 || !std::isfinite(vp.Width) || !std::isfinite(vp.Height) || vp.Width<=0 || vp.Height<=0 ||
-        vp.Width>8192 || vp.Height>8192 || vp.TopLeftX!=0 || vp.TopLeftY!=0) return Result::Skipped;
+        vp.Width>8192 || vp.Height>8192 || vp.TopLeftX!=0 || vp.TopLeftY!=0 ||
+        std::floor(vp.Width)!=vp.Width || std::floor(vp.Height)!=vp.Height) return Result::Skipped;
+    std::array<float,2> canvas{};
+    if (!ScreenUiCanvasIdentity(native,unsigned(vp.Width),unsigned(vp.Height),canvas)) return Result::Skipped;
+    for (auto& row:constants.plane.rows) {row[0]*=canvas[0];row[1]*=canvas[1];}
+    // The full logical 16:9 canvas may extend outside portrait native clip XY.
+    // Recover that extent before hardware clipping without changing the native
+    // shader's UVs. Partial control scissors retain their original coordinates.
+    constants.bounds={-1/canvas[0],1/canvas[0],-1/canvas[1],1/canvas[1]};
     ComPtr<ID3D11RasterizerState> raster;context->RSGetState(&raster);D3D11_RASTERIZER_DESC rd{};
     if (raster) raster->GetDesc(&rd);
     changedScissors_=false;
@@ -138,8 +261,12 @@ ScreenUi::Result ScreenUi::Apply(ID3D11DeviceContext* context,uint64_t vertexSha
         // rectangles, so a rotated fixed HUD keeps exactly the same clipping.
         if (!scissorCount_) return Result::Skipped;
         const auto& r=scissors_[0];
-        constants.bounds={float(std::max(-1.,2.*r.left/vp.Width-1)),float(std::min(1.,2.*r.right/vp.Width-1)),
-            float(std::max(-1.,1-2.*r.bottom/vp.Height)),float(std::min(1.,1-2.*r.top/vp.Height))};
+        if (r.left>0) constants.bounds[0]=std::max(constants.bounds[0],float(2.*r.left/vp.Width-1));
+        if (r.right<vp.Width) constants.bounds[1]=std::min(constants.bounds[1],float(2.*r.right/vp.Width-1));
+        if (r.bottom<vp.Height) constants.bounds[2]=std::max(constants.bounds[2],float(1-2.*r.bottom/vp.Height));
+        if (r.top>0) constants.bounds[3]=std::min(constants.bounds[3],float(1-2.*r.top/vp.Height));
+        if (r.right<=r.left) constants.bounds[1]=constants.bounds[0];
+        if (r.bottom<=r.top) constants.bounds[3]=constants.bounds[2];
     }
     ComPtr<ID3D11Device> device;context->GetDevice(&device);
     if (!replacement_) {

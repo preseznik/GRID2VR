@@ -6,7 +6,7 @@
 using namespace grid2vr;
 using Microsoft::WRL::ComPtr;
 #define CHECK(x) do { if (!(x)) { printf("Failed line %d: %s\n",__LINE__,#x);return 1; } } while(0)
-std::array<uint8_t,320> Read(const char* path) {
+std::array<uint8_t,320> Read(const std::filesystem::path& path) {
     std::array<uint8_t,320> data{};std::ifstream f(path,std::ios::binary);f.read(reinterpret_cast<char*>(data.data()),data.size());
     if (!f || f.peek()!=EOF) data={};return data;
 }
@@ -17,6 +17,15 @@ std::array<double,4> Clip(const std::array<uint8_t,320>& data,std::array<double,
 int main(int argc,char** argv) {
     CHECK(argc==3);const auto perspective=Read(argv[1]),ortho=Read(argv[2]);
     CHECK(ScreenUiCamera(perspective) && ScreenUiCamera(ortho));
+    const auto fixtures=std::filesystem::path(argv[1]).parent_path();
+    const std::array portraitCameras{Read(fixtures/"native-ui-headset-perspective.bin"),Read(fixtures/"native-ui-headset-orthographic.bin")};
+    for (const auto& native:portraitCameras) {
+        std::array<float,2> scale{};CHECK(!ScreenUiCamera(native));
+        for (const auto size:{std::array<unsigned,2>{3072,3264},{4608,4896},{160,170}})
+            CHECK(ScreenUiCanvasIdentity(native,size[0],size[1],scale));
+        const auto before=scale;CHECK(!ScreenUiCanvasIdentity(native,1920,1080,scale) && scale==before);
+        auto foreign=native;foreign[128]^=1;CHECK(!ScreenUiCanvasIdentity(foreign,3072,3264,scale) && scale==before);
+    }
     SceneViews views;views.poses[0].position={-.032f,0,0};views.poses[1].position={.032f,0,0};
     views.frusta={EyeFrustum{-1.37638187f,.839099586f,-1.428148f,.965689f},EyeFrustum{-.839099586f,1.37638187f,-1.428148f,.965689f}};
     for (const auto& native:{perspective,ortho}) for (unsigned eye=0;eye<2;++eye) {
@@ -430,11 +439,100 @@ int main(int argc,char** argv) {
             CHECK(bound[0]==resources[0] && bound[1]==resources[1]);for (auto* value:bound) if (value) value->Release();
         }
     }
+    // Captured headset cameras formerly skipped every garage draw. Exercise
+    // their actual MVPs, both verified varying layouts, and native clip-derived
+    // artwork sampling. The bottom strip must land on the binocular UI plane,
+    // including its left/right controls outside the portrait native clip box.
+    {
+        constexpr unsigned width=160,height=170;
+        auto td=targetDesc;td.Width=width;td.Height=height;td.SampleDesc={1,0};
+        ComPtr<ID3D11Texture2D> portraitTarget,portraitRead;ComPtr<ID3D11RenderTargetView> portraitView;
+        CHECK(SUCCEEDED(device->CreateTexture2D(&td,nullptr,&portraitTarget)) &&
+            SUCCEEDED(device->CreateRenderTargetView(portraitTarget.Get(),nullptr,&portraitView)));
+        td.Usage=D3D11_USAGE_STAGING;td.CPUAccessFlags=D3D11_CPU_ACCESS_READ;td.BindFlags=0;
+        CHECK(SUCCEEDED(device->CreateTexture2D(&td,nullptr,&portraitRead)));
+        auto* targetBinding=portraitView.Get();context->OMSetRenderTargets(1,&targetBinding,nullptr);
+        const D3D11_VIEWPORT vp{0,0,float(width),float(height),0,1};context->RSSetViewports(1,&vp);
+        const auto image=[&] {
+            context->CopyResource(portraitRead.Get(),portraitTarget.Get());D3D11_MAPPED_SUBRESOURCE mapped{};
+            std::array<uint8_t,width*height*4> result{};
+            if (SUCCEEDED(context->Map(portraitRead.Get(),0,D3D11_MAP_READ,0,&mapped))) {
+                for (unsigned y=0;y<height;++y) memcpy(result.data()+y*width*4,static_cast<uint8_t*>(mapped.pData)+y*mapped.RowPitch,width*4);
+                context->Unmap(portraitRead.Get(),0);
+            }return result;
+        };
+        for (unsigned family=0;family<2;++family) {
+            const auto& native=portraitCameras[family];const auto& canonical=family?ortho:perspective;
+            const auto f=[](const auto& bytes,size_t offset){float value{};memcpy(&value,bytes.data()+offset,4);return value;};
+            const double sx=f(native,0)/f(canonical,0),sy=f(native,20)/f(canonical,20);
+            // A camera created before tracking starts still qualifies through
+            // the same bounded readback path as the original 16:9 cameras.
+            ComPtr<ID3D11Buffer> early;D3D11_SUBRESOURCE_DATA initial{native.data(),0,0};
+            CHECK(SUCCEEDED(device->CreateBuffer(&desc,&initial,&early)));auto* earlyBinding=early.Get();
+            context->VSSetConstantBuffers(3,1,&earlyBinding);const D3D11_RECT full{0,0,width,height};context->RSSetScissorRects(1,&full);
+            ScreenUi earlyUi;CHECK(earlyUi.Apply(context.Get(),screenUiShaders[0],views,0)==ScreenUi::Result::Applied && earlyUi.Restore(context.Get()));
+            CHECK(readback(early.Get())==native);context->VSSetConstantBuffers(3,1,&binding);
+            CHECK(SUCCEEDED(context->Map(buffer.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&cameraWrite)));
+            memcpy(cameraWrite.pData,native.data(),native.size());context->Unmap(buffer.Get(),0);ScreenUi::Upload(buffer.Get(),native.data(),320);
+            auto wrong=vp;wrong.Height=160;context->RSSetViewports(1,&wrong);
+            CHECK(gpuUi.Apply(context.Get(),screenUiShaders[0],views,0)==ScreenUi::Result::Skipped && !gpuUi.Pending());
+            context->RSSetViewports(1,&vp);
+            for (bool text:{false,true}) {
+                const uint64_t shader=text?0x7115b259dffd0f6aull:0x0ef1c3aff7d5fd94ull;
+                const std::string fields="float4 p:SV_Position;float4 t0:TEXCOORD0;float4 t1:TEXCOORD1;float4 t2:TEXCOORD2;"+
+                    std::string(text?"float4 t3:TEXCOORD3;":"")+"float4 t4:TEXCOORD4;";
+                const std::string shape="struct V{"+fields+"};";
+                const auto vs=compile(shape+"cbuffer Camera:register(b3){float4 c[20];}V main(uint id:SV_VertexID){"
+                    "float2 p[6]={float2(-2,-2),float2(-2,2),float2(2,-2),float2(2,-2),float2(-2,2),float2(2,2)};"
+                    "float2 coord=p[id]*float2("+std::to_string(f(canonical,124)/f(canonical,64))+","+std::to_string(f(canonical,124)/f(canonical,84))+");V o;"
+                    "o.p=coord.x*c[4]+coord.y*c[5]+c[7];o.t0=float4(o.p.xy/o.p.w,.4,.5+.1*p[id].x);"
+                    "o.t1=float4(0,0,1,.5+.1*p[id].y);o.t2=1;o.t4=0;"+std::string(text?"o.t3=0;":"")+"return o;}","vs_5_0");
+                const auto ps=compile(shape+"Texture2D back:register("+std::string(text?"t1":"t0")+");SamplerState sb:register(s3);"+
+                    std::string(text?"Texture2D font:register(t0);SamplerState sf:register(s4);":"")+
+                    "float4 main(V v):SV_Target{float2 uv=float2((v.t0.x+1)*.5,(1-v.t0.y)*.5);float3 c=back.Sample(sb,uv).rgb;"+
+                    std::string(text?"c.b=font.Sample(sf,float2(v.t0.w,v.t1.w)).r;":"")+"return float4(c,1);}","ps_5_0");
+                CHECK(vs && ps);ComPtr<ID3D11VertexShader> vertex;ComPtr<ID3D11PixelShader> pixel;
+                CHECK(SUCCEEDED(device->CreateVertexShader(vs->GetBufferPointer(),vs->GetBufferSize(),nullptr,&vertex)) &&
+                    SUCCEEDED(device->CreatePixelShader(ps->GetBufferPointer(),ps->GetBufferSize(),nullptr,&pixel)));
+                context->VSSetShader(vertex.Get(),nullptr,0);context->PSSetShader(pixel.Get(),nullptr,0);
+                ID3D11ShaderResourceView* resources[]{text?atlasView.Get():backdropView.Get(),backdropView.Get()};context->PSSetShaderResources(0,2,resources);
+                for (const auto rect:{D3D11_RECT{0,0,width,height},D3D11_RECT{0,130,width,height},D3D11_RECT{0,0,width/2,height},
+                    D3D11_RECT{0,0,0,height},D3D11_RECT{0,height,width,height}}) for (unsigned eye=0;eye<2;++eye) {
+                    context->RSSetScissorRects(1,&rect);context->ClearRenderTargetView(portraitView.Get(),clear);
+                    CHECK(gpuUi.Apply(context.Get(),shader,views,eye)==ScreenUi::Result::Applied);
+                    context->Draw(6,0);CHECK(gpuUi.Restore(context.Get()));const auto actual=image();
+                    if (rect.left==rect.right || rect.top==rect.bottom) {CHECK(std::all_of(actual.begin(),actual.end(),[](uint8_t v){return v==0;}));continue;}
+                    ScreenUiPlane plane;CHECK(ScreenUiPlaneProjection(views,eye,gpuUi.Options(),plane));
+                    const double top=rect.top?(1-2.*rect.top/height)/sy:1,right=rect.right==width/2?0:1;
+                    unsigned inside{},outside{},recoveredEdge{},bottom{};
+                    for (unsigned y=0;y<height;++y) for (unsigned x=0;x<width;++x) {
+                        const double nx=2.*(x+.5)/width-1,ny=1-2.*(y+.5)/height;const auto& a=plane.rows;
+                        const double aa=a[0][0]-nx*a[2][0],ab=a[0][1]-nx*a[2][1],ac=nx*a[2][2]-a[0][2];
+                        const double ba=a[1][0]-ny*a[2][0],bb=a[1][1]-ny*a[2][1],bc=ny*a[2][2]-a[1][2];
+                        const double det=aa*bb-ab*ba;if (std::abs(det)<1e-8) continue;
+                        const double u=(ac*bb-ab*bc)/det,v=(aa*bc-ac*ba)/det;const auto* rgba=actual.data()+4*(y*width+x);
+                        bottom+=y>=130 && rgba[3];
+                        if (u>-.9 && u<right-.1 && v>-.9 && v<top-.1) {
+                            ++inside;recoveredEdge+=std::abs(u*sx)>1.1;
+                            CHECK(rgba[3]==255 && std::abs(rgba[0]/255.-std::clamp((u*sx+1)/2,1./64,63./64))<.018 &&
+                                std::abs(rgba[1]/255.-std::clamp((1-v*sy)/2,1./64,63./64))<.018);
+                            CHECK(std::abs(rgba[2]/255.-(text?.5+.1*u:64./255))<.018);
+                        } else if (u<-1.15 || u>right+.15 || v<-1.15 || v>top+.15) {++outside;CHECK(!rgba[3]);}
+                    }
+                    CHECK(inside>20 && outside>1000 && recoveredEdge>8 && !bottom);
+                    CHECK(readback(buffer.Get())==native);
+                    ComPtr<ID3D11Buffer> boundVs,boundPs;context->VSGetConstantBuffers(3,1,&boundVs);context->PSGetConstantBuffers(3,1,&boundPs);
+                    CHECK(boundVs==buffer && boundPs==buffer);
+                    D3D11_RECT restored{};UINT count=1;context->RSGetScissorRects(&count,&restored);CHECK(count==1 && !memcmp(&restored,&rect,sizeof(rect)));
+                }
+            }
+        }
+    }
     CHECK(std::filesystem::remove(witnessFolder/"vr-hud.request"));
     CHECK(SUCCEEDED(device->GetDeviceRemovedReason()));
     CHECK(std::filesystem::remove(witnessFolder/"screen-ui-cameras.jsonl"));
     CHECK(std::filesystem::remove(witnessFolder/"screen-ui-late.json"));
     CHECK(std::filesystem::remove(witnessFolder/"screen-ui-native.json"));
     CHECK(std::filesystem::remove(witnessFolder/"screen-ui-options.json") && std::filesystem::remove(witnessFolder));
-    puts("Guarded UI: binocular plane rays, nine shader signatures, early-camera cache, late-font witnesses, unknown-camera/context refusal, native bytes/bindings/scissors and 4x MSAA state preservation passed.");
+    puts("Guarded UI: binocular plane rays, portrait garage canvas/bottom strip, nine shader signatures, early-camera cache, late-font witnesses, unknown-camera/context refusal, native art/bytes/bindings/scissors and 4x MSAA state preservation passed.");
 }

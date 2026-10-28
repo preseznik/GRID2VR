@@ -10,6 +10,8 @@
 #include "flicker_capture.h"
 #include "bounded_log.h"
 #include "screen_ui.h"
+#include "spotlight_witness.h"
+#include "spotlight_correction.h"
 #include <wrl/client.h>
 #include <array>
 #include <algorithm>
@@ -27,6 +29,25 @@ bool disableMotionBlur{};
 bool screenUiEnabled{};
 bool screenUiNormalDefault{};
 ScreenUi screenUi;
+SpotlightCorrection spotlightCorrection;
+std::filesystem::path output;
+bool spotlightEnabled{};
+uint64_t spotlightCaptured{},spotlightScene{},spotlightProofPair{};
+std::array<uint64_t,2> spotlightSubmitted{},spotlightRestored{},spotlightSkipped{};
+void WriteSpotlightProof() {
+    if (!spotlightEnabled) return;
+    const auto& stats=spotlightCorrection.Stats();
+    std::ofstream proof(output/L"spotlight-correction.json");
+    proof << "{\"scene\":" << spotlightScene << ",\"captured\":" << spotlightCaptured
+        << ",\"submitted\":[" << spotlightSubmitted[0] << ',' << spotlightSubmitted[1]
+        << "],\"restored\":[" << spotlightRestored[0] << ',' << spotlightRestored[1]
+        << "],\"skipped\":[" << spotlightSkipped[0] << ',' << spotlightSkipped[1]
+        << "],\"sampledGpuGuard\":{\"samples\":" << stats.samples << ",\"corrected\":" << stats.corrected
+        << ",\"pixelMismatch\":" << stats.pixelMismatch << ",\"vertexMismatch\":" << stats.vertexMismatch
+        << ",\"invalidConstants\":" << stats.invalidConstants << "},\"missingCenter\":" << stats.missingCenter
+        << ",\"overflow\":" << stats.overflow
+        << ",\"gpuGuardRequired\":true,\"nativeLightHook\":false,\"headsetAcceptance\":false}\n";
+}
 std::array<uint64_t,2> uiApplied{},uiRestored{},uiSkipped{},uiText{};
 struct UiShaderCounts {
     std::array<uint64_t,2> applied{},restored{},skipped{};
@@ -82,8 +103,8 @@ unsigned unusedOrdinal{};
 bool ShadowPassComplete(unsigned pass) {
     if (pass>=shadowDraws.size() || restoreShadowContext || restoreUnusedContext) return false;
     const auto center=shadowDraws[0];
-    // Normal custom-event frame 4165 omitted this exact sampler-controlled
-    // pass. Follow the center schedule in both eyes; never reuse a preceding
+    // Native runtime frames, including low graphics presets, may omit this
+    // exact pass. Both eyes follow the center schedule; never reuse a preceding
     // scene's capture or confuse an absent draw with D3D's null sampler.
     return (center==1 || (allowAbsentShadow && center==0)) && shadowDraws[pass]==center &&
         (shadowOrdinal!=0)==(center==1) && bool(shadowIdentity.target)==(center==1);
@@ -98,9 +119,34 @@ uint64_t firstScene{};
 uint64_t activeScene{},workScene{};
 uint64_t pairNumber{};
 unsigned workOrdinal[3]{},slot6Ordinal[3]{},preColorOrdinal[3]{},computeOrdinal[3]{};
+constexpr uint64_t lightCullShader=0x6987ff5aba64e635ull;
+struct ComputeDispatch {uint64_t shader{};std::array<UINT,3> groups{};unsigned slot{};bool operator==(const ComputeDispatch&) const=default;};
+std::array<std::array<ComputeDispatch,8>,3> computeSchedule{};
+std::array<bool,3> lightCullSorted{};
+std::array<ComputeDispatch,8> lastComputeSchedule{};
+unsigned lastComputeCount=UINT_MAX,computeScheduleReceipts{};
+bool NoAoSchedule(unsigned pass) {
+    return runtimeSession && pass<3 && (computeOrdinal[pass]==0 ||
+        (computeOrdinal[pass]==1 && computeSchedule[pass][0].shader==lightCullShader && lightCullSorted[pass]));
+}
+void RecordComputeSchedule(unsigned pass,bool healthy) {
+    if (!runtimeSession || pass>=3 || (healthy && (computeScheduleReceipts>=32 ||
+        (lastComputeCount==computeOrdinal[pass] && lastComputeSchedule==computeSchedule[pass])))) return;
+    // Reserve an overwritten failure receipt even after the transition budget.
+    std::ofstream proof(output/(healthy?L"compute-schedules.jsonl":L"compute-failure.json"),
+        healthy && computeScheduleReceipts++?std::ios::app:std::ios::trunc);
+    proof << "{\"scene\":" << engine::CurrentScene().id << ",\"pass\":" << pass << ",\"healthy\":" << (healthy?"true":"false")
+        << ",\"count\":" << computeOrdinal[pass] << ",\"dispatches\":[";
+    for (unsigned i=0;i<std::min(computeOrdinal[pass],8u);++i) {
+        const auto& dispatch=computeSchedule[pass][i];
+        if(i)proof<<',';
+        proof<<"{\"shader\":\""<<std::hex<<dispatch.shader<<std::dec<<"\",\"slot\":"<<dispatch.slot
+            <<",\"groups\":["<<dispatch.groups[0]<<','<<dispatch.groups[1]<<','<<dispatch.groups[2]<<"]}";
+    }
+    proof << "]}\n";lastComputeCount=computeOrdinal[pass];lastComputeSchedule=computeSchedule[pass];
+}
 bool pairHealthy=true,aoPrepared{};
 DWORD ownerThread{};
-std::filesystem::path output;
 BoundedLog log;
 std::set<uint64_t> saved;
 std::set<std::pair<unsigned,uint64_t>> sources;
@@ -141,6 +187,10 @@ std::string AoDigest(ID3D11DeviceContext* context,ID3D11Texture2D* texture) {
     return !strcmp(digest.status,"ok") && digest.subresources.size()==1 ? digest.subresources[0].sha256:std::string{};
 }
 bool aoIncomingSaved{},aoCompletedSaved{};
+void ClearAoHistory() {
+    aoEyes={};aoResource.Reset();aoIncoming.Reset();aoCompleted.Reset();
+    aoIncomingSaved=aoCompletedSaved=aoPrepared=false;
+}
 bool CopyScratch(ID3D11DeviceContext* c,ID3D11Texture2D* destination,ID3D11Texture2D* source) {
     ID3D11UnorderedAccessView* bound[8]{}; c->CSGetUnorderedAccessViews(0,8,bound);
     ID3D11UnorderedAccessView* empty[8]{};
@@ -401,6 +451,9 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
     screenUiEnabled=requested && (screenUiNormalDefault || std::filesystem::exists(folder/L"screen-ui-stereo.request"));
     if (screenUiEnabled) screenUi.Diagnose(folder);
     if (requested && runtimeSession) flicker::Configure(folder); // Configure on the render owner, not device creation.
+    spotlightwitness::Configure(folder,requested && runtimeSession);
+    spotlightEnabled=requested && screenUiNormalDefault && dispatch;
+    spotlightCorrection.Configure(dispatch);
     disableMotionBlur=requested && std::filesystem::exists(folder/L"disable-motion-blur.request");nativeDispatch=dispatch;
     limitCockpitExposure=requested && runtimeSession && std::filesystem::exists(folder/L"cockpit-exposure.request");
     compact=requested && std::filesystem::exists(folder/L"compact-stereo.request") && std::filesystem::exists(folder/L"stereo-eyes.request");
@@ -408,7 +461,7 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
     restoreComputeState=requested && std::filesystem::exists(folder/L"restore-compute-state.request");
     sortVpl=requested && std::filesystem::exists(folder/L"sort-vpl.request");
     isolateShadowSampler=requested && std::filesystem::exists(folder/L"isolate-shadow-sampler.request");
-    allowAbsentShadow=runtimeSession && std::filesystem::exists(folder/L"normal-launch.request");
+    allowAbsentShadow=runtimeSession;
     normalizeShadowBindings=requested && std::filesystem::exists(folder/L"normalize-shadow-bindings.request");
     if (enabled) {
         ownerThread=GetCurrentThreadId(); log.open(output/L"replay-work.txt",runtimeSession?sessionLogSegmentBytes:0,
@@ -424,6 +477,9 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
         if (!strcmp(phase,"replay-restored") && scene.pass==2) {
             ++uiPairs;uiScene=scene.id;uiNativeFrame=engine::NativeCameraFrame();
             if (uiPairs==1 || uiPairs-uiProofPairs>=120 || uiProofChanged) WriteUiProof("pair");
+            if (uiPairs==1 || uiPairs-spotlightProofPair>=120) {
+                WriteSpotlightProof();spotlightProofPair=uiPairs;
+            }
         }
     }
     auto& eye=CurrentAoEye();
@@ -435,7 +491,9 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
             aoIncomingSaved=false; aoCompletedSaved=false; shadowOrdinal=0;
             shadowIdentity={};shadowDraws={};
             blurDraws={};
-    exposureDraws={};
+            exposureDraws={};
+            for (auto& count:computeOrdinal) count=0;
+            computeSchedule={};lightCullSorted={};
             if (compact) centerDraws.Begin(engine::CurrentScene().id);
         }
         incomingCompute.Read(context); computeBeforeSaved=true;
@@ -446,7 +504,13 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
         if (isolateShadowSampler) pairHealthy&=ShadowPassComplete(0);
         completedCompute.Read(context); computeAfterSaved=true;
         if (aoIncomingSaved && aoCompleted) aoCompletedSaved=CopyScratch(context,aoCompleted.Get(),aoResource.Get());
-        if (!aoCompletedSaved) pairHealthy=false;
+        // AO and tiled lighting are independent native options. A frame may
+        // omit AO while still running the exact guarded light culler once.
+        // Unknown shaders and partial AO sequences remain failures.
+        const bool absent=NoAoSchedule(0) && !aoIncomingSaved && !aoCompletedSaved;
+        if (absent && pairHealthy) ClearAoHistory();
+        if (!absent && (!aoCompletedSaved || (engine::RepeatingEyes() && computeOrdinal[0]!=4))) pairHealthy=false;
+        RecordComputeSchedule(0,pairHealthy);
         if (compact && engine::RepeatingEyes()) {
             if (!pairHealthy && !centerFailureDumped) {
                 DumpCenterDraws(centerDraws.Previous(),"before_failure");
@@ -459,7 +523,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
                 << " blur_required=" << disableMotionBlur << " blur_draws=" << blurDraws[0]
                 << " blur_pending=" << motionBlur.Pending() << " shadow_required=" << isolateShadowSampler
                 << " shadow_draws=" << shadowDraws[0] << " ao_incoming=" << aoIncomingSaved
-                << " ao_completed=" << aoCompletedSaved << '\n';log.FlushNow();
+                << " ao_completed=" << aoCompletedSaved << " compute_draws=" << computeOrdinal[0] << '\n';log.FlushNow();
         }
     }
     if (!strcmp(phase,"replay-entry")) eyeReplayStarted=true;
@@ -474,8 +538,10 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
         if (disableMotionBlur) pairHealthy&=motionBlur.PassComplete(blurDraws[0],blurDraws[engine::CurrentScene().pass]);
         if (limitCockpitExposure) pairHealthy&=cockpitExposure.PassComplete(exposureDraws[0],exposureDraws[engine::CurrentScene().pass]);
         if (isolateShadowSampler) pairHealthy&=ShadowPassComplete(engine::CurrentScene().pass);
-        eye.saved=aoPrepared && eye.texture && CopyScratch(context,eye.texture.Get(),aoResource.Get());
-        pairHealthy&=eye.saved;
+        if (aoIncomingSaved) {
+            eye.saved=aoPrepared && eye.texture && CopyScratch(context,eye.texture.Get(),aoResource.Get());
+            pairHealthy&=eye.saved;
+        } else pairHealthy&=!aoPrepared && NoAoSchedule(0) && NoAoSchedule(engine::CurrentScene().pass);
         log << "ao_eye scene=" << engine::CurrentScene().id << " pass=" << engine::CurrentScene().pass << " retained=" << eye.saved << " resource=" << eye.texture.Get() << '\n';
         if (AuditAo() && eye.saved) {
             const auto source=AoDigest(context,aoResource.Get()),actual=AoDigest(context,eye.texture.Get());
@@ -496,10 +562,14 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
                 log << "ao_verify scene=" << engine::CurrentScene().id << " pass=" << engine::CurrentScene().pass << " phase=restore source=" << source << " actual=" << actual << '\n';
             }
         }
-        pairHealthy&=aoCompletedSaved && aoPrepared;
+        pairHealthy&=(aoCompletedSaved && aoPrepared) ||
+            (!aoIncomingSaved && !aoCompletedSaved && !aoPrepared && NoAoSchedule(0));
         if (engine::RepeatingEyes()) {
             const auto pass=engine::CurrentScene().pass;
-            pairHealthy&=pass>0 && pass<3 && computeOrdinal[0]==4 && computeOrdinal[pass]==4;
+            pairHealthy&=pass>0 && pass<3 && (computeOrdinal[0]==4 || NoAoSchedule(0)) &&
+                computeOrdinal[pass]==computeOrdinal[0];
+            if (computeOrdinal[0]==1) pairHealthy&=computeSchedule[pass]==computeSchedule[0];
+            if (!pairHealthy) RecordComputeSchedule(pass,false);
             log << "pair_gpu scene=" << engine::CurrentScene().id << " pass=" << pass << " healthy=" << pairHealthy
                 << " dispatch0=" << computeOrdinal[0] << " dispatch1=" << computeOrdinal[pass]
                 << " shadow0=" << shadowDraws[0] << " shadow_eye=" << shadowDraws[pass] << '\n'; log.flush();
@@ -512,7 +582,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
                     std::ofstream proof(output/L"shadow-absent-replay.json");
                     proof << "{\"scene\":" << lastAbsentShadowScene << ",\"nativeFrame\":" << engine::NativeCameraFrame()
                         << ",\"pairs\":" << absentShadowPairs
-                        << ",\"normalRuntime\":true,\"draws\":[0,0,0],\"pending\":false,\"pairGpuHealthy\":true}\n";
+                        << ",\"runtimeSession\":true,\"draws\":[0,0,0],\"pending\":false,\"pairGpuHealthy\":true}\n";
                 }
             }
             if (!defaultShadowProofSaved && pairHealthy && engine::DualEyes() && pass==2 &&
@@ -532,7 +602,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
 bool CancelBeforeReplay() {
     const auto scene=engine::CurrentScene();
     if (!runtimeSession || !enabled || GetCurrentThreadId()!=ownerThread || !sceneOpen || eyeReplayStarted ||
-        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || screenUi.Pending() ||
+        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // No eye state was applied. Missing race-only passes in a native menu do
     // not poison GPU history; any unfinished binding still refuses above.
@@ -541,13 +611,15 @@ bool CancelBeforeReplay() {
     log << "session center_cancelled_before_replay=1 scene=" << scene.id << '\n';log.FlushNow();return true;
 }
 bool ResetHistory() {
-    if (!enabled || GetCurrentThreadId()!=ownerThread || sceneOpen || !pairHealthy || motionBlur.Pending() || cockpitExposure.Pending() || screenUi.Pending() ||
+    if (!enabled || GetCurrentThreadId()!=ownerThread || sceneOpen || !pairHealthy || motionBlur.Pending() || cockpitExposure.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // The verified normal Quit path suspends and resets on the render owner.
     // Flush cumulative counts here rather than leaving the last periodic sample.
     WriteUiProof("history_reset");
+    WriteSpotlightProof();
+    if (!spotlightCorrection.ResetResources()) return false;
     // These are owned copies and retained COM references, never native contents.
-    aoEyes={};aoResource.Reset();aoIncoming.Reset();aoCompleted.Reset();
+    ClearAoHistory();
     incomingCompute={};completedCompute={};shadowOrdinal=0;shadowIdentity={};
     aoIncomingSaved=aoCompletedSaved=aoPrepared=computeBeforeSaved=computeAfterSaved=false;
     firstScene=activeScene=workScene=pairNumber=0;
@@ -558,8 +630,9 @@ void BeforeCompute(ID3D11DeviceContext* context,const std::string& mark) {
     if (!restoreComputeState || !Active() || !mark.ends_with("-compute1")) return;
     ComPtr<ID3D11ComputeShader> shader; context->CSGetShader(&shader,nullptr,nullptr);
     const auto hash=ShaderHash(shader.Get());
+    if (runtimeSession && sortVpl && hash==lightCullShader) return; // Its UAV/layout/sort must validate after dispatch.
     if (hash!=0x3edaf831f6f23893ull && hash!=0x9f9f7aeb0ae077eaull && hash!=0xbaa371e5a04c02f1ull && hash!=0xc02984a5d0518e28ull) {
-        pairHealthy=false; log << "ao_history refused=shader\n"; return;
+        pairHealthy=false; log << "ao_history refused=shader hash=" << Hex(hash) << '\n'; return;
     }
     ComPtr<ID3D11UnorderedAccessView> view; context->CSGetUnorderedAccessViews(0,1,&view);
     ComPtr<ID3D11Resource> resource; if (view) view->GetResource(&resource);
@@ -569,8 +642,15 @@ void BeforeCompute(ID3D11DeviceContext* context,const std::string& mark) {
     if (desc.Format!=DXGI_FORMAT_R8G8_UNORM || desc.ArraySize!=1 || desc.MipLevels!=1 || desc.SampleDesc.Count!=1 ||
         !desc.Width || !desc.Height || desc.Width>8192 || desc.Height>8192) { pairHealthy=false; log << "ao_history refused=format\n"; return; }
     if (!engine::CurrentScene().replay) {
-        if (aoResource && (!engine::RepeatingEyes() || aoIncomingSaved || aoResource!=texture)) {
+        if (aoResource && (!engine::RepeatingEyes() || aoIncomingSaved || (!runtimeSession && aoResource!=texture))) {
             pairHealthy=false; log << "ao_history refused=duplicate_or_changed_resource\n"; return;
+        }
+        // A graphics-quality change may recreate this native target between
+        // completed scenes. Start fresh owned history at its first guarded AO
+        // producer; identity changes during either eye still refuse below.
+        if (runtimeSession && aoResource && aoResource!=texture) {
+            if (!sceneOpen || eyeReplayStarted || !pairHealthy) {pairHealthy=false;log << "ao_history refused=recreation_scope\n";return;}
+            ClearAoHistory();log << "ao_history recreated_at_center=1 scene=" << engine::CurrentScene().id << '\n';
         }
         if (!aoResource) {
             ComPtr<ID3D11Device> device; context->GetDevice(&device);
@@ -608,14 +688,19 @@ void BeforeCompute(ID3D11DeviceContext* context,const std::string& mark) {
     log.flush();
 }
 ID3D11Texture2D* ComputeScratchResource() { return restoreComputeState && Active() ? aoResource.Get():nullptr; }
-bool VplOrderRequested(const std::string& mark) { return sortVpl && Active() && mark.ends_with("-compute4"); }
+bool VplOrderRequested(const std::string& mark) {
+    const auto pass=engine::CurrentScene().pass;
+    return sortVpl && Active() && (mark.ends_with("-compute4") ||
+        (runtimeSession && pass<3 && mark.ends_with("-compute1") && computeSchedule[pass][0].shader==lightCullShader));
+}
 void AfterCompute(ID3D11DeviceContext* context,const std::string& mark,UINT x,UINT y,UINT z,NativeDispatch dispatch) {
     if (!VplOrderRequested(mark)) return;
     ComPtr<ID3D11ComputeShader> shader; context->CSGetShader(&shader,nullptr,nullptr);
-    if (ShaderHash(shader.Get())!=0x6987ff5aba64e635ull) { pairHealthy=false; log << "vpl_order refused=shader\n"; log.flush(); return; }
+    if (ShaderHash(shader.Get())!=lightCullShader) { pairHealthy=false; log << "vpl_order refused=shader\n"; log.flush(); return; }
     ComPtr<ID3D11UnorderedAccessView> view; context->CSGetUnorderedAccessViews(1,1,&view);
     bool restored{}; const auto hr=vplOrder.Apply(context,view.Get(),x,y,z,dispatch,restored);
     pairHealthy&=SUCCEEDED(hr) && restored;
+    lightCullSorted[engine::CurrentScene().pass]=SUCCEEDED(hr) && restored;
     log << "vpl_order pass=" << engine::CurrentScene().pass << " applied=" << SUCCEEDED(hr)
         << " restored=" << restored << " hr=" << Hex(static_cast<uint32_t>(hr)) << " scene=" << engine::CurrentScene().id << " pass=" << engine::CurrentScene().pass;
     if (FAILED(hr)) {
@@ -634,6 +719,12 @@ bool ShadowControlBindings(ID3D11DeviceContext* context,bool native) {
     return (native ? restoreUnusedShadow:empty).Apply(context);
 }
 void AfterDraw(ID3D11DeviceContext* context) {
+    if (spotlightCorrection.Pending() && GetCurrentThreadId()==ownerThread) {
+        const bool restored=spotlightCorrection.AfterDraw(context);pairHealthy&=restored;
+        const auto pass=engine::CurrentScene().pass;
+        if (restored && pass>0 && pass<3) ++spotlightRestored[pass-1];
+        if (!restored) {log << "spotlight restored=0\n";log.FlushNow();}
+    }
     if (cockpitExposure.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=cockpitExposure.Restore(context);pairHealthy&=restored;
         if(!restored) {log<<"cockpit_exposure restored=0\n";log.FlushNow();}
@@ -693,6 +784,7 @@ void Upload(ID3D11Resource* resource,const void* data,UINT bytes) {
     // readback. Replace that private copy on every tracked native upload,
     // including uploads made by another native context thread.
     if (ScreenUiEnabled()) ScreenUi::Upload(resource,data,bytes);
+    spotlightwitness::Upload(resource,data,bytes);
     if (!enabled || GetCurrentThreadId()!=ownerThread || bytes>65536 || !Detailed()) return;
     UploadInfo info{Hash(data,bytes),bytes,false};
     const bool existed=saved.contains(info.hash);
@@ -724,6 +816,7 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
     const auto stage=engine::CurrentStage();
     if (workScene!=scene.id) {
         workScene=scene.id;
+        if (spotlightEnabled) pairHealthy&=spotlightCorrection.BeginScene(scene.id);
         for (unsigned p=0;p<3;++p) workOrdinal[p]=slot6Ordinal[p]=preColorOrdinal[p]=computeOrdinal[p]=0;
     }
     const unsigned pass=scene.pass;
@@ -738,6 +831,32 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
     IsolateShadowSampler(context,kind,args,index);
     NormalizeShadowBindings(context,kind,args,index);
     IsolateModel(context,kind,args,index);
+    if ((spotlightwitness::Enabled() || spotlightEnabled) && kind[0]!='C') {
+        ComPtr<ID3D11VertexShader> vs;ComPtr<ID3D11PixelShader> ps;
+        context->VSGetShader(&vs,nullptr,nullptr);context->PSGetShader(&ps,nullptr,nullptr);
+        const auto vsHash=ShaderHash(vs.Get()),psHash=ShaderHash(ps.Get());
+        spotlightwitness::Draw(context,scene.id,pass,stage.slot,index,kind,args,vsHash,psHash);
+        if (spotlightEnabled && spotlightprojection::PixelLayout(vsHash,psHash).bytes && args.size()<=5) {
+            SpotlightCorrection::DrawKey key{};
+            key.slot=stage.slot;key.ordinal=index;key.kindHash=Hash(kind,strlen(kind));
+            key.argCount=static_cast<UINT>(args.size());std::copy(args.begin(),args.end(),key.args.begin());
+            key.vsHash=vsHash;key.psHash=psHash;
+            spotlightprojection::Change change{};
+            std::array<uint8_t,512> center{},eye{};
+            const bool posed=scene.replay && engine::CurrentLightCameras(center,eye) &&
+                spotlightprojection::MakeChange(center,eye,change);
+            const auto result=spotlightCorrection.BeforeDraw(context,key,pass,posed?&change:nullptr);
+            spotlightScene=scene.id;
+            if (result==SpotlightCorrection::Result::Captured) ++spotlightCaptured;
+            if (pass>0 && pass<3) {
+                if (result==SpotlightCorrection::Result::Applied) ++spotlightSubmitted[pass-1];
+                if (result==SpotlightCorrection::Result::Skipped) ++spotlightSkipped[pass-1];
+            }
+            if (result==SpotlightCorrection::Result::Failed) {
+                pairHealthy=false;log << "spotlight apply_failed=1 pass=" << pass << '\n';log.FlushNow();
+            }
+        }
+    }
     if (screenUiEnabled && scene.replay && pass>0 && pass<3 && stage.slot==0 && kind[0]!='C') {
         ComPtr<ID3D11VertexShader> vs;context->VSGetShader(&vs,nullptr,nullptr);
         const auto shader=ShaderHash(vs.Get());
@@ -799,6 +918,12 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
             const bool applied=++blurDraws[pass]==1 && motionBlur.Apply(context,hash,nativeDispatch);pairHealthy&=applied;
             log << "motion_blur scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << " applied=" << applied << '\n';log.flush();
         }
+    }
+    if (kind[0]=='C' && computeOrdinal[pass]<8) {
+        ComPtr<ID3D11ComputeShader> shader;context->CSGetShader(&shader,nullptr,nullptr);
+        auto& dispatch=computeSchedule[pass][computeOrdinal[pass]];
+        dispatch.shader=ShaderHash(shader.Get());dispatch.slot=stage.slot;
+        if(args.size()==3)std::copy(args.begin(),args.end(),dispatch.groups.begin());
     }
     if (!Detailed() || index>4096) {
         if (kind[0]=='C') return "work-"+std::to_string(scene.id)+"-pass"+std::to_string(pass)+"-compute"+std::to_string(++computeOrdinal[pass]);

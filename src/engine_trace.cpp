@@ -884,8 +884,13 @@ bool ClipInstructionsMatch(uintptr_t context) {
 void ApplyReplayProjection(void* self,uintptr_t context,uintptr_t caller) {
     if (!inReplay || !asymmetricEyeFov || !pendingScene.valid || context!=pendingScene.call.args[3]) return;
     constexpr uint8_t rebind[]{0x8b,0x4e,0x28,0x8b,0x11,0x8b,0x7b,0x08,0x8b,0x82,0x44,0x01,0,0,0x57,0xff,0xd0};
+    // The alternate scene pass uploads the same context after both builders.
+    // Guard the entire entry-to-upload path and verify; never rewrite it here.
+    constexpr uint8_t alternate[]{0x55,0x8b,0xec,0x8b,0x55,0x08,0x83,0xec,0x08,0x53,0x56,0x8b,0xf1,0x8b,0x4e,0x28,
+        0x8b,0x01,0x8b,0x80,0x44,0x01,0,0,0x57,0x52,0xff,0xd0};
     const bool build=caller==0x25cccd;
-    const bool rebindCall=caller==0x32c2ec && MatchesInstructions(reinterpret_cast<void*>(gameBase+0x32c2db),rebind);
+    const bool rebindCall=(caller==0x32c2ec && MatchesInstructions(reinterpret_cast<void*>(gameBase+0x32c2db),rebind)) ||
+        (caller==0x4e469c && MatchesInstructions(reinterpret_cast<void*>(gameBase+0x4e4680),alternate));
     CameraContext candidate{},incoming{};
     bool valid=(build || rebindCall) && reinterpret_cast<uintptr_t>(self)==rendererObject &&
         Read<void**>(rendererObject)==rendererShadow && pendingScene.frame==frame.load() &&
@@ -1770,6 +1775,22 @@ bool ResumeSession() {
     if (!replaySequence.Resume()) return false;
     Log("session rendering=1 epoch=%llu",replaySequence.Epoch());return true;
 }
+bool SuspendForSwapchainChange() {
+    if (!Continuous() || GetCurrentThreadId()!=renderThread || SessionFailed()) return false;
+    if (pendingVisibility.active || frozenViews.Pending()) {
+        const auto current=frame.load();
+        // A resize is not a completed scene. Only the visibility-only prefix
+        // can be abandoned; an active scene/eye or foreign volume must refuse.
+        if (!replaySequence.Available() || inReplay || pendingScene.valid || !visibilityHealthy ||
+            !pendingVisibility.active || pendingVisibility.frame!=current ||
+            !frozenViews.Get(current) || replaySequence.LastFrame()>=current || !observePair) return false;
+        if (!RestoreVisibility("swapchain_before_scene") || !frozenViews.CancelBeforeReplay(current)) return false;
+        observePair(current,0,false); // End the acquired XR frame with no layers.
+        if (SessionFailed()) return false;
+        Log("session swapchain frame=%llu cancelled_before_scene=1",current);
+    }
+    return SuspendSession();
+}
 bool StopSession() {
     if (!SuspendSession() || !replaySequence.Stop()) return false;
     Log("session stopped=1 accepted=%llu",replaySequence.Completed());WriteSessionStatus();return true;
@@ -1790,6 +1811,12 @@ SceneStamp CurrentScene() {
 bool ReplayingEye() { return inReplay; }
 const SceneViews* CurrentReplayViews() {
     return inReplay && dualEyes && fullEyePose && asymmetricEyeFov ? frozenViews.Get(frame.load()):nullptr;
+}
+bool CurrentLightCameras(std::array<uint8_t,512>& center,std::array<uint8_t,512>& eye) {
+    if (GetCurrentThreadId()!=renderThread || !CurrentReplayViews() ||
+        !pendingScene.valid || pendingScene.frame!=frame.load() || !pendingScene.replayInputsSaved ||
+        !replayMainCameraValid || replayPass<1 || replayPass>2) return false;
+    center=pendingScene.context;eye=replayMainCamera;return true;
 }
 bool CurrentCockpitCamera() {
     // Original scene identity is shared by center/left/right. Do not classify

@@ -221,4 +221,11 @@ void ObserveScene(unsigned width,unsigned height) noexcept {
     const Size actual{width,height};
     if(actual!=scene) {scene=actual;Save();}
 }
+bool OwnsNativeResize(uintptr_t gameBase) noexcept {
+    Renderer current{};Renderer* native{};
+    return applied && boundRenderer && boundChain && gameBase==boundBase && GetCurrentThreadId()==owner &&
+        ReadMemory(reinterpret_cast<void*>(gameBase+0xd961bc),&native,sizeof(native)) && native==boundRenderer &&
+        ReadMemory(boundRenderer,&current,sizeof(current)) && current.device==boundDevice && current.window==boundWindow &&
+        current.chain==boundChain && FieldsAgree(current) && Size{current.width,current.height}==requested;
+}
 }

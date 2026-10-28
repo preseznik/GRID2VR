@@ -94,7 +94,7 @@ function Get-CareerProfileProxy {
     $allowed=@('9fe9e76f825b34650b64d962fc2e115d4fe09c9190eef0decc90362fbd46fe22',
         'fa75274d189e5121cc0e35ccbbc2e2df38b1fee3ef3d5dec3a6b73f559c47495',
         'cdd6e68abcd6e53ee15876f86f952b0e808b2fe515fd443ad80fb05f24fa5da8',
-        'ef1bb4b7b93575c821c85c3f515865159bf2e002ec01c67f1a9aa50549770a00') # Menu-Quit shutdown candidate; attended exit acceptance pending.
+        '28ef53ff0c6c3ee4722ba8f2a37d06c23b5fe34dc3626e1c1d1a7751b2062196') # GPU headlight correction; native projected-light hook remains excluded.
     $null=Assert-PlainPath $BaseProxy
     $base=(Get-FileHash -LiteralPath $BaseProxy).Hash
     $packaged=Test-Grid2Package $Root

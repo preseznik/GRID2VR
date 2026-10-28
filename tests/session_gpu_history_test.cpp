@@ -11,6 +11,7 @@ SceneStamp CurrentScene() { return testScene; }
 bool CurrentCockpitCamera() { return false; }
 uint64_t NativeCameraFrame() { return testScene.id; }
 const SceneViews* CurrentReplayViews() { return nullptr; }
+bool CurrentLightCameras(std::array<uint8_t,512>&,std::array<uint8_t,512>&) { return false; }
 StageStamp CurrentStage() { return {}; }
 bool RepeatingEyes() { return true; }
 bool DualEyes() { return true; }
@@ -22,6 +23,7 @@ std::string Digest(ID3D11DeviceContext* context,ID3D11Texture2D* texture) {
     auto digest=grid2vr::DigestTexture(context,texture,budget);
     return digest.subresources.size()==1?digest.subresources[0].sha256:std::string{};
 }
+void STDMETHODCALLTYPE NativeDispatch(ID3D11DeviceContext* context,UINT x,UINT y,UINT z) {context->Dispatch(x,y,z);}
 int main(int argc,char** argv) {
     if (argc!=2 && argc!=3) return 1;
     const std::string scenario=argc==3?argv[2]:"";
@@ -38,9 +40,11 @@ int main(int argc,char** argv) {
     std::filesystem::remove(root/L"normal-launch.request");
     std::filesystem::remove(root/L"normalize-shadow-bindings.request");
     if (!scenario.empty()) std::ofstream(root/L"normalize-shadow-bindings.request") << "fixture\n";
+    std::filesystem::remove(root/L"sort-vpl.request");
+    if (scenario.starts_with("lighting-")) std::ofstream(root/L"sort-vpl.request") << "fixture\n";
     if (scenario.starts_with("normal-")) std::ofstream(root/L"normal-launch.request") << "fixture\n";
     // The marker alone must not enable the omission outside a runtime session.
-    if (scenario=="normal-offline-zero") std::filesystem::remove(root/L"runtime-session.request");
+    if (scenario=="normal-offline-zero" || scenario=="strict-zero") std::filesystem::remove(root/L"runtime-session.request");
     auto module=LoadLibraryExW(L"d3d11.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);
     auto create=reinterpret_cast<decltype(&D3D11CreateDevice)>(GetProcAddress(module,"D3D11CreateDevice"));
     ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> context;
@@ -84,13 +88,143 @@ int main(int argc,char** argv) {
     context->IASetInputLayout(layout.Get());context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
     const D3D11_VIEWPORT viewport{0,0,8,4,0,1};context->RSSetViewports(1,&viewport);
     grid2vr::replaytrace::Configure(root,true);
-    if (grid2vr::replaytrace::ScreenUiEnabled()!=(scenario!="normal-offline-zero")) return 22;
+    if (grid2vr::replaytrace::ScreenUiEnabled()!=(scenario!="normal-offline-zero" && scenario!="strict-zero")) return 22;
     if (!grid2vr::replaytrace::ResetHistory()) return 4;
     bool wrongThreadReset=true;
     std::thread worker([&]{wrongThreadReset=grid2vr::replaytrace::ResetHistory();});worker.join();
     if (wrongThreadReset) return 5;
     D3D11_TEXTURE2D_DESC desc{};desc.Width=8;desc.Height=4;desc.MipLevels=desc.ArraySize=desc.SampleDesc.Count=1;
     desc.Format=DXGI_FORMAT_R8G8_UNORM;desc.BindFlags=D3D11_BIND_UNORDERED_ACCESS;
+    if (scenario.starts_with("lighting-")) {
+        const bool transitions=scenario=="lighting-transitions";
+        const bool eyeFailure=scenario=="lighting-extra-eye" || scenario=="lighting-missing-eye" || scenario=="lighting-changed-groups";
+        const int failurePass=transitions?-1:eyeFailure?1:0;
+        ComPtr<ID3D11Texture2D> ao,lights,expected,changedLights;ComPtr<ID3D11UnorderedAccessView> aoView,lightView,changedView;
+        if(FAILED(device->CreateTexture2D(&desc,nullptr,&ao)) || FAILED(device->CreateUnorderedAccessView(ao.Get(),nullptr,&aoView)))return 50;
+        std::array<uint16_t,32> aoPixels{};context->UpdateSubresource(ao.Get(),0,nullptr,aoPixels.data(),16,0);
+        auto lightDesc=desc;lightDesc.Width=16;lightDesc.Height=32;lightDesc.Format=DXGI_FORMAT_R16_UINT;
+        std::array<uint16_t,512> pixels;pixels.fill(77);pixels[0]=1;pixels[1]=2;pixels[2]=3;pixels[3]=0;
+        D3D11_SUBRESOURCE_DATA initial{pixels.data(),32,0};
+        if(FAILED(device->CreateTexture2D(&lightDesc,&initial,&expected)))return 51;
+        const auto sortedDigest=Digest(context.Get(),expected.Get());if(sortedDigest.empty())return 52;
+        if(scenario=="lighting-layout")lightDesc.Width=8;
+        if(FAILED(device->CreateTexture2D(&lightDesc,nullptr,&lights)) || FAILED(device->CreateUnorderedAccessView(lights.Get(),nullptr,&lightView)))return 53;
+        if(scenario=="lighting-changed-groups") {
+            auto changedDesc=lightDesc;changedDesc.Width=32;
+            if(FAILED(device->CreateTexture2D(&changedDesc,nullptr,&changedLights)) ||
+                FAILED(device->CreateUnorderedAccessView(changedLights.Get(),nullptr,&changedView)))return 61;
+        }
+        ID3D11UnorderedAccessView* native[]{aoView.Get(),lightView.Get()};context->CSSetUnorderedAccessViews(0,2,native,nullptr);
+        constexpr unsigned schedules[]{0,1,4,1,0,1};
+        for(unsigned frame=0;frame<(transitions?6u:1u);++frame) {
+            auto& scene=grid2vr::engine::testScene;scene={4000+frame,false,0};
+            grid2vr::replaytrace::SceneBoundary(context.Get(),"scene-entry");
+            for(unsigned pass=0;pass<3;++pass) {
+                scene.pass=pass;scene.replay=pass!=0;
+                if(pass)grid2vr::replaytrace::SceneBoundary(context.Get(),"replay-entry");
+                auto* currentLights=changedLights && pass==1?changedLights.Get():lights.Get();
+                auto* currentView=changedView && pass==1?changedView.Get():lightView.Get();
+                context->CSSetUnorderedAccessViews(1,1,&currentView,nullptr);
+                unsigned count=transitions?schedules[frame]:1;
+                if(scenario=="lighting-extra-center" || (scenario=="lighting-extra-eye" && pass==1))count=2;
+                if(scenario=="lighting-missing-eye" && pass==1)count=0;
+                for(unsigned i=0;i<count;++i) {
+                    const bool culler=count!=4 || i==3;
+                    grid2vr::replaytrace::ShaderIdentity(shader.Get(),scenario=="lighting-unknown"?0x123456789abcdef0ull:
+                        culler?0x6987ff5aba64e635ull:0x3edaf831f6f23893ull);
+                    UINT groups[]{1,1,1};if(scenario=="lighting-changed-groups" && pass==1)groups[0]=2;
+                    const auto mark=grid2vr::replaytrace::Work(context.Get(),"Compute",groups);
+                    grid2vr::replaytrace::BeforeCompute(context.Get(),mark);
+                    if(culler) {
+                        pixels[0]=3;pixels[1]=1;pixels[2]=2;
+                        if(currentLights==changedLights.Get()) {
+                            std::array<uint16_t,1024> changedPixels{};
+                            context->UpdateSubresource(currentLights,0,nullptr,changedPixels.data(),64,0);
+                        } else context->UpdateSubresource(currentLights,0,nullptr,pixels.data(),32,0);
+                    }
+                    if(scenario!="lighting-unsorted")grid2vr::replaytrace::AfterCompute(context.Get(),mark,groups[0],groups[1],groups[2],NativeDispatch);
+                    // The changed geometry is valid for sorting; refusal must
+                    // come from comparing the eye schedule with its center.
+                    if(scenario=="lighting-changed-groups" && !grid2vr::replaytrace::PairHealthy())return 62;
+                    if(culler && int(pass)!=failurePass && Digest(context.Get(),lights.Get())!=sortedDigest)return 54;
+                    ComPtr<ID3D11ComputeShader> actual;context->CSGetShader(&actual,nullptr,nullptr);if(actual!=shader)return 55;
+                    ComPtr<ID3D11UnorderedAccessView> binding;context->CSGetUnorderedAccessViews(1,1,&binding);if(binding.Get()!=currentView)return 56;
+                }
+                if(pass) {
+                    grid2vr::replaytrace::SceneBoundary(context.Get(),"replay-complete");
+                    grid2vr::replaytrace::SceneBoundary(context.Get(),"replay-restored");
+                } else grid2vr::replaytrace::SceneBoundary(context.Get(),"scene-complete");
+                if(int(pass)==failurePass)return !grid2vr::replaytrace::PairHealthy() && !grid2vr::replaytrace::ResetHistory()?0:57;
+                if(!grid2vr::replaytrace::PairHealthy())return 58;
+            }
+        }
+        std::ifstream proof(root/L"compute-schedules.jsonl");
+        const std::string receipt((std::istreambuf_iterator<char>(proof)),std::istreambuf_iterator<char>());
+        if(receipt.find("6987ff5aba64e635")==std::string::npos || receipt.find("\"count\":0")==std::string::npos ||
+            receipt.find("\"count\":1")==std::string::npos || receipt.find("\"count\":4")==std::string::npos)return 59;
+        return grid2vr::replaytrace::ResetHistory()?0:60;
+    }
+    if (scenario.starts_with("quality-")) {
+        const bool transitions=scenario=="quality-transitions",replacement=scenario=="quality-resource-replace";
+        const bool extra=scenario=="quality-extra-left" || scenario=="quality-extra-right";
+        const int failurePass=transitions || replacement?-1:
+            scenario=="quality-extra-right" || scenario=="quality-missing-right"?2:
+            extra || scenario=="quality-missing-left" || scenario=="quality-resource-eye"?1:0;
+        ComPtr<ID3D11Texture2D> texture;ComPtr<ID3D11UnorderedAccessView> uav;
+        for (unsigned frame=0;frame<(transitions?5u:replacement?3u:1u);++frame) {
+            const bool active=!extra && (!transitions || frame%2==0);
+            if (replacement || !texture) {
+                // Transitions reuse the native target across enabled/disabled
+                // frames; the replacement case recreates it while enabled.
+                // Neither path may inherit stale per-eye AO pixels.
+                texture.Reset();uav.Reset();
+                if (FAILED(device->CreateTexture2D(&desc,nullptr,&texture)) ||
+                    FAILED(device->CreateUnorderedAccessView(texture.Get(),nullptr,&uav))) return 40;
+            }
+            auto* native=uav.Get();const UINT preserve=UINT(-1);context->CSSetUnorderedAccessViews(0,1,&native,&preserve);
+            std::array<uint16_t,32> pixels;pixels.fill(uint16_t(100+frame));
+            context->UpdateSubresource(texture.Get(),0,nullptr,pixels.data(),16,0);const auto original=Digest(context.Get(),texture.Get());
+            if (original.empty()) return 41;
+            auto& scene=grid2vr::engine::testScene;scene={3000+frame,false,0};
+            grid2vr::replaytrace::SceneBoundary(context.Get(),"scene-entry");
+            for (unsigned pass=0;pass<3;++pass) {
+                scene.pass=pass;scene.replay=pass!=0;
+                if (pass) grid2vr::replaytrace::SceneBoundary(context.Get(),"replay-entry");
+                unsigned count=active?4u:0u;
+                if (extra && int(pass)==failurePass) count=4;
+                if ((scenario=="quality-missing-left" || scenario=="quality-missing-right") && int(pass)==failurePass) count=0;
+                if (scenario=="quality-partial-center" && pass==0) count=3;
+                if (scenario=="quality-unknown-compute" && pass==0) grid2vr::replaytrace::ShaderIdentity(shader.Get(),0x123456789abcdef0ull);
+                ComPtr<ID3D11Texture2D> foreign;ComPtr<ID3D11UnorderedAccessView> foreignView;
+                if (scenario=="quality-resource-eye" && pass==1) {
+                    if (FAILED(device->CreateTexture2D(&desc,nullptr,&foreign)) ||
+                        FAILED(device->CreateUnorderedAccessView(foreign.Get(),nullptr,&foreignView))) return 42;
+                    auto* binding=foreignView.Get();context->CSSetUnorderedAccessViews(0,1,&binding,&preserve);
+                }
+                for (unsigned i=0;i<count;++i) {
+                    const UINT args[]{1,1,1};const auto mark=grid2vr::replaytrace::Work(context.Get(),"Compute",args);
+                    grid2vr::replaytrace::BeforeCompute(context.Get(),mark);
+                    if (!i && scenario=="quality-duplicate-ao" && pass==0) grid2vr::replaytrace::BeforeCompute(context.Get(),mark);
+                    if (!i && pass && int(pass)!=failurePass && Digest(context.Get(),texture.Get())!=original) return 43;
+                }
+                if (active) {
+                    const UINT args[]{4,0};grid2vr::replaytrace::Work(context.Get(),"Draw",args);grid2vr::replaytrace::AfterDraw(context.Get());
+                }
+                if (pass) {
+                    if (count && int(pass)!=failurePass) {
+                        pixels.fill(uint16_t(pass*900));context->UpdateSubresource(texture.Get(),0,nullptr,pixels.data(),16,0);
+                    }
+                    grid2vr::replaytrace::SceneBoundary(context.Get(),"replay-complete");
+                    grid2vr::replaytrace::SceneBoundary(context.Get(),"replay-restored");
+                } else grid2vr::replaytrace::SceneBoundary(context.Get(),"scene-complete");
+                if (int(pass)==failurePass) return !grid2vr::replaytrace::PairHealthy() && !grid2vr::replaytrace::ResetHistory()?0:44;
+                if (!grid2vr::replaytrace::PairHealthy() || Digest(context.Get(),texture.Get())!=original) return 45;
+                ComPtr<ID3D11UnorderedAccessView> actual;context->CSGetUnorderedAccessViews(0,1,&actual);
+                if (actual!=uav) return 46;
+            }
+        }
+        return grid2vr::replaytrace::ResetHistory()?0:47;
+    }
     if (!scenario.empty()) {
         struct Case { const char* name;std::array<unsigned,3> draws;int failurePass; };
         constexpr Case cases[]{
@@ -124,11 +258,11 @@ int main(int argc,char** argv) {
             for (unsigned pass=0;pass<3;++pass) {
                 scene.pass=pass;scene.replay=pass!=0;
                 if (pass) grid2vr::replaytrace::SceneBoundary(context.Get(),"replay-entry");
-                unsigned dispatches=scenario=="normal-no-ao"?0:4;
+                unsigned dispatches=4;
                 if (scenario=="normal-short-compute" && pass==1) dispatches=3;
                 for (unsigned i=0;i<dispatches;++i) {
                     const UINT args[]{1,1,1};auto mark=grid2vr::replaytrace::Work(context.Get(),"Compute",args);
-                    grid2vr::replaytrace::BeforeCompute(context.Get(),mark);
+                    if (scenario!="normal-no-ao") grid2vr::replaytrace::BeforeCompute(context.Get(),mark);
                 }
                 auto* before=pass?(centerSampler?nullptr:explicitSampler.Get()):centerSampler;
                 context->PSSetSamplers(6,1,&before);
@@ -156,7 +290,7 @@ int main(int argc,char** argv) {
         }
         std::ifstream proof(root/L"shadow-absent-replay.json");
         const std::string receipt((std::istreambuf_iterator<char>(proof)),std::istreambuf_iterator<char>());
-        if (receipt!="{\"scene\":2001,\"nativeFrame\":2001,\"pairs\":1,\"normalRuntime\":true,\"draws\":[0,0,0],\"pending\":false,\"pairGpuHealthy\":true}\n") return 36;
+        if (receipt!="{\"scene\":2001,\"nativeFrame\":2001,\"pairs\":1,\"runtimeSession\":true,\"draws\":[0,0,0],\"pending\":false,\"pairGpuHealthy\":true}\n") return 36;
         return grid2vr::replaytrace::ResetHistory()?0:37;
     }
     for (unsigned epoch=1;epoch<=3;++epoch) {
@@ -207,14 +341,15 @@ int main(int argc,char** argv) {
             if (!grid2vr::replaytrace::PairHealthy() || Digest(context.Get(),texture.Get())!=original) return 9;
         }
         if (!grid2vr::replaytrace::ResetHistory()) return 10;
-        // A new native AO resource is legal only after the explicit reset.
+        // Explicit resets also release owned history across renderer epochs.
     }
     std::ifstream proof(root/L"shadow-default-replay.json");
     const std::string receipt((std::istreambuf_iterator<char>(proof)),std::istreambuf_iterator<char>());
     if (receipt!="{\"scene\":100,\"eyes\":2,\"centerSampler\":null,\"samplerRestored\":true,\"pairGpuHealthy\":true}\n") return 16;
     auto& scene=grid2vr::engine::testScene;scene={999,false,0};
     grid2vr::replaytrace::SceneBoundary(context.Get(),"scene-entry");
-    grid2vr::replaytrace::SceneBoundary(context.Get(),"scene-complete"); // No valid producer.
+    const UINT missingProducerArgs[]{1,1,1};grid2vr::replaytrace::Work(context.Get(),"Compute",missingProducerArgs);
+    grid2vr::replaytrace::SceneBoundary(context.Get(),"scene-complete"); // Dispatch without a valid AO producer.
     if (grid2vr::replaytrace::PairHealthy() || grid2vr::replaytrace::ResetHistory()) return 11;
     // A proved menu may cancel a center-only scope without race passes; no
     // eye draw or binding mutation was begun. Later stereo starts fresh.

@@ -109,11 +109,35 @@ target_sources(d3d11 PRIVATE src/driving_controls.cpp)
 target_sources(d3d11 PRIVATE src/profile_storage.cpp src/profile_setup.cpp)
 target_sources(d3d11 PRIVATE src/startup_movies.cpp)
 target_sources(d3d11 PRIVATE src/fault_context.cpp)
-target_sources(d3d11 PRIVATE src/process_exit.cpp src/menu_exit.cpp)
+target_sources(d3d11 PRIVATE src/process_exit.cpp)
 target_sources(d3d11 PRIVATE src/flicker_capture.cpp src/flicker_pixels.cpp src/flicker_watch.cpp src/sign_visibility.cpp)
 target_sources(d3d11 PRIVATE src/eye_mirror.cpp)
 target_sources(d3d11 PRIVATE src/instance_capacity.cpp)
-target_sources(d3d11 PRIVATE src/screen_ui.cpp)
+target_sources(d3d11 PRIVATE src/screen_ui.cpp src/spotlight_witness.cpp src/spotlight_correction.cpp)
+# Native projected-light detouring is withdrawn after Custom Event loading
+# faults. Keep its isolated fixture for investigation, outside the game DLL.
+target_sources(d3d11 PRIVATE src/cockpit_animation.cpp)
+add_executable(cockpit_animation_test tests/cockpit_animation_test.cpp src/cockpit_animation.cpp src/guarded_hooks.cpp)
+target_include_directories(cockpit_animation_test PRIVATE src)
+target_compile_definitions(cockpit_animation_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(cockpit_animation_test PRIVATE bcrypt)
+add_test(NAME native_cockpit_animation COMMAND cockpit_animation_test "${CMAKE_SOURCE_DIR}/tests/fixtures/native-cockpit-animation.bin")
+add_test(NAME native_cockpit_animation_inactive COMMAND cockpit_animation_test --inactive)
+add_executable(projected_lights_test tests/projected_lights_test.cpp)
+target_include_directories(projected_lights_test PRIVATE src)
+add_test(NAME prepared_projected_lights COMMAND projected_lights_test)
+add_executable(spotlight_witness_test tests/spotlight_witness_test.cpp)
+target_include_directories(spotlight_witness_test PRIVATE src)
+target_compile_definitions(spotlight_witness_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+add_test(NAME bounded_spotlight_witness COMMAND spotlight_witness_test)
+add_executable(spotlight_projection_test tests/spotlight_projection_test.cpp)
+target_include_directories(spotlight_projection_test PRIVATE src)
+add_test(NAME spotlight_world_projection COMMAND spotlight_projection_test)
+add_executable(spotlight_correction_test tests/spotlight_correction_test.cpp src/spotlight_correction.cpp)
+target_include_directories(spotlight_correction_test PRIVATE src)
+target_compile_definitions(spotlight_correction_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(spotlight_correction_test PRIVATE d3dcompiler)
+add_test(NAME gpu_spotlight_correction COMMAND spotlight_correction_test)
 target_sources(d3d11 PRIVATE src/scene_resolution.cpp)
 target_compile_definitions(d3d11 PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_compile_options(d3d11 PRIVATE /W4 /EHsc)
@@ -162,6 +186,10 @@ target_include_directories(driving_controls_test PRIVATE src)
 add_test(NAME session_driving_controls COMMAND driving_controls_test)
 add_test(NAME driving_controls_snapshot COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-DrivingControls.ps1")
 add_executable(scene_resolution_test tests/scene_resolution_test.cpp src/scene_resolution.cpp src/guarded_hooks.cpp)
+add_executable(frontend_video_resize_test tests/frontend_video_resize_test.cpp src/guarded_hooks.cpp)
+target_include_directories(frontend_video_resize_test PRIVATE src)
+target_compile_definitions(frontend_video_resize_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+add_test(NAME guarded_frontend_video_resize COMMAND frontend_video_resize_test "${CMAKE_SOURCE_DIR}/tests/fixtures")
 target_include_directories(scene_resolution_test PRIVATE src)
 target_compile_definitions(scene_resolution_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_test(NAME guarded_native_scene_resolution COMMAND scene_resolution_test
@@ -174,6 +202,11 @@ target_compile_definitions(screen_ui_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 add_test(NAME guarded_screen_ui_projection COMMAND screen_ui_test
     "${CMAKE_SOURCE_DIR}/tests/fixtures/native-ui-perspective.bin"
     "${CMAKE_SOURCE_DIR}/tests/fixtures/native-ui-orthographic.bin")
+add_executable(flat_screen_ui_test tests/flat_screen_ui_test.cpp src/screen_ui.cpp)
+target_link_libraries(flat_screen_ui_test PRIVATE d3dcompiler)
+target_include_directories(flat_screen_ui_test PRIVATE src)
+target_compile_definitions(flat_screen_ui_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+add_test(NAME guarded_flat_screen_ui COMMAND flat_screen_ui_test "${CMAKE_SOURCE_DIR}/tests/fixtures" "${CMAKE_BINARY_DIR}/flat-screen-ui-fixture")
 add_executable(instance_capacity_test tests/instance_capacity_test.cpp)
 target_include_directories(instance_capacity_test PRIVATE src)
 add_test(NAME bounded_instance_frame_demand COMMAND instance_capacity_test)
@@ -275,6 +308,15 @@ add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/native_session_hooks.inc"
 add_executable(native_session_hooks_test tests/native_session_hooks_test.cpp "${CMAKE_BINARY_DIR}/native_session_hooks.inc")
 target_include_directories(native_session_hooks_test PRIVATE "${CMAKE_BINARY_DIR}")
 add_test(NAME desktop_native_hook_exit_lifecycle COMMAND native_session_hooks_test)
+add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/swapchain_session.inc"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/extract_swapchain_session.py"
+    "${CMAKE_SOURCE_DIR}/src/engine_trace.cpp" "${CMAKE_BINARY_DIR}/swapchain_session.inc"
+  DEPENDS src/engine_trace.cpp tests/extract_swapchain_session.py VERBATIM)
+add_executable(swapchain_session_test tests/swapchain_session_test.cpp "${CMAKE_BINARY_DIR}/swapchain_session.inc")
+target_include_directories(swapchain_session_test PRIVATE src "${CMAKE_BINARY_DIR}")
+target_compile_definitions(swapchain_session_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(swapchain_session_test PRIVATE d3d11)
+add_test(NAME swapchain_session_lifecycle COMMAND swapchain_session_test)
 add_executable(stop_receipt_test tests/stop_receipt_test.cpp)
 target_include_directories(stop_receipt_test PRIVATE src)
 target_compile_definitions(stop_receipt_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -294,6 +336,18 @@ add_test(NAME frozen_stereo_frame COMMAND scene_views_test)
 target_include_directories(eye_pose_test PRIVATE src)
 add_test(NAME posed_camera_history COMMAND eye_pose_test)
 add_executable(projection_depth_test tests/projection_depth_test.cpp)
+add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/eye_projection_upload.inc"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/extract_eye_projection_upload.py"
+    "${CMAKE_SOURCE_DIR}/src/engine_trace.cpp" "${CMAKE_BINARY_DIR}/eye_projection_upload.inc"
+  DEPENDS src/engine_trace.cpp tests/extract_eye_projection_upload.py VERBATIM)
+add_executable(eye_projection_upload_test tests/eye_projection_upload_test.cpp src/guarded_hooks.cpp "${CMAKE_BINARY_DIR}/eye_projection_upload.inc")
+target_include_directories(eye_projection_upload_test PRIVATE src "${CMAKE_BINARY_DIR}")
+target_compile_definitions(eye_projection_upload_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+add_test(NAME guarded_eye_projection_upload COMMAND eye_projection_upload_test
+  "${CMAKE_SOURCE_DIR}/tests/fixtures/native-practice-context.bin"
+  "${CMAKE_SOURCE_DIR}/tests/fixtures/native-transition-context.bin"
+  "${CMAKE_SOURCE_DIR}/tests/fixtures/native-moving-center-context.bin"
+  "${CMAKE_SOURCE_DIR}/tests/fixtures/native-moving-right-context.bin")
 target_include_directories(projection_depth_test PRIVATE src)
 add_test(NAME headset_projection_preserves_native_depth COMMAND projection_depth_test
   "${CMAKE_SOURCE_DIR}/tests/fixtures/native-practice-context.bin"
@@ -364,7 +418,7 @@ add_executable(bounded_log_test tests/bounded_log_test.cpp)
 target_include_directories(bounded_log_test PRIVATE src)
 add_test(NAME bounded_runtime_logs COMMAND bounded_log_test "${CMAKE_BINARY_DIR}/bounded-log-fixture")
 add_executable(session_gpu_history_test tests/session_gpu_history_test.cpp src/replay_trace.cpp src/guarded_hooks.cpp src/vpl_order.cpp src/texture_digest.cpp src/motion_blur.cpp)
-target_sources(session_gpu_history_test PRIVATE src/flicker_capture.cpp src/flicker_pixels.cpp src/flicker_watch.cpp src/sign_visibility.cpp src/screen_ui.cpp src/cockpit_exposure.cpp)
+target_sources(session_gpu_history_test PRIVATE src/flicker_capture.cpp src/flicker_pixels.cpp src/flicker_watch.cpp src/sign_visibility.cpp src/screen_ui.cpp src/cockpit_exposure.cpp src/spotlight_witness.cpp src/spotlight_correction.cpp)
 target_include_directories(session_gpu_history_test PRIVATE src)
 target_compile_definitions(session_gpu_history_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(session_gpu_history_test PRIVATE d3dcompiler bcrypt)
@@ -375,7 +429,17 @@ foreach(shadow_case normal-transitions strict-zero normal-offline-zero normal-ex
     add_test(NAME gpu_shadow_schedule_${shadow_case} COMMAND session_gpu_history_test
         "${CMAKE_BINARY_DIR}/session-history-fixture" "${shadow_case}")
 endforeach()
+foreach(quality_case quality-transitions quality-resource-replace quality-extra-left quality-extra-right
+    quality-missing-left quality-missing-right quality-unknown-compute quality-resource-eye quality-duplicate-ao quality-partial-center)
+    add_test(NAME gpu_quality_schedule_${quality_case} COMMAND session_gpu_history_test
+        "${CMAKE_BINARY_DIR}/session-history-fixture" "${quality_case}")
+endforeach()
 add_test(NAME runtime_evidence_limits COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_runtime_analysis.py")
+foreach(lighting_case lighting-transitions lighting-unknown lighting-layout lighting-unsorted
+    lighting-extra-center lighting-extra-eye lighting-missing-eye lighting-changed-groups)
+    add_test(NAME gpu_lighting_schedule_${lighting_case} COMMAND session_gpu_history_test
+        "${CMAKE_BINARY_DIR}/session-history-fixture" "${lighting_case}")
+endforeach()
 add_test(NAME cockpit_camera_asset COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cockpit_camera.py")
 add_test(NAME cockpit_camera_recovery COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-CockpitCamera.ps1")
 add_test(NAME cockpit_assets_recovery COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-CockpitAssets.ps1")

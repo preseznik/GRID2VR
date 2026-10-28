@@ -60,7 +60,7 @@ int wmain(int argc,wchar_t** argv) {
         const auto before=r;CHECK(!SetFields(r,{3840,2160}));CHECK(!memcmp(&r,&before,sizeof(r)));
     }
     const auto native=Read(argv[1]);CHECK(native.size()==0x4fd);
-    auto* image=static_cast<uint8_t*>(VirtualAlloc(nullptr,0x880000,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));CHECK(image);
+    auto* image=static_cast<uint8_t*>(VirtualAlloc(nullptr,0xda0000,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));CHECK(image);
     memcpy(image+0x87e490,native.data(),native.size());const auto base=reinterpret_cast<uintptr_t>(image);
     const auto recreate=Read(argv[3]),resize=Read(argv[4]);CHECK(recreate.size()==0x124 && resize.size()==0x430);
     memcpy(image+0x87d700,recreate.data(),recreate.size());memcpy(image+0x87f6a0,resize.data(),resize.size());
@@ -117,6 +117,13 @@ int wmain(int argc,wchar_t** argv) {
     const auto initial=PrepareCreate(base,output,device.Get(),&r.swap,&r.chain,base+0x87e887);CHECK(initial && r.width==3840);
     CHECK(!Read(output/L"scene-resolution.json").empty());
     auto hr=factory->CreateSwapChain(device.Get(),&r.swap,&r.chain);CHECK(SUCCEEDED(hr));CompleteCreate(initial,hr,r.chain);
+    auto** nativeRenderer=reinterpret_cast<Renderer**>(image+0xd961bc);
+    CHECK(!OwnsNativeResize(base));*nativeRenderer=&r;CHECK(OwnsNativeResize(base));
+    *nativeRenderer=&foreign;CHECK(!OwnsNativeResize(base));*nativeRenderer=&r;
+    CHECK(!OwnsNativeResize(base+1));
+    bool wrongOwner=true;std::thread resizeWorker([&]{wrongOwner=OwnsNativeResize(base);});resizeWorker.join();CHECK(!wrongOwner);
+    --r.height;CHECK(!OwnsNativeResize(base));++r.height;
+    auto* nativeDevice=r.device;r.device=nullptr;CHECK(!OwnsNativeResize(base));r.device=nativeDevice;
     ComPtr<IDXGISwapChain> chain;chain.Attach(r.chain);
     ObserveScene(3840,2160);
     const auto receipt=Read(output/L"scene-resolution.json");

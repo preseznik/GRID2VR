@@ -21,6 +21,7 @@ const char* runtimeName="SteamVR/test";
 std::wstring expectedRuntimePath;
 unsigned recommendedWidth=100,recommendedHeight=120;
 XrPosef headPose{{0,0,0,1},{0,0,0}},lastScreenPose{};
+XrExtent2Df lastScreenSize{};
 XrQuaternionf Multiply(const XrQuaternionf& a,const XrQuaternionf& b) {
     return {a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,
         a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w,a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z};
@@ -38,7 +39,7 @@ void Reset() {
     performanceEnds=performanceAcquires=lastLayerCount=0;
     performanceCreateFail=performanceAcquireFail=performanceTimeout=false;
     fixedPerformance=false;lastPerformancePose={};
-    headPose={{0,0,0,1},{0,0,0}};lastScreenPose={};
+    headPose={{0,0,0,1},{0,0,0}};lastScreenPose={};lastScreenSize={};
 }
 XrResult XRAPI_CALL Requirements(XrInstance,XrSystemId,XrGraphicsRequirementsD3D11KHR* r) {
     r->adapterLuid=adapterLuid;if(badAdapter) r->adapterLuid.LowPart^=1;
@@ -107,7 +108,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession,const XrFrameEndInfo* info) 
             if(q->space!=4 || q->eyeVisibility!=XR_EYE_VISIBILITY_BOTH || q->subImage.swapchain!=10 ||
                 q->pose.orientation.x!=0 || q->pose.orientation.z!=0 || !Near(q->pose.orientation.y*q->pose.orientation.y+q->pose.orientation.w*q->pose.orientation.w,1) ||
                 q->size.width!=2.4f || q->size.height<=0 || imagePhases[0] || imagePhases[1]) protocolError=true;
-            lastScreenPose=q->pose;
+            lastScreenPose=q->pose;lastScreenSize=q->size;
             ++screenEnds;
         } else {
             const auto* p=reinterpret_cast<const XrCompositionLayerProjection*>(info->layers[0]);
@@ -199,7 +200,16 @@ int main(int argc,char** argv) {
         std::ofstream(sceneRequest)<<(test==1?"800 900":"400 450");
         const bool initialized=probe.Initialize(device.Get(),manifest,folder);
         if(initialized!=(test==0 || test==5)) return 100;
-        if(test==0 && !probe.InitializeImages(DrawNative,800,900)) return 101;
+        if(test==0) {
+            if(!probe.InitializeImages(DrawNative,800,900) || !probe.Poll()) return 101;
+            D3D11_TEXTURE2D_DESC menuDesc{};menuDesc.Width=400;menuDesc.Height=450;
+            menuDesc.MipLevels=menuDesc.ArraySize=menuDesc.SampleDesc.Count=1;menuDesc.Format=DXGI_FORMAT_R10G10B10A2_UNORM;
+            ComPtr<ID3D11Texture2D> menu;
+            if(FAILED(device->CreateTexture2D(&menuDesc,nullptr,&menu))) return 104;
+            eventState=XR_SESSION_STATE_FOCUSED;
+            if(!probe.Poll() || !probe.PresentScreen(1,menu.Get()) || screenEnds!=1 ||
+                !Near(lastScreenSize.width,2.4f) || !Near(lastScreenSize.height,1.35f)) return 105;
+        }
         if(test==5 && (probe.InitializeImages(DrawNative,400,450) || !probe.Failed())) return 102;
         probe.Shutdown();
         if(instances || sessions || spaces || protocolError) return 103;

@@ -8,9 +8,9 @@ bool XrEyeImages::Check(XrResult result,const char* operation) {
     if (!failure_) {failure_=operation;result_=result;}ready_=false;return false;
 }
 bool XrEyeImages::Refuse(const char* reason) {return Check(XR_ERROR_VALIDATION_FAILURE,reason);}
-bool XrEyeImages::Initialize(XrSession session,ID3D11Device* device,NativeEyeDraw draw,unsigned width,unsigned height) {
+bool XrEyeImages::Initialize(XrSession session,ID3D11Device* device,NativeEyeDraw draw,unsigned width,unsigned height,bool widescreenMenus) {
     if (thread_ || !session || !device || !draw) return false;
-    thread_=GetCurrentThreadId();width_=width;height_=height;
+    thread_=GetCurrentThreadId();width_=width;height_=height;widescreenMenus_=widescreenMenus;
     if (!resolution::ValidOutput(width,height)) return Refuse("image_dimensions");
     uint32_t count{};
     if (!Check(xrEnumerateSwapchainFormats(session,0,&count,nullptr),"format_count")) return false;
@@ -127,7 +127,10 @@ bool XrEyeImages::CopyScreen(uint64_t frame,XrSpace localSpace,const XrPosef& an
     screen_={XR_TYPE_COMPOSITION_LAYER_QUAD};screen_.space=localSpace;screen_.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
     screen_.subImage.swapchain=eye.chain;screen_.subImage.imageRect.extent={static_cast<int32_t>(width_),static_cast<int32_t>(height_)};
     screen_.pose=anchor;
-    screen_.size={2.4f,2.4f*static_cast<float>(desc.Height)/static_cast<float>(desc.Width)};
+    // Headset-relative pixels are not the menu canvas aspect. The launcher
+    // keeps the native profile at 16:9 even when the per-eye texture is portrait.
+    // Map the entire image to that canvas; never crop it to the headset shape.
+    screen_.size={2.4f,widescreenMenus_?1.35f:2.4f*static_cast<float>(desc.Height)/static_cast<float>(desc.Width)};
     ready_=screenReady_=true;return true;
 }
 bool XrEyeImages::Shutdown() {
