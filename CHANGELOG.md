@@ -1,3 +1,16 @@
+# GRID2VR 0.1.11 — Experimental
+
+- **VR render scale** now uses your connected headset's recommended resolution as 100%. The launcher shows the rendered and headset-output dimensions. Lower values favour performance; higher values add detail.
+- Keep VR working when changing video mode, anti-aliasing, graphics presets and advanced quality settings.
+- Improve VR transitions from the garage into Custom Events, and correct menu framing at higher resolutions.
+- Keep headlights aligned with the car when **Advanced Lighting** is off.
+- Keep the cockpit steering wheel animated with **Vehicle Detail** set to **Low**.
+- Improve VR cleanup when closing the game, and stop expected game startup checks from falsely marking successful sessions as failed.
+
+Existing 720p-based VR scales move to the new 100% baseline; desktop resolution is preserved.
+
+This is an Experimental pre-release. A reported fault when quitting some VR Practice sessions still needs further verification. Broader headset, graphics and performance coverage remains limited.
+
 # GRID2VR 0.1.10 — Experimental
 
 - Look around from the close and far chase cameras with the mouse or right stick, on desktop and in VR, while driving or watching an offline replay. Enable **Free look** under **Controls → General**; it is off by default.
