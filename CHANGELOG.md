@@ -1,3 +1,22 @@
+# GRID2VR 0.2.0 — Stable
+
+GRID2VR 0.2.0 brings the 0.1.11 Experimental feature set to the Stable channel. Get it through normal launcher updates or GitHub's **Latest** release, without enabling experimental updates.
+
+Highlights since 0.1.3 Stable:
+
+- Select supported installed DLC cars and tracks in **Practice / Race**, including Spa-Francorchamps and Bathurst. Supported DLC cars have cockpit views and per-car seat adjustment. You still need to own the corresponding DLC.
+- Use optional **New cockpit textures** for all 76 supported cars, including the Caterham SP/300.R. The launcher downloads the matching artwork; **Old cockpit textures** switches back to the originals.
+- Look around and zoom from chase cameras while driving or watching offline replays, on desktop and in VR. Enable **Free look** under **Controls → General**; it is off by default.
+- Set **VR render scale** relative to your connected headset's recommended resolution, shown as 100%. The launcher displays the rendered and headset-output dimensions.
+- Improve VR graphics changes, garage-to-Custom Event transitions and menu framing. Keep headlights aligned with **Advanced Lighting** off, and the steering wheel animated with **Vehicle Detail** set to **Low**.
+- Choose your GRID 2 folder during installation and upgrades. Use a supported Steam or standalone copy of GRID 2, build 1.0.85.8679; standalone copies use **Current game career**.
+- See automatic update notices beside **?**, and follow preparation progress when launching desktop or VR sessions.
+- Improve shutdown cleanup and prevent expected startup checks from falsely marking successful sessions as failed.
+
+Existing 720p-based VR scales move to the new 100% baseline; desktop resolution is preserved.
+
+This release promotes the existing 0.1.11 functionality and adds no gameplay changes. **Known issue:** a reported fault when quitting some VR Practice sessions still needs further verification. Broader headset, DLC, standalone save/load and performance coverage remains limited.
+
 # GRID2VR 0.1.11 — Experimental
 
 - **VR render scale** now uses your connected headset's recommended resolution as 100%. The launcher shows the rendered and headset-output dimensions. Lower values favour performance; higher values add detail.
