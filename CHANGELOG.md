@@ -1,3 +1,20 @@
+# GRID2VR 0.2.1 — Experimental
+
+- Apply launcher driving bindings in game, including combined keyboard, controller, wheel, pedal and separate shifter setups, on desktop and in VR.
+- Make controls easier to set up with improved input capture, a **Live input** view, and saved driving profiles.
+- Adjust pedal deadzones, saturation and wheel steering linearity in the launcher. New bindings default to **0% deadzone / 100% saturation**; existing calibration is preserved.
+- Choose automatic, sequential, H-pattern or H-pattern with clutch from the launcher, without resetting the game's saved bindings.
+- Choose how far to press the clutch before a gear engages. A held gear now engages when the pedal reaches that threshold, without returning the shifter to neutral. The pedal's analogue response is preserved.
+- Improve desktop borderless fullscreen with a **Borderless fullscreen** setting under **Graphics → Desktop → Window**, enabled by default. The VR mirror setting remains separate.
+- Improve HUD placement and correct a grey strip that could appear during loading and camera sweeps.
+- Improve VR startup and menu/video resizing with launcher driving bindings enabled, and avoid false failure reports after successful desktop sessions.
+
+Enable **Launcher driving bindings** in **Driving controls** to use the launcher assignments and transmission options.
+
+This is an Experimental pre-release. Desktop driving inputs and the VR candidate have been tested on one setup; other wheel and shifter combinations still need testing. A reported fault when quitting some VR Practice sessions remains under investigation.
+
+For experimental updates, enable **Include experimental releases** under **Help / About**.
+
 # GRID2VR 0.2.0 — Stable
 
 GRID2VR 0.2.0 brings the 0.1.11 Experimental feature set to the Stable channel. Get it through normal launcher updates or GitHub's **Latest** release, without enabling experimental updates.

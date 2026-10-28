@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version='0.2.0',[ValidateSet('Stable','Experimental')][string]$Channel='Stable',
+param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version='0.2.1',[ValidateSet('Stable','Experimental')][string]$Channel='Stable',
     [string]$InnoCompiler="$env:LOCALAPPDATA\Programs\Inno Setup 7\ISCC.exe",[string]$TexturePack='',
     [string]$NativeBinary='',[string]$NativeSha256='',[switch]$Publish)
 $ErrorActionPreference='Stop'
