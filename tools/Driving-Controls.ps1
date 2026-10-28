@@ -2,13 +2,13 @@
 function Read-DrivingControls([string]$Path) {
     if (!$Path) { return $null }
     $item=Get-Item -LiteralPath $Path -Force
-    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -lt 1 -or $item.Length -gt 131072) { throw 'Invalid driving controls file.' }
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -lt 1 -or $item.Length -gt 524288) { throw 'Invalid driving controls file.' }
     $bytes=[IO.File]::ReadAllBytes($item.FullName)
-    if ($bytes.Length -gt 131072) { throw 'Driving controls file exceeds the size limit.' }
+    if ($bytes.Length -gt 524288) { throw 'Driving controls file exceeds the size limit.' }
     $settings=[Xml.XmlReaderSettings]::new()
     $settings.DtdProcessing=[Xml.DtdProcessing]::Prohibit
     $settings.XmlResolver=$null
-    $settings.MaxCharactersInDocument=131072
+    $settings.MaxCharactersInDocument=524288
     $stream=[IO.MemoryStream]::new($bytes,$false)
     $reader=[Xml.XmlReader]::Create($stream,$settings)
     $xml=[Xml.XmlDocument]::new();$xml.XmlResolver=$null
@@ -27,25 +27,47 @@ function Read-DrivingControls([string]$Path) {
         return $result
     }
     $root=$xml.DocumentElement
-    if (!$root -or $root.Name -cne 'DrivingControls' -or $root.GetAttribute('version') -cne '1') { throw 'Unsupported driving controls version.' }
-    Assert-Attributes $root @('version')
+    if (!$root -or $root.Name -cne 'DrivingControls' -or $root.GetAttribute('version') -cnotin @('1','2','3','4')) { throw 'Unsupported driving controls version.' }
+    $version=[int]$root.GetAttribute('version')
+    $transmission='game'
+    $linearity=0
+    $clutchShiftThreshold=100
+    if ($version -ge 3) {
+        $attributes=@('version','transmission','steering_linearity')
+        if ($version -eq 4) { $attributes+=,'clutch_shift_threshold' }
+        Assert-Attributes $root $attributes
+        $transmission=$root.GetAttribute('transmission')
+        if ($transmission -cnotin @('game','automatic','sequential','hpattern','hpattern_clutch')) { throw 'Invalid driving transmission mode.' }
+        $text=$root.GetAttribute('steering_linearity')
+        if ($text -cnotmatch '^(0|-?[1-9]|-?10)$' -or ![int]::TryParse($text,[ref]$linearity)) { throw 'Invalid steering linearity.' }
+        if ($version -eq 4) {
+            $text=$root.GetAttribute('clutch_shift_threshold')
+            if ($text -cnotmatch '\A([1-9][0-9]|100)\z' -or ![int]::TryParse($text,[ref]$clutchShiftThreshold)) { throw 'Clutch shift threshold must be a whole percentage between 10 and 100.' }
+        }
+    } else { Assert-Attributes $root @('version') }
     $actions=@('Steer Left','Steer Right','Accelerate','Brake','Clutch','Handbrake','Gear Up','Gear Down','Gear 1','Gear 2','Gear 3','Gear 4','Gear 5','Gear 6','Gear 7','Gear Reverse','Change View','Look Back','Look Left','Look Right','Look Up','Look Down','Horn','Boost','Pause','Instant Replay','Menu Start Button','Menu Select','Menu Back','Menu Up','Menu Down','Menu Left','Menu Right','Replay Rewind','Replay Fast Forward','Replay Pause','Replay Next Camera','Replay Prev Camera','Replay Jump In','Replay Exit','Replay UI On Off')
     $xboxAxes=@('xinput_left_stick_x','xinput_left_stick_y','xinput_right_stick_x','xinput_right_stick_y','xinput_left_trigger','xinput_right_trigger')
     $xboxButtons=@('xinput_dpad_up','xinput_dpad_down','xinput_dpad_left','xinput_dpad_right','xinput_button_start','xinput_button_back','xinput_button_left_stick','xinput_button_right_stick','xinput_button_left_shoulder','xinput_button_right_shoulder','xinput_button_a','xinput_button_b','xinput_button_x','xinput_button_y')
     $directAxes=@('di_x_axis','di_y_axis','di_z_axis','di_x_axis_rotation','di_y_axis_rotation','di_z_axis_rotation','di_slider_0','di_slider_1')
-    $slots=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $slots=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $devices=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $rows=@();$steering=@{}
     foreach($map in @(Get-Elements $root 'ActionMap')) {
-        Assert-Attributes $map @('device_type')
+        if ($version -ge 2) { Assert-Attributes $map @('device_type','device_id') } else { Assert-Attributes $map @('device_type') }
         $device=$map.GetAttribute('device_type');$guid=[Guid]::Empty
-        if ($device -cnotin @('keyboard','xinput_pad') -and ![Guid]::TryParseExact($device,'B',[ref]$guid)) { throw 'Invalid driving controls device family.' }
-        if (!$devices.Add($device)) { throw 'Duplicate driving controls device family.' }
+        if ($device -cnotin @('keyboard','xinput_pad') -and ($device.Length -ne 38 -or ![Guid]::TryParseExact($device,'B',[ref]$guid))) { throw 'Invalid driving controls device family.' }
+        $deviceId=if($version -ge 2){$map.GetAttribute('device_id')}else{''}
+        if ($version -ge 2) {
+            $validId=if($device -ceq 'keyboard'){$deviceId -ceq 'keyboard'}elseif($device -ceq 'xinput_pad'){$deviceId -cmatch '^xinput:[0-3]$'}else{$deviceId.Length -eq 38 -and [Guid]::TryParseExact($deviceId,'B',[ref]$guid)}
+            if (!$validId) { throw 'Invalid driving controls device identity.' }
+        }
+        $identity=if($version -ge 2){$deviceId}else{$device}
+        if (!$devices.Add($identity) -or $devices.Count -gt 16) { throw 'Duplicate or excessive driving controls devices.' }
         $mapActions=@(Get-Elements $map 'Action')
         if (!$mapActions.Count) { throw 'Empty driving controls map.' }
         foreach($action in $mapActions) {
             Assert-Attributes $action @('id');$id=$action.GetAttribute('id')
-            if ($id -cnotin $actions -or !$slots.Add("$($device -ceq 'keyboard')/$id")) { throw 'Invalid or duplicate driving action.' }
+            if ($id -cnotin $actions -or !$slots.Add("$identity/$id")) { throw 'Invalid or duplicate driving action.' }
             $axes=@(Get-Elements $action 'Axis')
             if ($axes.Count -ne 1) { throw 'Each driving action requires one axis.' }
             $axis=$axes[0];Assert-Attributes $axis @('id','type','deadzone','saturation')
@@ -58,21 +80,23 @@ function Read-DrivingControls([string]$Path) {
             if (!$validInput -or $type -cnotin @('uniDirPos','uniDirNeg','biDirLower','biDirUpper') -or
                 ![decimal]::TryParse($axis.GetAttribute('deadzone'),[Globalization.NumberStyles]::AllowDecimalPoint,[Globalization.CultureInfo]::InvariantCulture,[ref]$dead) -or
                 ![decimal]::TryParse($axis.GetAttribute('saturation'),[Globalization.NumberStyles]::AllowDecimalPoint,[Globalization.CultureInfo]::InvariantCulture,[ref]$sat) -or
-                $dead -lt 0 -or $dead -gt .9 -or $sat -lt .1 -or $sat -gt 1 -or $dead -ge $sat) { throw 'Invalid driving axis or calibration.' }
+                $dead -lt 0 -or $dead -gt .9 -or $sat -lt .1 -or $sat -gt 1 -or $dead -ge $sat -or [float]$dead -ge [float]$sat) { throw 'Invalid driving axis or calibration.' }
             if ($device -ceq 'xinput_pad' -and $input.EndsWith('_trigger') -and $type -cne 'uniDirPos') { throw 'Xbox triggers require positive calibration.' }
             if ($id -cin @('Steer Left','Steer Right')) {
                 $signature="$device/$input/$type"
                 $other=if($id -ceq 'Steer Left'){'Steer Right'}else{'Steer Left'}
-                if ($steering["$($device -ceq 'keyboard')/$other"] -ceq $signature) { throw 'Left and right steering use the same direction.' }
-                $steering["$($device -ceq 'keyboard')/$id"]=$signature
+                if ($steering["$identity/$other"] -ceq $signature) { throw 'Left and right steering use the same direction.' }
+                $steering["$identity/$id"]=$signature
             }
-            $rows+= ,@($device,$id,$input,$type,$dead.ToString([Globalization.CultureInfo]::InvariantCulture),$sat.ToString([Globalization.CultureInfo]::InvariantCulture))
+            $row=@($device,$id,$input,$type,$dead.ToString([Globalization.CultureInfo]::InvariantCulture),$sat.ToString([Globalization.CultureInfo]::InvariantCulture))
+            if ($version -ge 2) { $row+=,$deviceId }
+            $rows+= ,$row
         }
     }
-    if ($rows.Count -lt 1 -or $rows.Count -gt $actions.Count*2) { throw 'Invalid driving controls count.' }
+    if (($rows.Count -lt 1 -and ($version -lt 3 -or $transmission -ceq 'game')) -or $rows.Count -gt $actions.Count*16) { throw 'Invalid driving controls count.' }
     $sha=[Security.Cryptography.SHA256]::Create()
     try { $hash=[BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-','') } finally { $sha.Dispose() }
-    return @{bytes=$bytes;sha256=$hash;bindings=$rows.Count;rows=$rows}
+    return @{bytes=$bytes;sha256=$hash;bindings=$rows.Count;rows=$rows;version=$version;transmission=$transmission;steeringLinearity=$linearity;clutchShiftThreshold=$clutchShiftThreshold;clutchShiftSettings=($version -eq 4)}
 }
 
 function Save-DrivingControls($Controls,[string]$Run) {
@@ -81,7 +105,13 @@ function Save-DrivingControls($Controls,[string]$Run) {
     if (Test-Path -LiteralPath $target) { throw 'Driving controls snapshot already exists.' }
     [IO.File]::WriteAllBytes($target,$Controls.bytes)
     # A bounded, validated ASCII protocol avoids exposing the native hook to an XML parser.
-    $lines=@('GRID2VR_DRIVING_CONTROLS_1')+@($Controls.rows | ForEach-Object { $_ -join "`t" })
+    $lines=@("GRID2VR_DRIVING_CONTROLS_$($Controls.version)")
+    if ($Controls.version -ge 3) {
+        $configuration="settings`t$($Controls.transmission)`t$($Controls.steeringLinearity)"
+        if ($Controls.version -eq 4) { $configuration+="`t$($Controls.clutchShiftThreshold)" }
+        $lines+=,$configuration
+    }
+    $lines+=@($Controls.rows | ForEach-Object { $_ -join "`t" })
     [IO.File]::WriteAllText((Join-Path $Run 'driving-controls.request'),($lines -join "`n")+"`n",[Text.Encoding]::ASCII)
-    return @{sha256=$Controls.sha256;bindings=$Controls.bindings;sessionOnly=$true}
+    return @{sha256=$Controls.sha256;bindings=$Controls.bindings;transmission=$Controls.transmission;steeringLinearity=$Controls.steeringLinearity;clutchShiftThreshold=$Controls.clutchShiftThreshold;clutchShiftSettings=$Controls.clutchShiftSettings;sessionOnly=$true}
 }

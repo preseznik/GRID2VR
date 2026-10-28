@@ -61,6 +61,7 @@ param(
     [int]$SceneWidth=0,
     [int]$SceneHeight=0,
     [switch]$VrMirrorBorderless,
+    [ValidateSet(0,1)][int]$DesktopBorderless=1,
     [switch]$FlickerDiagnostic,
     [switch]$AutoCaptureFlicker,
     [switch]$FlickerSignTarget,
@@ -475,7 +476,7 @@ $receipt.vrGarageMenus=[bool]$VrGarageMenus
 $receipt.frontendSceneAudit=[bool]$FrontendSceneAudit
 $receipt.playerControlProbe=$PlayerControlProbe
 $receipt.playerControlOnly=[bool]$PlayerControlOnly
-$receipt.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly)
+$receipt.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly -and [bool]$DesktopBorderless)
 $receipt.vrMirrorBorderlessRequested=[bool]$VrMirrorBorderless
 $receipt.backgroundPlay=$BackgroundPlay
 $receipt.chaseCameraObserver=[bool]$ChaseCameraObserver
@@ -541,7 +542,7 @@ try {
                 if ($process) { $null=$process.Handle; $handles[[int]$p.ProcessId]=$process }
                 $receipt.processes+=@{id=$p.ProcessId;parent=$p.ParentProcessId;path=$p.ExecutablePath;commandLine=$p.CommandLine;createdUtc=$identity.createdUtc}
                 if ($UntilExit -or $RecenterDeviceBase64) { $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'session.json') }
-                if($RuntimeSession -and $UntilExit -and $PlayerControlOnly -and $process) {
+                if($RuntimeSession -and $UntilExit -and $PlayerControlOnly -and $DesktopBorderless -and $process) {
                     try { Start-DesktopBorderless $root $run $process }
                     catch { Write-Warning "Desktop borderless unavailable; retaining windowed play: $_" }
                 }

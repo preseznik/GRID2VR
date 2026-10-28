@@ -31,6 +31,7 @@ internal sealed class MainForm : LauncherForm
     private readonly ComboBox desktopMsaa = Choice("DesktopMSAA"), vrMsaa = Choice("VrMSAA"), treeDetail = Choice("TreeDetail"),
         objectDetail = Choice("ObjectDetail"), crowdDetail = Choice("CrowdDetail"), textureFiltering = Choice("TextureFiltering");
     private readonly CheckBox desktopVSync = new() { Name = "DesktopVSync", Text = "On", AutoSize = true };
+    private readonly CheckBox desktopBorderless = new() { Name = "DesktopBorderless", Text = "Borderless fullscreen", AutoSize = true };
     private readonly CheckBox vrMirrorBorderless = new() { Name = "VrMirrorBorderless", Text = "Maximize windowed screen", AutoSize = true };
     private readonly Label measuredScene = TextLabel("No measured scene from the last session.");
     private readonly AppearanceSwitch modernInterface = new();
@@ -177,10 +178,11 @@ internal sealed class MainForm : LauncherForm
         graphics.Controls.Add(TextLabel("Distance and Follow view apply to the HUD and results text in stereo VR. Individual HUD elements cannot be hidden yet."));
         graphics.Controls.Add(HelpLink("VR HUD"));
         Section(graphics, "Desktop");
+        Field(graphics, "Window", desktopBorderless);
         Field(graphics, "Render resolution", desktopRenderScale); Field(graphics, "Requested desktop", desktopResolution);
         desktopMsaa.Items.AddRange(new ContentItem[] { new("off", "Off"), new("2xmsaa", "2× MSAA"), new("4xmsaa", "4× MSAA"), new("8xmsaa", "8× MSAA") });
         Field(graphics, "VSync", desktopVSync); Field(graphics, "Anti-aliasing (MSAA)", desktopMsaa);
-        graphics.Controls.Add(TextLabel("Launch starts borderless and fills the game window's monitor. Desktop resolution, VSync and anti-aliasing apply only to Launch. VR has separate settings."));
+        graphics.Controls.Add(TextLabel("Borderless fullscreen fills the game window's monitor. Turn it off for a bordered window. Desktop settings apply only to Launch; VR has separate settings."));
         graphics.Controls.Add(graphicsDefaults);
         graphics.Controls.Add(TextLabel("VR defaults to 100% of the connected headset’s recommended resolution. Changes apply to the next launch; original game settings are restored afterward."));
         renderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
@@ -441,6 +443,7 @@ internal sealed class MainForm : LauncherForm
         VrRenderScale = renderScale.Value, DesktopVSync = desktopVSync.Checked, DesktopMsaa = ChoiceId(desktopMsaa), VrMsaa = ChoiceId(vrMsaa),
         DesktopRenderScale = desktopRenderScale.Value == retainedGraphics.RenderScale && retainedGraphics.DesktopRenderScale is null ? null : desktopRenderScale.Value,
         VrMirrorBorderless = vrMirrorBorderless.Checked,
+        DesktopBorderless = desktopBorderless.Checked,
         TreeDetail = ChoiceId(treeDetail), ObjectDetail = ChoiceId(objectDetail), CrowdDetail = ChoiceId(crowdDetail), TextureFiltering = ChoiceId(textureFiltering),
         HudDistance = hudDistance.Value, HudFollowView = hudFollow.Checked
     };
@@ -453,6 +456,7 @@ internal sealed class MainForm : LauncherForm
             renderScale.Value = value.VrRenderScale;
             desktopRenderScale.Value = value.EffectiveDesktopRenderScale;
             vrMirrorBorderless.Checked = value.VrMirrorBorderless;
+            desktopBorderless.Checked = value.DesktopBorderless;
             desktopVSync.Checked = value.DesktopVSync; SelectChoice(desktopMsaa, value.DesktopMsaa);
             SelectChoice(vrMsaa, value.VrMsaa);
             SelectChoice(treeDetail, value.TreeDetail); SelectChoice(objectDetail, value.ObjectDetail);
@@ -630,7 +634,7 @@ internal sealed class MainForm : LauncherForm
         bindRecenterDevice.Enabled = clearRecenterDevice.Enabled = loaded && idle && !capturingRecenter;
         defaults.Enabled = loaded && idle && !capturingRecenter;
         foreach (var control in new Control[] { renderScale, desktopRenderScale, modernInterface, previewVrFixes, skipIntro, diagnosticLogging, performanceDisplay, replay3d, garage3d, vrCockpit, keepHorizonLevel,
-            cockpitTextures, hudDistance, hudFollow, desktopVSync, desktopMsaa, vrMsaa, vrMirrorBorderless, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
+            cockpitTextures, hudDistance, hudFollow, desktopVSync, desktopMsaa, desktopBorderless, vrMsaa, vrMirrorBorderless, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
             control.Enabled = loaded && idle && !capturingRecenter;
         performanceFollowView.Enabled = performanceDisplay.Enabled && performanceDisplay.Checked;
         cockpitDriver.Enabled = vrCockpit.Enabled && vrCockpit.Checked;
@@ -694,6 +698,7 @@ internal sealed class MainForm : LauncherForm
         tips.SetToolTip(crowdDetail, "Spectator detail. Ultra matches the working profile.");
         tips.SetToolTip(textureFiltering, "Texture sharpness at oblique angles. 16× matches the working profile.");
         tips.SetToolTip(desktopVSync, "Desktop Launch only. Launch VR retains its existing VSync setting.");
+        tips.SetToolTip(desktopBorderless, "Fill the game window's monitor without borders on the next Desktop launch. Turn off to keep a bordered window at the requested resolution. Windows display settings and VR are unchanged.");
         tips.SetToolTip(desktopMsaa, "Desktop Launch only. Launch VR uses the separate Anti-aliasing (VR) choice.");
         tips.SetToolTip(vrMsaa, "Smooth jagged geometry edges in VR. Off preserves the working default. 2×, 4× and 8× increase GPU time and memory use. Applies to the next VR launch; desktop MSAA is independent.");
         tips.SetToolTip(graphicsDefaults, "Restore only graphics choices to the working profile, then Save or Launch to keep them.");

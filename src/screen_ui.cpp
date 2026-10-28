@@ -18,10 +18,10 @@ struct ProjectionConstants {
 };
 static_assert(sizeof(ProjectionConstants)==64);
 std::string GeometrySource(unsigned mask) {
-    // Both exact native signatures use float4 TEXCOORDs; the missing TEXCOORD3
-    // in signature 23 is intentional. Do not invent or truncate native fields.
+    // Exact native signatures use float4 TEXCOORDs; missing TEXCOORD3 in
+    // signatures 23/55 is intentional. Retain the OSD/radial TEXCOORD5 too.
     std::string members="float4 p:SV_Position;";
-    for (unsigned i=0;i<5;++i) if (mask&(1u<<i)) members+="float4 t"+std::to_string(i)+":TEXCOORD"+std::to_string(i)+";";
+    for (unsigned i=0;i<6;++i) if (mask&(1u<<i)) members+="float4 t"+std::to_string(i)+":TEXCOORD"+std::to_string(i)+";";
     std::string source="cbuffer Projection:register(b0){float4 row0;float4 row1;float4 row2;float4 bounds;}struct A{"+members+"};struct B{"+members+"float4 clip:SV_ClipDistance0;};";
     source+="[maxvertexcount(3)] void main(triangle A v[3],inout TriangleStream<B> stream){"
         // These native UI cameras put the whole canvas in front of the eye.
@@ -34,7 +34,7 @@ std::string GeometrySource(unsigned mask) {
         // Hardware clipping against the new XY/W alone admits old offscreen
         // matte quads into the smaller HUD canvas (persistent black bars).
         "o.clip=float4(p.x-bounds.x*p.w,bounds.y*p.w-p.x,p.y-bounds.z*p.w,bounds.w*p.w-p.y);";
-    for (unsigned i=0;i<5;++i) if (mask&(1u<<i)) source+="o.t"+std::to_string(i)+"=v[i].t"+std::to_string(i)+";";
+    for (unsigned i=0;i<6;++i) if (mask&(1u<<i)) source+="o.t"+std::to_string(i)+"=v[i].t"+std::to_string(i)+";";
     return source+"stream.Append(o);}stream.RestartStrip();}";
 }
 }
@@ -275,7 +275,7 @@ ScreenUi::Result ScreenUi::Apply(ID3D11DeviceContext* context,uint64_t vertexSha
         if (FAILED(device->CreateBuffer(&cd,nullptr,&replacement_))) return Result::Failed;
         owner_=context;thread_=GetCurrentThreadId();
     }
-    const unsigned mask=ScreenUiVaryingMask(vertexShader),index=mask==31?1:0;
+    const unsigned mask=ScreenUiVaryingMask(vertexShader),index=((mask&8)?1:0)+((mask&32)?2:0);
     if (!shaders_[index]) {
         const auto code=GeometrySource(mask);ComPtr<ID3DBlob> blob,error;
         if (FAILED(D3DCompile(code.data(),code.size(),"grid2vr-screen-ui",nullptr,nullptr,"main","gs_5_0",

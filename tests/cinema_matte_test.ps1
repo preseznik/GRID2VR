@@ -20,11 +20,62 @@ $replayY=@{
 foreach($offset in $replayY.Keys) {
     for($i=0;$i -lt 16;$i++) { $original[$offset+$i]=[Convert]::ToByte($replayY[$offset][0].Substring($i*2,2),16) }
 }
+# Exact bounded packet/event/ancestor fields from the fingerprinted source.
+$popupEdits=@{
+    4=@('000b0f55','000b0fc1')
+    16477=@('000acefc','000acf68')
+    16489=@('0001a188','0001a1f4')
+    121405=@('0000018f','000001fb')
+    121421=@('00000130','0000019c')
+    121462=@('00000156','000001c2')
+    121504=@('00000002','00000003')
+    121512=@('00000060','00000064')
+    121516=@('00000000','3a800000')
+    121552=@('40555555','40556555')
+    121614=@('00000002','00000003')
+    121618=@('000000a0','000000c4')
+    121622=@('000000a8','000000d0')
+    121626=@('00000000','3a800000')
+    121662=@('40555555','40556555')
+    121724=@('00000002','00000003')
+    121728=@('000000e8','00000130')
+    121732=@('000000f0','0000013c')
+    121736=@('00000000','3a800000')
+    121772=@('40555555','40556555')
+    248467=@('00000000','3a800000')
+    248479=@('40555555','40556555')
+    257777=@('3e64b17e','3e65b17e')
+    684626=@('bec96920','c2800000')
+}
+$popupKeys=@{
+    121516='00000000bf000000c51c264ec4d035beb451d99a3f3fafd0000000000000000000000000'
+    121626='00000000bf000000c51c264ec4d035beb451d99ac2800000427e6d2eb580000000000000'
+    121736='00000000bf000000c51c264ec4d035beb451d99abe3b7e9d000000000000000000000000'
+}
+$nativeKeys=@{
+    121516='00000000bf000000c51c264ec4d035beba2ee0003f3fafd000000000000000000000000040555555beaaaaabbd97b426bde38e3a40554fdd3f3fafd0000000000000000000000000'
+    121626='00000000bf000000c51c264ec4d035beba2ee000bec96920410add263b2ac000bae3a00040555555beaaaaabbd97b426bde38e3a40554fdd4104956c00000000c10add26410add26'
+    121736='00000000bf000000c51c264ec4d035beba2ee000be3b7e9d3410000033400000b300000040555555beaaaaabbd97b426bde38e3a40554fddbe3b7e9300000000b410000034100000'
+}
+function Put-Hex([byte[]]$Bytes,[int]$Offset,[string]$Hex) {
+    for($i=0;$i -lt $Hex.Length/2;$i++) { $Bytes[$Offset+$i]=[Convert]::ToByte($Hex.Substring(2*$i,2),16) }
+}
+foreach($offset in $nativeKeys.Keys) { Put-Hex $original $offset $nativeKeys[$offset] }
+foreach($offset in $popupEdits.Keys) { Put-Hex $original $offset $popupEdits[$offset][0] }
 $modified=[byte[]]$original.Clone()
 foreach($offset in @(514752,516161)) { [Array]::Clear($modified,$offset,48) }
 $verticesOnly=[byte[]]$modified.Clone()
 foreach($offset in $replayY.Keys) {
     for($i=0;$i -lt 16;$i++) { $modified[$offset+$i]=[Convert]::ToByte($replayY[$offset][1].Substring($i*2,2),16) }
+}
+$replayOnly=[byte[]]$modified.Clone()
+foreach($offset in $popupEdits.Keys) { Put-Hex $modified $offset $popupEdits[$offset][1] }
+foreach($offset in @($popupKeys.Keys | Sort-Object -Descending)) {
+    $next=[byte[]]::new($modified.Length+36)
+    [Array]::Copy($modified,0,$next,0,$offset)
+    Put-Hex $next $offset $popupKeys[$offset]
+    [Array]::Copy($modified,$offset,$next,$offset+36,$modified.Length-$offset)
+    $modified=$next
 }
 $indexOnly=[byte[]]$original.Clone()
 foreach($offset in @(456040,457099)) { [Array]::Clear($indexOnly,$offset,12) }
@@ -42,12 +93,23 @@ function Read-YPolynomial([byte[]]$Bytes,[int]$Offset,[double]$T) {
     for($i=3;$i -ge 0;$i--) { $value=$value*$T+(Read-BeFloat $Bytes ($Offset+4*$i)) }
     return $value
 }
+function Read-NativeValuePolynomial([byte[]]$Bytes,[int]$Offset,[single]$T) {
+    # B1 evaluates ((u^3*c3 + u^2*c2) + u*c1) + c0 with a float
+    # rounding after every operation, rather than double/Horner association.
+    [single]$square=$T*$T;[single]$cube=$square*$T
+    [single]$cubic=$cube*[single](Read-BeFloat $Bytes ($Offset+12))
+    [single]$quadratic=$square*[single](Read-BeFloat $Bytes ($Offset+8))
+    [single]$linear=$T*[single](Read-BeFloat $Bytes ($Offset+4))
+    [single]$sum=$cubic+$quadratic;$sum=[single]($sum+$linear)
+    return [single]($sum+[single](Read-BeFloat $Bytes $Offset))
+}
 # The production helper still enforces its fingerprints; use synthetic bytes in
 # this isolated test rather than distributing a proprietary game asset fixture.
 $script:CinemaOriginalHash=Hash-Bytes $original
 $script:CinemaModifiedHash=Hash-Bytes $modified
 $script:CinemaIndexOnlyHash=Hash-Bytes $indexOnly
 $script:CinemaVerticesOnlyHash=Hash-Bytes $verticesOnly
+$script:CinemaReplayOnlyHash=Hash-Bytes $replayOnly
 $script:CinemaExecutableHash=Hash-Bytes $executable
 # Fixture-only executable validator; preserves the transaction's changed-file checks.
 function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
@@ -83,10 +145,10 @@ try {
         $entry=New-CinemaMatteDeployment $case.game $case.run
         Assert-CinemaHash $case.paths.source $script:CinemaModifiedHash
         $generated=[IO.File]::ReadAllBytes($case.paths.source)
-        foreach($offset in @(456040,457099)) {
+        foreach($offset in @(456148,457207)) {
             if([BitConverter]::ToString($generated,$offset,12) -cne [BitConverter]::ToString($indices)) { throw 'Original quad indices changed.' }
         }
-        foreach($offset in @(514752,516161)) {
+        foreach($offset in @(514860,516269)) {
             if(@($generated[$offset..($offset+47)] | Where-Object { $_ -ne 0 }).Count) { throw 'Cinema quad retains area.' }
         }
         if([BitConverter]::ToString($generated,120095,4) -cne [BitConverter]::ToString($original,120095,4)) { throw 'Replay ON endpoint changed.' }
@@ -100,6 +162,57 @@ try {
             if([Math]::Abs($actual-($on+$scale*($native-$on))) -gt 0.00002 -or $actual -gt $previous+0.00002) { throw 'Replay exit travel changed its native curve shape or reverses direction.' }
             if((Read-YPolynomial $generated 120131 $t) -gt -50.0) { throw 'Replay OFF continuation can re-enter the canvas.' }
             $previous=$actual
+        }
+        if($generated.Length -ne 724937) { throw 'Rebuilt popup asset has wrong length.' }
+        # Original coefficient arrays remain byte-identical, including inverse
+        # time and terminal values. All channels have a reachable hidden time0.
+        for($axis=0;$axis -lt 3;$axis++) {
+            $originalKey=121516+110*$axis
+            $hiddenKey=$originalKey+36*$axis
+            if((Read-BeFloat $generated $hiddenKey) -ne 0) { throw 'Hidden key is unreachable at default frame0.' }
+            if((Read-BeFloat $generated ($hiddenKey+36)) -ne 0.0009765625) { throw 'Visible origin was not translated exactly.' }
+            for($key=0;$key -lt 2;$key++) {
+                if([BitConverter]::ToString($generated,($hiddenKey+36+36*$key+4),32) -cne [BitConverter]::ToString($original,($originalKey+36*$key+4),32)) { throw 'Original visible popup curve changed.' }
+            }
+        }
+        if((Read-BeFloat $generated 121682) -ne -64 -or (Read-BeFloat $generated 684734) -ne -64) { throw 'Static/default hidden pose mismatch.' }
+        if([Math]::Abs((Read-NativeValuePolynomial $generated 121682 1)-(Read-BeFloat $original 121646)) -gt 0.000002) { throw 'Hidden segment does not meet native visible origin.' }
+        $previous=-64.0
+        for($step=0;$step -le 1000;$step++) {
+            $actual=Read-NativeValuePolynomial $generated 121682 ([single]($step/1000.0))
+            if($actual -lt $previous -or $actual -lt -64 -or $actual -gt -0.393378) { throw 'Hidden interval overshoots or reverses.' }
+            $previous=$actual
+        }
+        # Removing the new keys and reversing only the declared fields must
+        # exactly recover the previously deployed asset, including every event.
+        $stripped=[byte[]]$generated.Clone()
+        for($axis=2;$axis -ge 0;$axis--) {
+            $offset=121516+146*$axis
+            $next=[byte[]]::new($stripped.Length-36)
+            [Array]::Copy($stripped,0,$next,0,$offset)
+            [Array]::Copy($stripped,$offset+36,$next,$offset,$stripped.Length-$offset-36)
+            $stripped=$next
+        }
+        foreach($offset in $popupEdits.Keys) { Put-Hex $stripped $offset $popupEdits[$offset][0] }
+        if((Hash-Bytes $stripped) -ne $script:CinemaReplayOnlyHash) { throw 'Rebuild changed undeclared bytes.' }
+        # Captured canonical, headset and PC4090/PC5090 camera MVPs, exact asset
+        # transforms and the four popup-glass vertices. Include both parent
+        # bar endpoints and its highest packaged menu position.
+        $points=@(@(-40.3268928527832,0.14270348846912384,-6.096739980421262e-6),@(-40.3268928527832,-17.759849548339844,-7.0428659455501474e-6),
+            @(40.326900482177734,-17.75984764099121,6.089192538638599e-6),@(40.326900482177734,0.14270348846912384,6.320063221210148e-6))
+        foreach($cameraName in @('orthographic','perspective','headset-orthographic','headset-perspective',
+            'pc4090-orthographic','pc4090-perspective','pc5090-perspective')) {
+            $camera=[IO.File]::ReadAllBytes((Join-Path $root "tests/fixtures/native-ui-$cameraName.bin"))
+            foreach($parentY in @(-0.6074806451797485,0.440000057220459,3.832886219024658)) {
+                foreach($point in $points) {
+                    $world=@((($point[0]+4.202795028686523)*1.1999999284744263+0.7487764358520508-5.039999961853027),
+                        (($point[1]-0.027940109372138977)*1.1999999284744263+(Read-BeFloat $generated 121682)+$parentY-3.240000009536743),
+                        (($point[2]-0.09208862483501434)*1.1999999284744263-0.18310017883777618+3.80975535563266e-8),1.0)
+                    $clip=@(0.0,0.0,0.0,0.0)
+                    for($c=0;$c -lt 4;$c++) { for($r=0;$r -lt 4;$r++) { $clip[$c]+=$world[$r]*[BitConverter]::ToSingle($camera,64+16*$r+4*$c) } }
+                    if($clip[3] -le 0 -or $clip[1] -ge -$clip[3]) { throw "Hidden popup intersects $cameraName canvas at parentY=$parentY." }
+                }
+            }
         }
         Assert-CinemaHash $case.paths.target $script:CinemaOriginalHash
         Assert-Rejected { New-CinemaMatteDeployment $case.game $case.run } 'Repeated prepare preserves source and backup'
@@ -115,7 +228,7 @@ try {
         Assert-CinemaHash $case.paths.backup $script:CinemaOriginalHash
         if(Test-Path -LiteralPath $case.paths.temporary) { throw "Temporary file retained in $phase" }
     }
-    foreach($legacy in @(@{name='index-only';bytes=$indexOnly;hash=$script:CinemaIndexOnlyHash},@{name='vertices-only';bytes=$verticesOnly;hash=$script:CinemaVerticesOnlyHash})) {
+    foreach($legacy in @(@{name='index-only';bytes=$indexOnly;hash=$script:CinemaIndexOnlyHash},@{name='vertices-only';bytes=$verticesOnly;hash=$script:CinemaVerticesOnlyHash},@{name='replay-only';bytes=$replayOnly;hash=$script:CinemaReplayOnlyHash})) {
         $case=New-Case ('superseded-'+$legacy.name)
         [IO.File]::WriteAllBytes($case.paths.backup,$original)
         [IO.File]::WriteAllBytes($case.paths.source,$legacy.bytes)
@@ -178,7 +291,15 @@ try {
         try { Assert-Rejected { New-CinemaMatteDeployment $case.game $case.run } 'Wrong replay animation payload' }
         finally { $script:CinemaOriginalHash=$saved }
     }
-    Write-Output 'Cinema matte and replay OFF state: exact geometry/animation guards, unchanged ON endpoint, atomic replacement, interrupted recovery, legacy recovery and foreign-file refusal passed.'
+    foreach($offset in $popupEdits.Keys) {
+        $case=New-Case ('wrong-popup-field-'+$offset)
+        $bad=[byte[]]$original.Clone();$bad[$offset]=$bad[$offset] -bxor 1
+        [IO.File]::WriteAllBytes($case.paths.target,$bad)
+        $saved=$script:CinemaOriginalHash;$script:CinemaOriginalHash=Hash-Bytes $bad
+        try { Assert-Rejected { New-CinemaMatteDeployment $case.game $case.run } 'Wrong popup field guard' }
+        finally { $script:CinemaOriginalHash=$saved }
+    }
+    Write-Output 'Cinema matte, replay OFF and separate popup hidden frame: exact geometry/animation guards, unchanged ON endpoint, atomic replacement, interrupted recovery, legacy recovery and foreign-file refusal passed.'
 } finally {
     $resolved=[IO.Path]::GetFullPath($fixture)
     $parent=[IO.Path]::GetFullPath((Join-Path $root 'artifacts'))

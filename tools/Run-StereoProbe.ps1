@@ -39,6 +39,7 @@ param(
     [switch]$ExposureAudit,
     [switch]$ForceSceneResolution,
     [switch]$VrMirrorBorderless,
+    [ValidateSet(0,1)][int]$DesktopBorderless=1,
     [switch]$FlickerDiagnostic,
     [switch]$AutoCaptureFlicker,
     [switch]$FlickerSignTarget,
@@ -280,7 +281,7 @@ $preflight.keepHorizonLevel=!$RecenterTilt
 $preflight.untilExit=[bool]$UntilExit
 $preflight.playerControlProbe=$PlayerControlProbe
 $preflight.playerControlOnly=[bool]$PlayerControlOnly
-$preflight.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly)
+$preflight.desktopBorderlessRequested=([bool]$RuntimeSession -and [bool]$UntilExit -and [bool]$PlayerControlOnly -and [bool]$DesktopBorderless)
 $preflight.vrMirrorBorderlessRequested=[bool]$VrMirrorBorderless
 $preflight.backgroundPlay=$BackgroundPlay
 $preflight.chaseCameraObserver=[bool]$ChaseCameraObserver
@@ -395,6 +396,7 @@ try {
         }
     }
     $parameters.CareerProfile=$career.id
+    $parameters.DesktopBorderless=$DesktopBorderless
     $parameters.RunLogDirectory=$RunLogDirectory
     $parameters.ChaseCameraObserver=[bool]$ChaseCameraObserver
     $parameters.ChaseFreeLook=$ChaseFreeLook; $parameters.ChaseKeepAngle=$ChaseKeepAngle; $parameters.ChaseMouseMode=$ChaseMouseMode

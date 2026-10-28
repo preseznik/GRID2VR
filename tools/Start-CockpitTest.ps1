@@ -22,6 +22,7 @@ $parameters=@{
     Mode=$Mode;LaunchMode=$LaunchMode;Car='s20';Track=$settings.Track;Laps=$settings.Laps
     XrRuntime=$settings.Runtime;RenderScale=$graphics.RenderScale;HeadsetScale=$graphics.HeadsetScale
     DesktopVSync=[int][bool]$graphics.DesktopVSync;DesktopMsaa=$graphics.DesktopMsaa;VrMsaa=$graphics.VrMsaa
+    DesktopBorderless=$(if($null -ne $graphics.DesktopBorderless){[int][bool]$graphics.DesktopBorderless}else{1})
     TreeDetail=$graphics.TreeDetail;ObjectDetail=$graphics.ObjectDetail;CrowdDetail=$graphics.CrowdDetail;TextureFiltering=$graphics.TextureFiltering
     HudDistance=$graphics.HudDistance;HudFollowView=[int][bool]$graphics.HudFollowView;HudHiddenElements=$hidden
     VrReplayCameras=[int][bool]$settings.VrReplayCameras;VrGarageMenus=[int][bool]$settings.VrGarageMenus

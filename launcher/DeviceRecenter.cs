@@ -49,10 +49,9 @@ internal static class DeviceRecenter
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint window, out uint process);
     internal static string OwnedRun(string root, string run)
     {
-        run = Path.GetFullPath(run).TrimEnd(Path.DirectorySeparatorChar);
-        if (!string.Equals(Path.GetDirectoryName(run), AppPaths.Data(root), StringComparison.OrdinalIgnoreCase) ||
-            !Regex.IsMatch(Path.GetFileName(run), @"\Adiagnostic-[0-9-]+\z")) throw new IOException("Unowned recenter session.");
-        Updates.PlainPath(run); return run;
+        // Session logs now live in logs/<timestamp>; keep the same ownership
+        // rules as the launcher's log viewer, including legacy diagnostic runs.
+        return new SessionClient(root).OwnedLogFolder(run) ?? throw new IOException("Unowned helper session log folder.");
     }
     // Independent hidden process: closing the launcher never disables this shortcut.
     // It only reads nonexclusive input and writes the existing native recenter request.

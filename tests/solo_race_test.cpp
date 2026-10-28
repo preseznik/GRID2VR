@@ -16,6 +16,13 @@ int main() {
     ptr(group,0xd0bb30);ptr(group+8,0x16100);ptr(group+12,0x16108);ptr(0x16100,local);ptr(0x16104,ai);
     ptr(local,0xd0ba08);memory[local+0x40]=1;ptr(ai,0xd039ac);
     if(!grid2vr::NormalSoloRaceReady(base))return 2;
+    ptr(local,0x18000);
+    if(grid2vr::NormalSoloRaceReady(base))return 24;
+    grid2vr::RegisterLocalControllerShadow(base,base+local,base+0x18000);
+    if(!grid2vr::NormalSoloRaceReady(base))return 25;
+    grid2vr::RegisterLocalControllerShadow(base,base+local+4,base+0x18000);
+    if(grid2vr::NormalSoloRaceReady(base))return 26;
+    grid2vr::RegisterLocalControllerShadow(0,0,0);ptr(local,0xd0ba08);
     // Stale globals, an extra vehicle, AI selection, disabled input, loading and
     // an active recording must all keep native activation closed.
     struct Change { size_t offset;uint32_t value; };
@@ -60,6 +67,11 @@ int main() {
         localRace(count);
         std::array<uint8_t,0x8000> snapshot{};std::memcpy(snapshot.data(),memory+0x10000,snapshot.size());
         if(!grid2vr::NormalLocalRaceReady(base))return 8;
+        ptr(local,0x18000);grid2vr::RegisterLocalControllerShadow(base,base+local,base+0x18000);
+        if(!grid2vr::NormalLocalRaceReady(base))return 27;
+        grid2vr::RegisterLocalControllerShadow(0,0,0);
+        if(grid2vr::NormalLocalRaceReady(base))return 28;
+        ptr(local,0xd0ba08);
         if(std::memcmp(snapshot.data(),memory+0x10000,snapshot.size()))return 9;
         if((count==1)!=grid2vr::NormalSoloRaceReady(base))return 10;
     }

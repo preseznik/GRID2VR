@@ -23,15 +23,24 @@ internal sealed record DrivingBinding
 // These deliberately differ from the older DiRT 2 schema.
 internal sealed class DrivingControls
 {
-    internal const string RuntimeNotice = "Enable launcher driving bindings to use your saved controls for Desktop and VR launches. Changes apply on the next launch. The game's saved bindings remain unchanged.";
-    public int Version { get; set; } = 1;
+    internal const string RuntimeNotice = "Enabled bindings and transmission apply on the next Desktop or VR launch. Keyboard, controller, wheel and shifter work together. H-pattern uses Gear 1–7/Reverse; + clutch also uses Clutch. Unassigned controls keep game bindings.";
+    internal const int MaxDevices = 16;
+    internal const int MaxFileBytes = 524288;
+    public int Version { get; set; } = 2;
     public bool Enabled { get; set; }
+    public bool ListenAllDevices { get; set; } = true;
+    public string Transmission { get; set; } = "game";
+    public int SteeringLinearity { get; set; }
+    public int ClutchShiftThreshold { get; set; } = 50;
     public List<DrivingBinding> Bindings { get; set; } = [];
+    internal static readonly string[] Transmissions = ["game", "automatic", "sequential", "hpattern", "hpattern_clutch"];
     public static readonly string[] Actions = ["Steer Left", "Steer Right", "Accelerate", "Brake", "Clutch", "Handbrake",
         "Gear Up", "Gear Down", "Gear 1", "Gear 2", "Gear 3", "Gear 4", "Gear 5", "Gear 6", "Gear 7", "Gear Reverse",
         "Change View", "Look Back", "Look Left", "Look Right", "Look Up", "Look Down", "Horn", "Boost", "Pause", "Instant Replay",
         "Menu Start Button", "Menu Select", "Menu Back", "Menu Up", "Menu Down", "Menu Left", "Menu Right",
         "Replay Rewind", "Replay Fast Forward", "Replay Pause", "Replay Next Camera", "Replay Prev Camera", "Replay Jump In", "Replay Exit", "Replay UI On Off"];
+    internal static readonly string[] WizardActions = ["Steer Left", "Steer Right", "Accelerate", "Brake", "Clutch", "Handbrake",
+        "Gear Up", "Gear Down", "Gear 1", "Gear 2", "Gear 3", "Gear 4", "Gear 5", "Gear 6", "Gear 7", "Gear Reverse", "Change View", "Look Back", "Pause"];
     public static readonly string[] Calibrations = ["uniDirPos", "uniDirNeg", "biDirLower", "biDirUpper"];
     internal static readonly string[] XboxAxes = ["xinput_left_stick_x", "xinput_left_stick_y", "xinput_right_stick_x", "xinput_right_stick_y", "xinput_left_trigger", "xinput_right_trigger"];
     internal static readonly string[] DirectAxes = ["di_x_axis", "di_y_axis", "di_z_axis", "di_x_axis_rotation", "di_y_axis_rotation", "di_z_axis_rotation", "di_slider_0", "di_slider_1"];
@@ -39,38 +48,65 @@ internal sealed class DrivingControls
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
 
     public static string SettingsPath(string root) => Path.Combine(AppPaths.Data(Path.GetFullPath(root)), "driving-controls.json");
+    public static string ProfilesPath(string root) => Path.Combine(AppPaths.Data(Path.GetFullPath(root)), "driving-profiles");
     public static DrivingControls Load(string root)
     {
         var path = SettingsPath(root);
-        if (!File.Exists(path)) return new();
-        if (new FileInfo(path).Length > 131072) throw new IOException("Driving controls file is too large.");
-        var value = JsonSerializer.Deserialize<DrivingControls>(File.ReadAllText(path), Json) ?? throw new IOException("Invalid driving controls file.");
-        value.Validate();
-        return value;
+        return File.Exists(path) ? LoadFile(path) : new();
     }
-    public void Save(string root)
+    public static DrivingControls LoadFile(string path)
+    {
+        using var stream = File.OpenRead(path);
+        if (stream.Length is < 1 or > MaxFileBytes) throw new IOException("Driving controls file is empty or too large.");
+        var bytes = new byte[checked((int)stream.Length)]; stream.ReadExactly(bytes);
+        if (stream.ReadByte() != -1) throw new IOException("Driving controls file changed while reading.");
+        try
+        {
+            ReadOnlySpan<byte> json = bytes;
+            if (json.StartsWith(new byte[] { 0xef, 0xbb, 0xbf })) json = json[3..];
+            var value = JsonSerializer.Deserialize<DrivingControls>(json, Json) ?? throw new IOException("Invalid driving controls file.");
+            value.Validate();
+            value.Version = 2;
+            return value;
+        }
+        catch (JsonException ex) { throw new IOException("Invalid driving controls JSON.", ex); }
+    }
+    public void Save(string root) => SaveFile(SettingsPath(root));
+    public void SaveFile(string path)
     {
         Validate();
         if (Enabled && Problems() is { Count: > 0 } problems) throw new IOException(string.Join(Environment.NewLine, problems));
-        var path = SettingsPath(root);
+        var value = new DrivingControls { Enabled = Enabled, ListenAllDevices = ListenAllDevices, Transmission = Transmission, SteeringLinearity = SteeringLinearity,
+            ClutchShiftThreshold = ClutchShiftThreshold, Bindings = [.. Bindings] };
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, Json);
+        if (bytes.Length > MaxFileBytes) throw new IOException("Driving controls file is too large.");
+        path = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try { File.WriteAllText(temporary, JsonSerializer.Serialize(this, Json)); File.Move(temporary, path, true); }
+        try { File.WriteAllBytes(temporary, bytes); File.Move(temporary, path, true); }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
     public void Validate()
     {
-        if (Version != 1 || Bindings is null || Bindings.Count > Actions.Length * 2) throw new IOException("Invalid driving controls configuration.");
-        var slots = new HashSet<(string, bool)>();
+        if (Version is not (1 or 2) || Bindings is null || Bindings.Count > Actions.Length * MaxDevices) throw new IOException("Invalid driving controls configuration.");
+        if (!Transmissions.Contains(Transmission)) throw new IOException("Invalid transmission setting.");
+        if (SteeringLinearity is < -10 or > 10) throw new IOException("Wheel steering linearity must be between -10 and 10.");
+        if (ClutchShiftThreshold is < 10 or > 100) throw new IOException("Clutch shift threshold must be between 10% and 100%.");
+        var slots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var devices = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var b in Bindings)
         {
             if (b is null || !Actions.Contains(b.Action) || !Calibrations.Contains(b.Calibration) ||
                 string.IsNullOrWhiteSpace(b.Device) || b.Device.Length > 260 || b.Device.Any(char.IsControl) ||
                 string.IsNullOrWhiteSpace(b.DeviceId) || b.DeviceId.Length > 128 || b.DeviceId.Any(char.IsControl) ||
-                b.DeadZone is < 0 or > .9m || b.Saturation is < .1m or > 1 || b.DeadZone >= b.Saturation || !ValidInput(b))
+                b.DeadZone is < 0 or > .9m || b.Saturation is < .1m or > 1 || b.DeadZone >= b.Saturation || (float)b.DeadZone >= (float)b.Saturation || !ValidInput(b))
                 throw new IOException("Invalid driving binding. Check device, input and calibration.");
-            if (!slots.Add((b.Action, b.Keyboard))) throw new IOException("Duplicate binding for " + b.Action + ".");
+            if (!slots.Add(b.DeviceId + "/" + b.Action)) throw new IOException("Duplicate binding for " + b.Action + " on " + b.Device + ".");
+            if (devices.TryGetValue(b.DeviceId, out var family) && !StringComparer.OrdinalIgnoreCase.Equals(family, b.DeviceType))
+                throw new IOException("A device has conflicting controller types.");
+            devices[b.DeviceId] = b.DeviceType;
         }
+        if (devices.Count > MaxDevices) throw new IOException($"Driving controls support up to {MaxDevices} devices per profile.");
     }
     private static bool ValidInput(DrivingBinding b)
     {
@@ -79,18 +115,18 @@ internal sealed class DrivingControls
             int.TryParse(b.Input.AsSpan(10), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var key) && key is >= 8 and <= 254;
         if (b.DeviceType == "xinput_pad") return Regex.IsMatch(b.DeviceId, @"\Axinput:[0-3]\z") &&
             (XboxAxes.Contains(b.Input) || XboxButtons.Contains(b.Input) && b.Input.Length > 0);
-        return Guid.TryParseExact(b.DeviceType, "B", out _) && Guid.TryParseExact(b.DeviceId, "B", out _) &&
+        return b.DeviceType.Length == 38 && b.DeviceId.Length == 38 && Guid.TryParseExact(b.DeviceType, "B", out _) && Guid.TryParseExact(b.DeviceId, "B", out _) &&
             (DirectAxes.Contains(b.Input) || Regex.IsMatch(b.Input, @"\Adi_dpad_[0-3]_(up|down|left|right)\z") ||
              Regex.IsMatch(b.Input, @"\Adi_button_([0-9]|[1-9][0-9]|1[01][0-9]|12[0-7])\z"));
     }
     public List<string> Problems()
     {
         var errors = new List<string>();
-        foreach (var keyboard in new[] { false, true })
+        foreach (var device in Bindings.GroupBy(b => b.DeviceId, StringComparer.OrdinalIgnoreCase))
         {
-            var left = Bindings.FirstOrDefault(b => b.Action == "Steer Left" && b.Keyboard == keyboard);
-            var right = Bindings.FirstOrDefault(b => b.Action == "Steer Right" && b.Keyboard == keyboard);
-            if (left is not null && right is not null && left.DeviceType == right.DeviceType && left.Input == right.Input && left.Calibration == right.Calibration)
+            var left = device.FirstOrDefault(b => b.Action == "Steer Left");
+            var right = device.FirstOrDefault(b => b.Action == "Steer Right");
+            if (left is not null && right is not null && left.Input == right.Input && left.Calibration == right.Calibration)
                 errors.Add("Left and right steering use the same direction. Rebind steering.");
         }
         foreach (var b in Bindings)
@@ -100,18 +136,20 @@ internal sealed class DrivingControls
     }
     public void Assign(DrivingBinding binding)
     {
-        Bindings.RemoveAll(b => b.Action == binding.Action && b.Keyboard == binding.Keyboard);
+        Bindings.RemoveAll(b => b.Action == binding.Action && StringComparer.OrdinalIgnoreCase.Equals(b.DeviceId, binding.DeviceId));
         Bindings.Add(binding);
     }
-    // Native device_type selects product families, not controller slot/instance.
-    // DeviceId is retained for capture and diagnostics, not presented as routing isolation.
+    public void ApplyXboxPreset() { foreach (var binding in XboxPreset()) Assign(binding); }
+    // Both the product family and physical instance are required by the session reader.
     public XDocument ToXml()
     {
         Validate();
-        var root = new XElement("DrivingControls", new XAttribute("version", 1));
-        foreach (var group in Bindings.GroupBy(b => b.DeviceType))
+        var root = new XElement("DrivingControls", new XAttribute("version", 4), new XAttribute("transmission", Transmission),
+            new XAttribute("steering_linearity", SteeringLinearity.ToString(CultureInfo.InvariantCulture)),
+            new XAttribute("clutch_shift_threshold", ClutchShiftThreshold.ToString(CultureInfo.InvariantCulture)));
+        foreach (var group in Bindings.GroupBy(b => b.DeviceId, StringComparer.OrdinalIgnoreCase))
         {
-            var map = new XElement("ActionMap", new XAttribute("device_type", group.Key));
+            var map = new XElement("ActionMap", new XAttribute("device_type", group.First().DeviceType), new XAttribute("device_id", group.Key));
             foreach (var b in group)
                 map.Add(new XElement("Action", new XAttribute("id", b.Action), new XElement("Axis", new XAttribute("id", b.Input),
                     new XAttribute("type", b.Calibration), new XAttribute("deadzone", b.DeadZone.ToString(CultureInfo.InvariantCulture)),
@@ -125,7 +163,7 @@ internal sealed class DrivingControls
         var result = new List<DrivingBinding>();
         void Add(string action, string input, string calibration = "uniDirPos", decimal dead = 0) => result.Add(new()
             { Action = action, Device = "Xbox controller", DeviceId = "xinput:0", DeviceType = "xinput_pad", Input = "xinput_" + input, Calibration = calibration, DeadZone = dead });
-        Add("Steer Left", "left_stick_x", "biDirLower", .2m); Add("Steer Right", "left_stick_x", "biDirUpper", .2m);
+        Add("Steer Left", "left_stick_x", "biDirLower"); Add("Steer Right", "left_stick_x", "biDirUpper");
         Add("Accelerate", "right_trigger"); Add("Brake", "left_trigger"); Add("Handbrake", "button_b");
         Add("Gear Up", "button_x"); Add("Gear Down", "button_a"); Add("Change View", "button_right_shoulder");
         Add("Look Back", "button_right_stick"); Add("Boost", "button_left_shoulder"); Add("Pause", "button_start"); Add("Instant Replay", "button_y");

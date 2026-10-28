@@ -218,7 +218,7 @@ void WriteUiProof(const char* phase) {
     std::ofstream proof(output/L"screen-ui-stereo.json");
     proof << "{\"scene\":" << uiScene << ",\"nativeFrame\":" << uiNativeFrame << ",\"phase\":\"" << phase
         << "\",\"normalVrDefault\":" << (screenUiNormalDefault?"true":"false")
-        << ",\"scope\":\"nine_verified_shaders_and_two_native_cameras_only\",\"applied\":[" << uiApplied[0] << ',' << uiApplied[1]
+        << ",\"scope\":\"verified_shaders_and_recorded_native_camera_variants_only\",\"applied\":[" << uiApplied[0] << ',' << uiApplied[1]
         << "],\"restored\":[" << uiRestored[0] << ',' << uiRestored[1] << "],\"skipped\":[" << uiSkipped[0] << ',' << uiSkipped[1]
         << "],\"distanceMaskDraws\":[" << uiText[0] << ',' << uiText[1] << "],\"pending\":" << (screenUi.Pending()?"true":"false")
         << ",\"shaders\":[";

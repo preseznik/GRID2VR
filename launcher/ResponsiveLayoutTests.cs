@@ -162,6 +162,8 @@ internal static class ResponsiveLayoutTests
             editor.Items.Add("A deliberately long course and route name"); editor.SelectedIndex = 0;
             columns.First.Controls.Add(new DpiRow("Render resolution", slider, dpi));
             columns.Second.Controls.Add(new DpiRow("Track", editor, dpi));
+            var borderless = new CheckBox { Name = "DesktopBorderless", Text = "Borderless fullscreen", Checked = true, AutoSize = true };
+            columns.Second.Controls.Add(new DpiRow("Window", borderless, dpi));
             var chaseMode = new MouseLookPicker { SelectedMode = "always" };
             var chaseZoom = new ValueSlider("ChaseDpiZoom", 180, 1000, 1000, 10, "%");
             columns.First.Controls.Add(new DpiRow("Mouse look", chaseMode, dpi));
@@ -171,6 +173,15 @@ internal static class ResponsiveLayoutTests
                 columns.Width = (int)Math.Round(logicalWidth * dpi / 96.0); columns.PerformLayout();
                 AssertBounds(columns);
                 Require(slider.Value == 237 && editor.SelectedIndex == 0, "DPI reflow changed values.");
+                Require(borderless.Checked && borderless.GetPreferredSize(new Size(borderless.Width, 0)).Height <= borderless.Height,
+                    "Desktop borderless toggle clipped or changed at scaled DPI.");
+                if (logicalWidth == 460)
+                {
+                    var desktopRow = borderless.Parent!;
+                    using var preview = new Bitmap(desktopRow.Width, desktopRow.Height);
+                    desktopRow.DrawToBitmap(preview, desktopRow.ClientRectangle);
+                    preview.Save(Path.Combine(root, "build", $"launcher-desktop-borderless-dpi{dpi}.png"));
+                }
                 Require(chaseMode.SelectedMode == "always" && chaseZoom.Value == 1000, "DPI reflow changed chase preferences.");
                 Require((columns.Second.Left > 0) == (logicalWidth >= ResponsiveColumns.WideAt), "Column breakpoint did not scale with DPI.");
                 var row = columns.First.Controls[0]; var caption = row.Controls[0];

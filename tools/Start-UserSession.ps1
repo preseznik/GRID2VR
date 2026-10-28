@@ -11,6 +11,7 @@ param(
     [int]$VrRenderScale=0,
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [switch]$VrMirrorBorderless,
+    [ValidateSet(0,1)][int]$DesktopBorderless=1,
     [ValidateSet(0,1)][int]$DesktopVSync=1,
     [ValidateSet('off','2xmsaa','4xmsaa','8xmsaa')][string]$DesktopMsaa='off',
     [ValidateSet('off','2xmsaa','4xmsaa','8xmsaa')][string]$VrMsaa='off',
@@ -84,7 +85,7 @@ try {
         mode=$Mode;launchMode=$LaunchMode;runtime=$XrRuntime;car=$Car;track=$Track;laps=$sessionLaps;opponents=$(if($LaunchMode -eq 'Race'){$Opponents}else{0});headsetScale=$HeadsetScale;previewVrFixes=[bool]$PreviewVrFixes;skipIntro=[bool]$SkipIntro;diagnosticLogging=[bool]$DiagnosticLogging;recenterKey=$RecenterKey;recenterModifiers=$RecenterModifiers;state='starting';message="Preparing $LaunchMode session";log=$log;logDirectory=$runLogs}
     if($LaunchMode -eq 'Normal') { $receipt.car=$null; $receipt.track=$null; $receipt.laps=$null }
     $receipt.opponentCars=if($LaunchMode -eq 'Race'){$OpponentCars.ToLowerInvariant()}else{$null}
-    $receipt.desktopBorderlessRequested=($Mode -eq 'Desktop')
+    $receipt.desktopBorderlessRequested=($Mode -eq 'Desktop' -and [bool]$DesktopBorderless)
     $receipt.chaseCameraObserver=[bool]$ChaseCameraObserver
     $receipt.chaseCameraRequested=$chase.requested
     $receipt.vrMirrorBorderlessRequested=($Mode -eq 'VR' -and [bool]$VrMirrorBorderless)
@@ -170,7 +171,7 @@ try {
         # visibility and tracking guards rather than a fixed race-start delay.
         HardwareSettingsFile=$hardware;HeadsetScale=$HeadsetScale;CaptureAfterSeconds=1;TimeoutSeconds=150;PythonPath=$python;
         FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy;ChaseCameraObserver=[bool]$ChaseCameraObserver;
-        ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
+        ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;DesktopBorderless=$DesktopBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
     if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection }
     if($headsetResolution) {
         $parameters.HeadsetWidth=$headsetResolution.width; $parameters.HeadsetHeight=$headsetResolution.height; $parameters.VrRenderScale=$VrRenderScale

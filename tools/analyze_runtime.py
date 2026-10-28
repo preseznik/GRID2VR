@@ -37,8 +37,10 @@ def classify_faults(lines, session):
     """
     known, unexpected = [], []
     fingerprint = session.get('executableSha256') if isinstance(session, dict) else None
-    supported = (isinstance(fingerprint, str) and fingerprint.lower() ==
-                 '519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502' and
+    supported = (isinstance(fingerprint, str) and fingerprint.lower() in {
+                 '519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502',
+                 # PC4090's validated Steam variant, also observed in clean exits.
+                 '55c3d5e68aa6074ea094f3ec7f0cb562b765c0d516ca03336097d7eacb0f5bf2'} and
                  session.get('executableBuild') == 'grid2-avx-1.0.85.8679')
     completed = normal_process_exit(session)
     # A bounded probe deliberately stops its owned game after the completion

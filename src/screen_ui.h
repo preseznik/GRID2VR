@@ -47,7 +47,7 @@ private:
     ScreenUiOptions options_;
     bool invalidOptions_{},pending_{},late_{};
     Microsoft::WRL::ComPtr<ID3D11Buffer> original_,replacement_;
-    std::array<Microsoft::WRL::ComPtr<ID3D11GeometryShader>,2> shaders_;
+    std::array<Microsoft::WRL::ComPtr<ID3D11GeometryShader>,4> shaders_;
     ID3D11DeviceContext* owner_{};
     DWORD thread_{};
     std::array<D3D11_RECT,D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE> scissors_{};

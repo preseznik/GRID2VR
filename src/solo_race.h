@@ -1,8 +1,13 @@
 #pragma once
 #include "guarded_hooks.h"
+#include "local_controller_identity.h"
 #include <array>
 
 namespace grid2vr {
+inline bool LocalControllerIdentity(uintptr_t base,uintptr_t object) {
+    return ReadLocalControllerIdentity(base,object,[](uintptr_t at,void* output,size_t bytes){
+        return ReadMemory(reinterpret_cast<void*>(at),output,bytes);});
+}
 // Read-only readiness for the single-car normal entry observed on 2026-10-10.
 // Both image references must identify the same live parent. This is not a
 // general race/LAN gate and does not enable or select any controller.
@@ -29,7 +34,7 @@ inline bool NormalSoloRaceReady(uintptr_t base) {
        !pointer(node+16,group) || !word(group,static_cast<uint32_t>(base+0xd0bb30)) || !word(group+0x18,0) ||
        !pointer(group+8,children) || !pointer(group+12,childrenEnd) || childrenEnd-children!=8 ||
        !pointer(children,local) || !pointer(children+4,ai)) return false;
-    return word(local,static_cast<uint32_t>(base+0xd0ba08)) && byte(local+0x40,1) &&
+    return LocalControllerIdentity(base,local) && byte(local+0x40,1) &&
         word(ai,static_cast<uint32_t>(base+0xd039ac));
 }
 
@@ -84,7 +89,7 @@ inline bool NormalLocalRaceReady(uintptr_t base) {
         for(unsigned i=0;i<visited;++i)if(groups[i]==group)return false;
         if(index==0) {
             if(childrenEnd-children!=8 || !pointer(children,localController) ||
-               !word(localController,static_cast<uint32_t>(base+0xd0ba08)) || !byte(localController+0x40,1) ||
+               !LocalControllerIdentity(base,localController) || !byte(localController+0x40,1) ||
                !pointer(children+4,ai))return false;
         } else if(childrenEnd-children!=4 || !pointer(children,ai))return false;
         if(!word(ai,static_cast<uint32_t>(base+0xd039ac)))return false;

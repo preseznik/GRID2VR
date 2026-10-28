@@ -2,8 +2,18 @@
 #include "guarded_hooks.h"
 #include <array>
 #include <cstring>
+#include <filesystem>
 
 namespace grid2vr::frontendvideo {
+// Called only after the host executable fingerprint has been validated. The
+// native image stays immutable; one owned event callback record is replaced.
+bool Install(uintptr_t gameBase,const std::filesystem::path& output);
+void Stop();
+#ifdef GRID2VR_FRONTEND_VIDEO_TEST
+using TestCallback=int (__thiscall*)(void*,void*);
+void SetTestCallback(TestCallback callback);
+bool TestEventGuards(uintptr_t gameBase);
+#endif
 constexpr uintptr_t resizeRva=0x784660,resetReturnRva=0x1b209a;
 
 // The front-end video camera stores actual target dimensions at +408/+40c.

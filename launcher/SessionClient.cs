@@ -179,7 +179,7 @@ internal sealed class SessionClient(string root)
         return Artifacts;
     }
 
-    private string? OwnedLogFolder(string path)
+    internal string? OwnedLogFolder(string path)
     {
         if (!Path.IsPathFullyQualified(path)) return null;
         var folder = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar);
@@ -227,6 +227,11 @@ internal sealed class SessionClient(string root)
             command.ArgumentList.Add(value.Graphics.VrRenderScale.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
         if (vr && value.Graphics.VrMirrorBorderless) command.ArgumentList.Add("-VrMirrorBorderless");
+        if (!vr)
+        {
+            command.ArgumentList.Add("-DesktopBorderless");
+            command.ArgumentList.Add(value.Graphics.DesktopBorderless ? "1" : "0");
+        }
         if (vr && value.PerformanceDisplay)
         {
             command.ArgumentList.Add("-PerformanceDisplay");
@@ -266,7 +271,7 @@ internal sealed class SessionClient(string root)
     internal string? ExportDrivingControls()
     {
         var controls = DrivingControls.Load(Root);
-        if (!controls.Enabled || controls.Bindings.Count == 0) return null;
+        if (!controls.Enabled || controls.Bindings.Count == 0 && controls.Transmission == "game") return null;
         var problems = controls.Problems();
         if (problems.Count != 0) throw new IOException(string.Join(Environment.NewLine, problems));
         Directory.CreateDirectory(Artifacts);

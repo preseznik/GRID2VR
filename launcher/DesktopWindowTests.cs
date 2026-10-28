@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Diagnostics;
 
 namespace GRID2VR;
 
@@ -10,10 +11,29 @@ internal static class DesktopWindowTests
     {
         static void Check(bool value) { if (!value) throw new IOException("Desktop borderless regression."); }
         static void Reject(Action action) { try { action(); } catch (IOException) { return; } throw new IOException("Foreign desktop session accepted."); }
+        // The hidden helpers receive this live grouped run, not the former
+        // artifacts/diagnostic-* layout. Exercise the actual shared validator.
+        var data = AppPaths.Data(fixture);
+        const string timestamp = "20261028-202412-053";
+        foreach (var run in new[] { Path.Combine(data, "logs", timestamp), Path.Combine(data, "diagnostic-" + timestamp) })
+        {
+            Directory.CreateDirectory(run);
+            Check(DeviceRecenter.OwnedRun(fixture, run) == run);
+        }
+        foreach (var run in new[] { Path.Combine(fixture, "foreign", "logs", timestamp), Path.Combine(data, timestamp),
+            Path.Combine(data, "logs", "diagnostic-" + timestamp), Path.Combine(data, "logs", timestamp, "child"),
+            Path.Combine(data, "logs", "..", "foreign", timestamp), Path.Combine(data, "logs", "2026-1-1") })
+        {
+            Directory.CreateDirectory(run); // Refuse existing foreign/malformed folders too.
+            Reject(() => DeviceRecenter.OwnedRun(fixture, run));
+        }
+        Reject(() => DeviceRecenter.OwnedRun(fixture, Path.Combine(data, "logs", "20261028-202412-054")));
+        Reject(() => DeviceRecenter.OwnedRun(fixture, Path.Combine("artifacts", "logs", timestamp)));
+        TestLinkedRun(fixture, timestamp, Reject);
         var gameRoot = Path.Combine(fixture, "game");
         var executable = Path.Combine(gameRoot, "grid2_avx.exe");
         var ticks = DateTime.UtcNow.Ticks;
-        var journal = new Dictionary<string, object> { ["runtimeSession"] = true, ["untilExit"] = true, ["playerControlOnly"] = true,
+        var journal = new Dictionary<string, object> { ["runtimeSession"] = true, ["untilExit"] = true, ["playerControlOnly"] = true, ["desktopBorderlessRequested"] = true,
             ["processes"] = new[] { new { id = 123, path = executable, createdUtc = new DateTime(ticks, DateTimeKind.Utc).ToString("o") } } };
         void Validate(string path, long time)
         {
@@ -24,10 +44,11 @@ internal static class DesktopWindowTests
         Reject(() => Validate(executable, ticks + TimeSpan.TicksPerSecond * 2));
         Reject(() => Validate(Path.Combine(fixture, "foreign", "grid2_avx.exe"), ticks));
         Reject(() => Validate(Path.Combine(gameRoot, "other.exe"), ticks));
-        foreach (var field in new[] { "runtimeSession", "untilExit", "playerControlOnly" })
+        foreach (var field in new[] { "runtimeSession", "untilExit", "playerControlOnly", "desktopBorderlessRequested" })
         {
             journal[field] = false; Reject(() => Validate(executable, ticks)); journal[field] = true;
         }
+        journal.Remove("desktopBorderlessRequested"); Reject(() => Validate(executable, ticks)); journal["desktopBorderlessRequested"] = true;
         journal["playerControlOnly"] = false;
         journal["xrProjection"] = true;
         journal["vrMirrorBorderlessRequested"] = true;
@@ -91,5 +112,25 @@ internal static class DesktopWindowTests
         Check(fallback.Applied == 0 && fallback.Warning.Contains("using windowed mode"));
         Check(DesktopWindow.Bounds(third) == original && DesktopWindow.Style(third, -16) == beforeStyle && DesktopWindow.Style(third, -20) == beforeExStyle);
         Check(!rejected.Visible && GetForegroundWindow() == foreground);
+    }
+
+    private static void TestLinkedRun(string fixture, string timestamp, Action<Action> reject)
+    {
+        var linkedRoot = Path.Combine(fixture, "helper-links");
+        var data = AppPaths.Data(linkedRoot); Directory.CreateDirectory(data);
+        var link = Path.Combine(data, "logs");
+        var target = Path.Combine(AppPaths.Data(fixture), "logs");
+        var command = new ProcessStartInfo("cmd.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var arg in new[] { "/d", "/c", "mklink", "/J", link, target }) command.ArgumentList.Add(arg);
+        using var process = Process.Start(command) ?? throw new IOException("Could not prepare linked helper fixture.");
+        var output = process.StandardOutput.ReadToEnd(); var error = process.StandardError.ReadToEnd(); process.WaitForExit();
+        if (process.ExitCode != 0) throw new IOException("Could not prepare linked helper fixture: " + output + error);
+        try { reject(() => DeviceRecenter.OwnedRun(linkedRoot, Path.Combine(link, timestamp))); }
+        finally
+        {
+            if (!File.GetAttributes(link).HasFlag(FileAttributes.ReparsePoint)) throw new IOException("Helper link fixture changed; retained.");
+            Directory.Delete(link); // Remove only this fixture junction, never the target.
+        }
+        if (!Directory.Exists(Path.Combine(target, timestamp))) throw new IOException("Helper fixture target changed.");
     }
 }

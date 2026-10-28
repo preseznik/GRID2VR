@@ -12,6 +12,7 @@ internal sealed record GraphicsOptions(int RenderScale = 100, bool DesktopVSync 
     [System.Text.Json.Serialization.JsonIgnore]
     public int EffectiveDesktopRenderScale => DesktopRenderScale ?? RenderScale;
     public bool VrMirrorBorderless { get; init; }
+    public bool DesktopBorderless { get; init; } = true;
     public decimal HudDistance { get; init; } = 1m;
     public bool HudFollowView { get; init; }
     public bool HudGauges { get; init; }

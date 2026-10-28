@@ -1,6 +1,7 @@
 #include "player_control.h"
 #include "playback_mode.h"
 #include "guarded_hooks.h"
+#include "local_controller_identity.h"
 #include <MinHook.h>
 #include <intrin.h>
 #include <array>
@@ -175,7 +176,8 @@ const char* Check(void* self,unsigned vehicle,Controls* output,const Controls* i
         !Pointer(node+16,group) || !Word(group,static_cast<uint32_t>(base+0xd0bb30))) return "controller_group";
     if (!Read(group+0x18,w.selected) || w.selected!=0 || !Pointer(group+8,children) || !Pointer(group+12,childrenEnd) ||
         childrenEnd-children!=8 || !Pointer(children,human) || !Pointer(children+4,other) ||
-        !Word(human,static_cast<uint32_t>(base+0xd0ba08)) || !Word(other,static_cast<uint32_t>(base+0xd039ac))) return "controller_children";
+        !ReadLocalControllerIdentity(base,human,[](uintptr_t at,void* output,size_t bytes){return ReadMemory(reinterpret_cast<void*>(at),output,bytes);}) ||
+        !Word(other,static_cast<uint32_t>(base+0xd039ac))) return "controller_children";
     if (!Read(human+0x40,enabled)) return "input_enabled_unreadable";
     w.humanEnabled=enabled;
     if (reinterpret_cast<uintptr_t>(output)!=human+0x14 || reinterpret_cast<uintptr_t>(input)!=base+0xe59080 ||

@@ -63,13 +63,33 @@ internal sealed class DrivingInput : IDisposable
     internal static int PovDirection(uint value)
     {
         // Ignore diagonals so one gesture cannot silently bind two directions.
-        if (value == uint.MaxValue || (value & 0xffff) == 0xffff) return -1;
+        if (PovNeutral(value)) return -1;
         return value switch { <= 2250 or >= 33750 and < 36000 => 0, >= 6750 and <= 11250 => 1, >= 15750 and <= 20250 => 2, >= 24750 and <= 29250 => 3, _ => -1 };
     }
+    internal static bool PovNeutral(uint value) => (value & 0xffff) == 0xffff;
+    internal static bool IsAxis(DrivingBinding binding) => DrivingControls.DirectAxes.Contains(binding.Input) || DrivingControls.XboxAxes.Contains(binding.Input);
     public static DrivingBinding? Detect(string action, Device device, Sample baseline, Sample current, bool axesOnly = false, bool buttonsOnly = false)
     {
         if (baseline.Connected == 0 || current.Connected == 0) return null;
         var result = new DrivingBinding { Action = action, DeviceId = device.Id, Device = device.Name, DeviceType = device.Product };
+        // A fresh button/hat gesture is more specific than incidental axis travel.
+        // Automatic mode must not let a moving pedal hide a button press.
+        if (!axesOnly)
+        {
+            for (var i = 0; i < 128; ++i)
+            {
+                if (current.Buttons[i] == 0 || baseline.Buttons[i] != 0) continue;
+                if (device.Xbox && (i >= DrivingControls.XboxButtons.Length || DrivingControls.XboxButtons[i].Length == 0)) continue;
+                return result with { Input = device.Xbox ? DrivingControls.XboxButtons[i] : "di_button_" + i };
+            }
+            if (!device.Xbox)
+                for (var i = 0; i < 4; ++i)
+                {
+                    var direction = PovDirection(current.Pov[i]);
+                    if (PovNeutral(baseline.Pov[i]) && direction >= 0)
+                        return result with { Input = $"di_dpad_{i}_" + new[] { "up", "right", "down", "left" }[direction] };
+                }
+        }
         if (!buttonsOnly)
         {
             var best = -1; var movement = 0f; var steering = action.StartsWith("Steer ", StringComparison.Ordinal);
@@ -96,31 +116,21 @@ internal sealed class DrivingInput : IDisposable
                 }
                 if (valid) return result with { Input = (device.Xbox ? DrivingControls.XboxAxes : DrivingControls.DirectAxes)[best],
                     Calibration = centered ? negative ? "biDirLower" : "biDirUpper" : negative ? "uniDirNeg" : "uniDirPos",
-                    DeadZone = device.Xbox && best < 4 ? .2m : .03m };
+                    DeadZone = 0 };
             }
         }
-        if (axesOnly) return null;
-        for (var i = 0; i < 128; ++i)
-        {
-            if (current.Buttons[i] == 0 || baseline.Buttons[i] != 0) continue;
-            if (device.Xbox && (i >= DrivingControls.XboxButtons.Length || DrivingControls.XboxButtons[i].Length == 0)) continue;
-            return result with { Input = device.Xbox ? DrivingControls.XboxButtons[i] : "di_button_" + i };
-        }
-        if (!device.Xbox)
-            for (var i = 0; i < 4; ++i)
-            {
-                var direction = PovDirection(current.Pov[i]);
-                if (PovDirection(baseline.Pov[i]) < 0 && direction >= 0)
-                    return result with { Input = $"di_dpad_{i}_" + new[] { "up", "right", "down", "left" }[direction] };
-            }
         return null;
     }
     public static string Description(DrivingBinding? binding)
     {
         if (binding is null) return "Use game binding";
+        return binding.Keyboard ? InputDescription(binding) : binding.Device + " · " + InputDescription(binding);
+    }
+    public static string InputDescription(DrivingBinding binding)
+    {
         if (binding.Keyboard) return new KeysConverter().ConvertToString((Keys)Convert.ToInt32(binding.Input[10..], 16)) ?? binding.Input;
         var direction = binding.Calibration switch { "biDirLower" => " (−)", "biDirUpper" => " (+)", "uniDirNeg" => " (inverted)", _ => "" };
-        return binding.Device + " · " + binding.Input.Replace("xinput_", "").Replace("di_", "").Replace('_', ' ') + direction;
+        return binding.Input.Replace("xinput_", "").Replace("di_", "").Replace('_', ' ') + direction;
     }
     public void Dispose()
     {
@@ -134,18 +144,25 @@ internal sealed class DrivingInput : IDisposable
 internal sealed class DrivingCapture(DrivingInput.Device device, string action)
 {
     private DrivingInput.Sample baseline;
-    private bool initialized, buttonsReady;
+    private bool initialized;
     private uint presentAxes;
     private readonly long[] axisSince = new long[8];
-    private long buttonsSince, candidateSince, releaseSince = -1;
+    private long candidateSince, releaseSince = -1;
     private DrivingBinding? candidate;
     public bool AxesOnly { get; init; }
     public bool ButtonsOnly { get; init; }
     public bool Ready { get; private set; }
+    public bool AxesReady => initialized && !ButtonsOnly && baseline.Axes != 0;
     public bool WaitingForRelease { get; private set; }
     public DrivingBinding? Completed { get; private set; }
     public DrivingBinding? Detected => candidate;
-    public void Reset() { initialized = Ready = WaitingForRelease = buttonsReady = false; Completed = candidate = null; releaseSince = -1; }
+    public static DrivingCapture? ChooseActive(IEnumerable<DrivingCapture> captures, DrivingCapture? current)
+    {
+        static bool Digital(DrivingCapture capture) => capture.WaitingForRelease && capture.Detected is not null && !DrivingInput.IsAxis(capture.Detected);
+        if (current is not null && Digital(current)) return current;
+        return captures.FirstOrDefault(Digital) ?? (current?.WaitingForRelease == true ? current : captures.FirstOrDefault(c => c.WaitingForRelease));
+    }
+    public void Reset() { initialized = Ready = WaitingForRelease = false; Completed = candidate = null; releaseSince = -1; }
     public void Update(DrivingInput.Sample current, long now)
     {
         if (current.Connected == 0) { Reset(); return; }
@@ -153,41 +170,44 @@ internal sealed class DrivingCapture(DrivingInput.Device device, string action)
         if (!initialized)
         {
             baseline = current.Copy(); presentAxes = current.Axes; baseline.Axes = 0;
-            Array.Fill(axisSince, now); buttonsSince = now; initialized = true; return;
+            // Released digital inputs are armed immediately. Inputs already held
+            // at startup remain blocked until released, independently of axes.
+            Array.Fill(axisSince, now); initialized = true; Ready = !AxesOnly; return;
         }
         if (presentAxes != current.Axes) { Reset(); return; }
         for (var i = 0; i < 8; ++i)
         {
             var bit = 1u << i;
             if (ButtonsOnly || (presentAxes & bit) == 0 || (baseline.Axes & bit) != 0) continue;
-            var shifted = Math.Abs(current.Values[i] - baseline.Values[i]) > .06f || !float.IsFinite(current.Values[i]);
+            var shifted = !float.IsFinite(baseline.Values[i]) || !float.IsFinite(current.Values[i]) || Math.Abs(current.Values[i] - baseline.Values[i]) > .06f;
             if (device.Xbox && i < 6 && Math.Abs(current.Values[i]) > (i < 4 ? .25f : .15f)) shifted = true;
             if (shifted) { baseline.Values[i] = current.Values[i]; axisSince[i] = now; }
-            if (now - axisSince[i] >= 600) baseline.Axes |= bit;
+            if (float.IsFinite(current.Values[i]) && now - axisSince[i] >= 600) baseline.Axes |= bit;
         }
-        if (!buttonsReady && !AxesOnly)
-        {
-            if (!baseline.Buttons.SequenceEqual(current.Buttons) || !baseline.Pov.SequenceEqual(current.Pov))
-            { baseline.Buttons = (byte[])current.Buttons.Clone(); baseline.Pov = (uint[])current.Pov.Clone(); buttonsSince = now; }
-            buttonsReady = now - buttonsSince >= 600;
-        }
-        Ready = !ButtonsOnly && baseline.Axes != 0 || buttonsReady;
+        Ready = !ButtonsOnly && baseline.Axes != 0 || !AxesOnly;
         if (!Ready) return;
         for (var i = 0; i < 128; ++i) if (current.Buttons[i] == 0) baseline.Buttons[i] = 0;
-        for (var i = 0; i < 4; ++i) if (DrivingInput.PovDirection(current.Pov[i]) < 0) baseline.Pov[i] = uint.MaxValue;
+        for (var i = 0; i < 4; ++i) if (DrivingInput.PovNeutral(current.Pov[i])) baseline.Pov[i] = uint.MaxValue;
+        if (WaitingForRelease && !AxesOnly && candidate is not null && DrivingInput.IsAxis(candidate))
+        {
+            // An axis can remain displaced on a noisy wheel/pedal set. A later
+            // deliberate digital gesture must still work in Automatic mode.
+            var digital = DrivingInput.Detect(action, device, baseline, current, buttonsOnly: true);
+            if (digital is not null) { candidate = digital; releaseSince = -1; }
+        }
         if (!WaitingForRelease)
         {
-            var detected = DrivingInput.Detect(action, device, baseline, current, AxesOnly || !buttonsReady, ButtonsOnly);
+            var detected = DrivingInput.Detect(action, device, baseline, current, AxesOnly, ButtonsOnly);
             if (detected is null) { candidate = null; return; }
             if (candidate != detected) { candidate = detected; candidateSince = now; }
-            var analog = DrivingControls.DirectAxes.Contains(candidate.Input) || DrivingControls.XboxAxes.Contains(candidate.Input);
+            var analog = DrivingInput.IsAxis(candidate);
             if (analog && now - candidateSince < 100) return;
             WaitingForRelease = true;
         }
         var axis = Array.IndexOf(device.Xbox ? DrivingControls.XboxAxes : DrivingControls.DirectAxes, candidate!.Input);
         bool released;
         if (axis >= 0) released = Math.Abs(current.Values[axis] - baseline.Values[axis]) < .12f;
-        else if (candidate.Input.StartsWith("di_dpad_", StringComparison.Ordinal)) released = DrivingInput.PovDirection(current.Pov[candidate.Input[8] - '0']) < 0;
+        else if (candidate.Input.StartsWith("di_dpad_", StringComparison.Ordinal)) released = DrivingInput.PovNeutral(current.Pov[candidate.Input[8] - '0']);
         else
         {
             var button = device.Xbox ? Array.IndexOf(DrivingControls.XboxButtons, candidate.Input) : int.Parse(candidate.Input[10..]);

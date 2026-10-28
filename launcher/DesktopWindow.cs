@@ -78,7 +78,7 @@ internal sealed class DesktopWindow(int processId)
             !string.Equals(Path.GetFullPath(executable), Path.Combine(gameRoot, name), StringComparison.OrdinalIgnoreCase) ||
             !journal.GetProperty("runtimeSession").GetBoolean() || !journal.GetProperty("untilExit").GetBoolean() ||
             !(vrMirror ? !Flag(journal, "playerControlOnly") && Flag(journal, "xrProjection") && Flag(journal, "vrMirrorBorderlessRequested")
-                : Flag(journal, "playerControlOnly")) ||
+                : Flag(journal, "playerControlOnly") && Flag(journal, "desktopBorderlessRequested")) ||
             !journal.GetProperty("processes").EnumerateArray().Any(p => p.GetProperty("id").GetInt32() == pid &&
                 string.Equals(p.GetProperty("path").GetString(), executable, StringComparison.OrdinalIgnoreCase) &&
                 Math.Abs(DateTimeOffset.Parse(p.GetProperty("createdUtc").GetString()!).UtcTicks - ticks) < TimeSpan.TicksPerSecond))

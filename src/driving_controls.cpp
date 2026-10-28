@@ -2,6 +2,10 @@
 #include "driving_controls_model.h"
 #include "driving_controls_instance.h"
 #include "driving_controls_route.h"
+#include "driving_controls_input.h"
+#include "driving_controls_producer.h"
+#include "driving_controls_steering.h"
+#include "driving_controls_shift.h"
 #include "guarded_hooks.h"
 #include <atomic>
 #include <cctype>
@@ -14,19 +18,49 @@ namespace {
 using UpdateFn=unsigned (__thiscall*)(void*);
 using ServiceUpdateFn=void (__thiscall*)(void*,const double*);
 ServiceUpdateFn originalServiceUpdate{};
+ServiceUpdateFn originalDriverUpdate{};
+BindingInput physicalInput;
+bool driverHook{};
+void** driverShadow{};uintptr_t driverObject{};
+const char* driverReason="not_requested";
+uint64_t driverEntered{},driverCalls{},driverApplied{},driverAttachments{},pedalMenuStates{};
+enum class OutputGate { Ready,Stopped,Failed,NotInstalled,Stale,Unfocused,Route,Inactive,MapDisabled,InputDisabled };
+constexpr const char* outputGateNames[]{"ready","stopped","failed","not_installed","stale_sample","unfocused","route_changed","inactive_controller","map_disabled","input_disabled"};
+std::array<uint64_t,std::size(outputGateNames)> outputGates{};
+const char* outputGate="waiting_for_driver";
+void CountOutputGate(OutputGate gate) {const auto index=static_cast<size_t>(gate);outputGate=outputGateNames[index];++outputGates[index];}
+struct ClutchOutput {
+    uint64_t samples{},fullSamples{},endStopSamples{};
+    float custom{},native{},output{},customPeak{},nativePeak{},outputPeak{};
+    uint32_t transmission{},selection{},forced{};int32_t gear{};
+} clutchOutput;
+ULONGLONG sampledAt{};
 uintptr_t base{},owner{};void** shadowTable{};
 std::filesystem::path folder;
 std::atomic<bool> installed{},stopped{},failed{};
 bool requested{};
 std::mutex mutex;
 std::vector<Binding> bindings;
+DrivingSettings settings;
+bool wheelConfigured{},identitiesCompiled{};
+std::array<uint32_t,2> steeringActions{};
+std::array<float,2> nativeOtherSteering{};
+WheelCurveOverride curveOverride;
+uint64_t transmissionUpdates{},wheelUpdates{},curveRestores{};
+const char* steeringSource="native";
 std::vector<Override> identities;
 std::vector<uint32_t> inputs;
 uint32_t keyboardFamily{};
+std::array<uint32_t,7> menuActions{};
 uint64_t updates{},refused{},stateWrites{},restored{},staleRestores{},scanBytes{},scanMilliseconds{},scanPasses{},attachments{};
 const char* reason="not_requested";
 constexpr uintptr_t inputTable=0xd0bc84;
 constexpr uintptr_t methods[]{0x333530,0x3b5dd0,0x4a920,0x4d950,0x4d950,0x99bc30,0x58ddf0,0x15bd40,0x623c20,0x1090f0,0x693370,0xc7130,0x158410};
+constexpr uintptr_t driverTable=0xd0ba08;
+constexpr uintptr_t driverMethods[]{0x333c40,0x9845a0,0x9845a0,0x1aab50,0x37b100,0x405800,0xc04d0,0x4a920,0x4911f0,0x6187b0,0x5d2500,0x6f4bb0,0x163d40};
+constexpr InstanceBusyRange driverBusy[]{{0xce6a0,0xce74b},{0x6012a0,0x601347},{0x333c40,0x333c62},
+    {0x1aab50,0x1ab2ad},{0x5a1d90,0x5a1db1},{0x63740,0x63807}};
+InputRoute driverCandidate;uintptr_t driverExpected{};
 struct DeviceVector { void* allocator{};Device* begin{};Device* end{};unsigned capacity{};int limit=-1; };
 struct Action { uint32_t allocator{},registry{},id{},vectorAllocator{};Axis* begin{};Axis* end{};unsigned capacity{};int limit=-1; };
 static_assert(sizeof(Action)==0x20 && offsetof(Action,begin)==0x10);
@@ -69,27 +103,54 @@ bool Instance(uintptr_t object,void* table) {
 bool OriginalInstance(uintptr_t object) { uint32_t count{};return Instance(object,reinterpret_cast<void*>(base+inputTable)) && Read(object+0xb8,count) && count>0; }
 void Status() {
     if(folder.empty())return;
+    const auto shiftStatus=shift::Snapshot();
     size_t active{},carriers{},routed{};for(const auto& map:maps)if(map.ready)active+=map.shadows.size();
     for(const auto& item:coverage) {carriers+=item.carrierMaps>0;routed+=item.routed;}
     std::ofstream file(folder/L"driving-controls-status.json",std::ios::trunc);
     file << "{\"installed\":" << (installed?"true":"false") << ",\"stopped\":" << (stopped?"true":"false")
          << ",\"failed\":" << (failed?"true":"false") << ",\"reason\":\"" << reason << "\",\"bindings\":" << bindings.size()
          << ",\"carrierBindings\":" << carriers << ",\"routedBindings\":" << routed
-         << ",\"routingReady\":" << (installed && !failed && routed==bindings.size()?"true":"false")
+         << ",\"routingReady\":" << (installed && !failed && !stopped && routed==bindings.size()?"true":"false")
          << ",\"gameplayAcceptance\":\"unverified\",\"consumedMapVerified\":" << (route.valid?"true":"false")
          << ",\"consumedMap\":" << (route.valid?std::to_string(route.map):"null")
          << ",\"mapUpdates\":" << updates << ",\"queries\":0,\"overriddenQueries\":0,\"nativeQueries\":0"
          << ",\"refused\":" << refused << ",\"devices\":" << devices.devices.size() << ",\"activeOverrideAxes\":" << active
-         << ",\"gameBindingWrites\":0,\"gameCodeWrites\":0,\"sessionOnly\":true,\"hookStrategy\":\"input_instance_state\",\"callSites\":0"
+         << ",\"gameBindingWrites\":0,\"gameCodeWrites\":0,\"gameImageTableWrites\":0,\"sessionOnly\":true,\"hookStrategy\":\"private_input_and_driver_instances\",\"callSites\":0"
+         << ",\"driverHook\":" << (driverHook?"true":"false") << ",\"driverUpdates\":" << driverCalls << ",\"driverOutputWrites\":" << driverApplied
+         << ",\"driverEntered\":" << driverEntered << ",\"driverAttachments\":" << driverAttachments << ",\"driverReason\":\"" << driverReason << '"'
+         << ",\"driverOutputGate\":\"" << outputGate << "\",\"driverOutputGates\":{";
+    for(size_t i=0;i<outputGates.size();++i){if(i)file<<',';file<<'"'<<outputGateNames[i]<<"\":"<<outputGates[i];}
+    file << "},\"clutchOutput\":{\"samples\":" << clutchOutput.samples << ",\"custom\":" << clutchOutput.custom
+         << ",\"native\":" << clutchOutput.native << ",\"output\":" << clutchOutput.output
+         << ",\"customPeak\":" << clutchOutput.customPeak << ",\"nativePeak\":" << clutchOutput.nativePeak << ",\"outputPeak\":" << clutchOutput.outputPeak
+         << ",\"fullSamples\":" << clutchOutput.fullSamples << ",\"endStopSamples\":" << clutchOutput.endStopSamples
+         << ",\"transmission\":" << clutchOutput.transmission << ",\"selection\":" << clutchOutput.selection
+         << ",\"forced\":" << clutchOutput.forced << ",\"gear\":" << clutchOutput.gear << '}'
+         << ",\"transmission\":\"" << TransmissionNames[static_cast<size_t>(settings.transmission)] << "\",\"transmissionUpdates\":" << transmissionUpdates
+         << ",\"clutchShift\":{\"threshold\":" << shiftStatus.threshold << ",\"enabled\":" << (shiftStatus.enabled?"true":"false")
+         << ",\"ready\":" << (shiftStatus.ready?"true":"false") << ",\"reason\":\"" << shiftStatus.reason << "\",\"attached\":" << shiftStatus.attached
+         << ",\"callbacks\":" << shiftStatus.callbacks << ",\"localJobs\":" << shiftStatus.localJobs << ",\"clonedJobs\":" << shiftStatus.clonedJobs
+         << ",\"refused\":" << shiftStatus.refused << ",\"gameDataInstanceWrites\":" << shiftStatus.gameDataInstanceWrites << ",\"restores\":" << shiftStatus.restores << '}'
+         << ",\"steeringLinearity\":" << settings.steeringLinearity << ",\"steeringSource\":\"" << steeringSource << "\",\"wheelUpdates\":" << wheelUpdates << ",\"curveRestores\":" << curveRestores
+         << ",\"curveRestorePending\":" << (curveOverride.object?"true":"false")
+         << ",\"suppressedPedalMenuStates\":" << pedalMenuStates
          << ",\"diagnosticMode\":\"state_overlay\",\"stateWrites\":" << stateWrites << ",\"restoredStates\":" << restored
          << ",\"staleRestoresSkipped\":" << staleRestores << ",\"attachments\":" << attachments
          << ",\"discovery\":{\"passes\":" << scanPasses << ",\"bytes\":" << scanBytes << ",\"milliseconds\":" << scanMilliseconds << "},\"bindingStatus\":[";
     for(size_t i=0;i<bindings.size();++i) { if(i)file<<',';const auto& c=coverage[i];const auto& a=activity[i];
-        const char* status=!c.connectedDevices?"pending_device":c.routed?"routed_state":!route.valid?"pending_gameplay_route":"missing_consumed_map_carrier";
+        const bool physicalConnected=physicalInput.Samples().size()>i && physicalInput.Samples()[i].connected;
+        const char* status=!c.connectedDevices && !physicalConnected?"pending_device":c.routed?"routed_state":!route.valid?"pending_gameplay_route":"missing_consumed_map_carrier";
         file << "{\"action\":\"" << bindings[i].action << "\",\"device\":\"" << bindings[i].device << "\",\"status\":\"" << status
-             << "\",\"nativeCarrierMaps\":" << c.carrierMaps << ",\"aggregateCarrierMaps\":" << c.aggregateMaps
+             << "\",\"deviceId\":\"" << bindings[i].deviceId
+             << "\",\"sampling\":\"" << (physicalInput.Samples().size()>i && physicalInput.Samples()[i].supported?physicalInput.Samples()[i].status:bindings[i].deviceId.empty()?"legacy_native_family":"released")
+             << "\",\"sampleError\":" << (physicalInput.Samples().size()>i?physicalInput.Samples()[i].error:0)
+             << ",\"driverFiltering\":\"" << (physicalInput.Samples().size()>i?physicalInput.Samples()[i].driverFiltering:"unavailable") << '"'
+             << ",\"rawInput\":" << (physicalInput.Samples().size()>i?physicalInput.Samples()[i].raw:0)
+             << ",\"calibratedInput\":" << (physicalInput.Samples().size()>i?physicalInput.Samples()[i].calibrated:0)
+             << ",\"physicalConnected\":" << (physicalConnected?"true":"false")
+             << ",\"nativeCarrierMaps\":" << c.carrierMaps << ",\"aggregateCarrierMaps\":" << c.aggregateMaps
              << ",\"fallbackMap\":" << (c.aggregateRouted?std::to_string(route.map):"null")
-             << ",\"nativeDeviceAttributionRetained\":" << (c.aggregateRouted?"true":"false")
+             << ",\"nativeDeviceAttributionRetained\":true"
              << ",\"missingActionMaps\":" << c.missingActionMaps << ",\"missingCarrierMaps\":" << c.missingCarrierMaps
              << ",\"connectedDevices\":" << c.connectedDevices << ",\"missingDeviceCarriers\":" << c.missingDeviceCarriers
              << ",\"customValue\":" << c.customValue << ",\"observedCustomSamples\":" << a.samples
@@ -106,15 +167,19 @@ uint32_t Intern(const std::string& value) {
     uint32_t id{};Function<void* (__thiscall*)(void*,const char*)>(0x643fa0)(&id,value.c_str());return id;
 }
 bool Compile() {
-    if(!identities.empty())return true;
+    if(identitiesCompiled)return true;
     keyboardFamily=Intern("keyboard");if(!keyboardFamily)return false;
+    steeringActions={Intern("Steer Left"),Intern("Steer Right")};if(!steeringActions[0] || !steeringActions[1])return false;
+    size_t menu{};for(auto name:{"Menu Up","Menu Down","Menu Left","Menu Right","Menu Select","Menu Back","Menu Start Button"}) {
+        menuActions[menu]=Intern(name);if(!menuActions[menu++])return false;
+    }
     for(const auto& binding:bindings) {
         auto upper=binding.device;
         if(Guid(upper))for(auto& c:upper)c=static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         identities.push_back({Intern(binding.action),Intern(binding.device),Intern(upper)});
         inputs.push_back(Intern(binding.input));
         if(!identities.back().action || !identities.back().family || !inputs.back())return false;
-    }return true;
+    }identitiesCompiled=true;return true;
 }
 // Native red-black maps use unsigned interned IDs and the same four-word node
 // prefix. Read only; neither the saved map nor any native vector is replaced.
@@ -157,7 +222,17 @@ void Advance(void* object) {
     if(slot->map!=map || slot->registry!=registry || slot->head!=head)*slot={map,registry,head};
     slot->ready=false;slot->stamp=updates;
     std::vector<Shadow> next;
-    for(size_t index=0;index<bindings.size();++index)for(const auto& device:devices.devices) {
+    for(size_t index=0;index<bindings.size();++index) {
+      const auto& sample=physicalInput.Samples()[index];
+      if(sample.supported) {
+        if(sample.connected) {
+            Shadow shadow{index};shadow.axis.registry=static_cast<uint32_t>(registry);shadow.axis.input=inputs[index];
+            shadow.axis.device={0,identities[index].family,static_cast<uint32_t>(index)};shadow.axis.state=sample.state;
+            next.push_back(shadow);
+        }
+        continue;
+      }
+      for(const auto& device:devices.devices) {
         const auto& identity=identities[index];
         if(device.family!=identity.family && device.family!=identity.familyUpper)continue;
         Shadow shadow{index};
@@ -174,6 +249,7 @@ void Advance(void* object) {
         // private one-axis action receives the native value/edge-state writes.
         if(Function<UpdateFn>(0x1eb6d0)(&action)!=0 || !std::isfinite(shadow.axis.state.value) || shadow.axis.state.value<0 || shadow.axis.state.value>1.001f) { Refuse("native_axis_update");return; }
         next.push_back(shadow);
+      }
     }
     slot->shadows=std::move(next);slot->ready=true;
 }
@@ -208,6 +284,7 @@ void RestoreStates(const std::vector<LiveMap>& live) {
 }
 bool PrepareStates(const std::vector<LiveMap>& live) {
     coverage.assign(bindings.size(),{});
+    nativeOtherSteering={};
     route=ReadInputRoute(base,[](uintptr_t address,void* output,size_t bytes){
         return ReadMemory(reinterpret_cast<void*>(address),output,bytes);});
     route.valid=route.valid && route.input==owner && std::any_of(live.begin(),live.end(),[](const auto& item){return item.id==route.map;});
@@ -216,11 +293,23 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
         Advance(reinterpret_cast<void*>(item.address));if(failed)return false;
         const auto found=std::find_if(maps.begin(),maps.end(),[&](const auto& m){return m.map==item.address && m.ready;});
         if(found==maps.end())return false;
-        std::vector<uint32_t> processed;
-        for(size_t index=0;index<bindings.size();++index) {
-            const auto id=identities[index].action;
-            if(std::find(processed.begin(),processed.end(),id)!=processed.end())continue;
-            processed.push_back(id);
+        std::vector<uint32_t> actions;
+        for(const auto& identity:identities)if(std::find(actions.begin(),actions.end(),identity.action)==actions.end())actions.push_back(identity.action);
+        if(wheelConfigured)for(auto id:steeringActions)if(std::find(actions.begin(),actions.end(),id)==actions.end())actions.push_back(id);
+        // A legacy wheel preset may use a pedal for menu navigation. Suppress
+        // only that pedal/axis alias, unless the user explicitly assigned it
+        // as a menu binding. Buttons, hats and other families stay native.
+        for(const auto id:menuActions) {
+            if(std::find(actions.begin(),actions.end(),id)==actions.end())actions.push_back(id);
+        }
+        for(const auto id:actions) {
+            const bool menuAction=std::find(menuActions.begin(),menuActions.end(),id)!=menuActions.end();
+            bool replayAction{};
+            for(size_t b=0;b<bindings.size();++b)if(identities[b].action==id && bindings[b].action.starts_with("Replay "))replayAction=true;
+            // Driving values belong only to the proven local player's map.
+            // Menu/replay actions retain native query eligibility in their own
+            // contexts, where a local driving controller may not exist.
+            if(!menuAction && !replayAction && (!route.valid || item.id!=route.map))continue;
             uintptr_t node{};if(!Find(item.address+8,id,node))return false;
             std::array<uint32_t,2> range{};std::vector<Axis> native,applied;
             if(node) {
@@ -229,8 +318,22 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
                 if(!native.empty() && (!Heap(range[0],native.size()*sizeof(Axis)) || !ReadMemory(reinterpret_cast<void*>(range[0]),native.data(),native.size()*sizeof(Axis))))return false;
             }
             applied=native;
-            // Replace exact device families first; then add the missing Xbox
-            // family to the proven gameplay map without erasing keyboard input.
+            if(route.valid && item.id==route.map)for(size_t i=0;i<steeringActions.size();++i)
+                if(steeringActions[i]==id) {
+                    auto& value=nativeOtherSteering[i];
+                    for(const auto& axis:native)if(!Replaces(identities,id,axis.device.family) && std::isfinite(axis.state.value))
+                        value=std::max(value,std::clamp(axis.state.value,0.f,1.f));
+                    break;
+                }
+            for(size_t b=0;b<bindings.size();++b)if(PedalAction(bindings[b].action) && DirectAxis(bindings[b].input)) {
+                if(std::find(menuActions.begin(),menuActions.end(),id)==menuActions.end())continue;
+                for(auto& axis:applied)if(axis.input==inputs[b] && (axis.device.family==identities[b].family || axis.device.family==identities[b].familyUpper)) {
+                    const bool explicitMenu=std::any_of(identities.begin(),identities.end(),[&](const auto& entry){
+                        return entry.action==id && (entry.family==axis.device.family || entry.familyUpper==axis.device.family);});
+                    if(SuppressPedalAlias(axis,inputs[b],identities[b],explicitMenu))++pedalMenuStates;
+                }
+            }
+            std::vector<Axis> combined;
             for(size_t binding=0;binding<bindings.size();++binding)if(identities[binding].action==id) {
                 auto& report=coverage[binding];std::vector<Axis> shadows;
                 for(const auto& s:found->shadows)if(s.binding==binding)shadows.push_back(s.axis);
@@ -238,19 +341,18 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
                 for(const auto& shadow:shadows) {report.customValue=std::max(report.customValue,shadow.state.value);
                     report.customEdges|=shadow.state.held || shadow.state.pressed || shadow.state.released;}
                 if(!node || native.empty()){++report.missingActionMaps;continue;}
-                const auto carriers=OverlayFamily(applied,shadows,identities[binding]);
+                const auto carriers=std::count_if(native.begin(),native.end(),[&](const auto& axis){return axis.device.family==identities[binding].family || axis.device.family==identities[binding].familyUpper;});
                 if(carriers)++report.carrierMaps;else ++report.missingCarrierMaps;
-                if(route.valid && item.id==route.map && carriers && !shadows.empty() &&
-                    std::all_of(shadows.begin(),shadows.end(),[&](const auto& shadow){return HasCarrier(native,shadow.device);}))report.routed=true;
-                if(carriers)for(const auto& shadow:shadows)if(!HasCarrier(native,shadow.device))++report.missingDeviceCarriers;
-            }
-            if(route.valid && item.id==route.map)for(size_t binding=0;binding<bindings.size();++binding)
-                if(identities[binding].action==id && bindings[binding].device=="xinput_pad") {
-                    std::vector<Axis> shadows;for(const auto& s:found->shadows)if(s.binding==binding)shadows.push_back(s.axis);
-                    if(OverlayMissingFamily(applied,shadows,identities[binding],keyboardFamily)) {
-                        auto& report=coverage[binding];++report.aggregateMaps;report.routed=true;report.aggregateRouted=true;
+                combined.insert(combined.end(),shadows.begin(),shadows.end());
+                if(!shadows.empty()) {
+                    ++report.aggregateMaps;
+                    if((route.valid && item.id==route.map) || bindings[binding].action.starts_with("Menu ")) {
+                        report.routed=true;report.aggregateRouted=true;
                     }
                 }
+            }
+            if(std::any_of(identities.begin(),identities.end(),[&](const auto& entry){return entry.action==id;}))
+                OverlayAction(applied,combined,identities,id);
             for(size_t axis=0;axis<native.size();++axis)if(!SameState(native[axis].state,applied[axis].state)) {
                 if(next.size()>=4096)return false;
                 next.push_back({item.address,found->registry,found->head,node,range[0]+axis*sizeof(Axis),id,native[axis],applied[axis]});
@@ -264,10 +366,16 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
         std::memcpy(reinterpret_cast<void*>(patch.address+offsetof(Axis,state)),&patch.applied.state,sizeof(State));++stateWrites;
     }
     for(size_t i=0;i<coverage.size();++i) {
-        const auto& c=coverage[i];auto& a=activity[i];a.peak=std::max(a.peak,c.customValue);
+        auto& c=coverage[i];
+        uint32_t gearMode{};
+        if(driverHook && route.valid && c.connectedDevices &&
+           (bindings[i].action=="Clutch" || (HPatternIndex(bindings[i].action)>=0 &&
+            ((settings.transmission==Transmission::HPattern || settings.transmission==Transmission::HPatternClutch) ||
+             (settings.transmission==Transmission::Game && Read(route.controller+0x44,gearMode) && gearMode==2)))))c.routed=true;
+        auto& a=activity[i];a.peak=std::max(a.peak,c.customValue);
         if(c.customValue>0 || c.customEdges) {++a.samples;if(c.routed)++a.routedSamples;}
     }
-    reason="state_overrides_active";return true;
+    reason=std::all_of(coverage.begin(),coverage.end(),[](const auto& c){return c.routed;})?"input_routes_ready":"input_routes_pending";return true;
 }
 void __fastcall ServiceUpdate(void* self,void*,const double* delta) {
     std::lock_guard guard(mutex);
@@ -282,11 +390,142 @@ void __fastcall ServiceUpdate(void* self,void*,const double* delta) {
     originalServiceUpdate(self,delta);
     if(stopped || failed){if(failed)Status();return;}
     ++updates;live.clear();
-    try {LibraryLock lock(object);if(!LibraryMaps(object,live) || !PrepareStates(live))Refuse("input_state_shape");}
+    try {physicalInput.Poll();sampledAt=GetTickCount64();
+        LibraryLock lock(object);if(!LibraryMaps(object,live) || !PrepareStates(live))Refuse("input_state_shape");}
     catch(...) {Refuse("input_state_exception");}
     if(updates==1 || updates%600==0 || failed)Status();
 }
+void RestoreCurve(uintptr_t object) noexcept {
+    if(!curveOverride.object || curveOverride.object!=object)return;
+    const auto current=ReadInputRoute(base,[](uintptr_t at,void* data,size_t bytes){SIZE_T copied{};
+        return ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(at),data,bytes,&copied) && copied==bytes;});
+    float value{},restore{};
+    const bool valid=current.valid && current.controller==object && current.input==owner && Heap(object,0x6c) && Read(object+0x2c,value);
+    if(RestoreWheelCurve(curveOverride,object,valid,value,restore)) {
+        std::memcpy(reinterpret_cast<void*>(object+0x2c),&restore,4);++curveRestores;
+    }
+    if(valid)steeringSource="native";
+}
+void __fastcall DriverUpdate(void* self,void*,const double* delta) {
+    // Always preserve the native update, including every unrelated controller,
+    // disabled input, pause, replay and any failed guard. No simulation replay.
+    const auto object=reinterpret_cast<uintptr_t>(self);
+    std::array<uint8_t,0x6c> nativeSettings{},appliedSettings{};bool transmissionApplied{};
+    {
+        std::lock_guard guard(mutex);++driverEntered;RestoreCurve(object);
+        shift::Permit({},false,0);
+        const auto current=ReadInputRoute(base,[](uintptr_t at,void* data,size_t bytes){return ReadMemory(reinterpret_cast<void*>(at),data,bytes);});
+        if(!stopped && !failed && installed && current.valid && current.controller==object && current.input==owner &&
+           Instance(owner,shadowTable) && Heap(object,0x6c) && Read(object,nativeSettings)) {
+            appliedSettings=nativeSettings;
+            if(ApplyTransmission(appliedSettings,settings.transmission)) {
+                std::memcpy(reinterpret_cast<void*>(object+4),appliedSettings.data()+4,4);
+                std::memcpy(reinterpret_cast<void*>(object+0x44),appliedSettings.data()+0x44,4);
+                transmissionApplied=true;++transmissionUpdates;
+            }
+        }
+    }
+    originalDriverUpdate(self,delta);
+    std::lock_guard guard(mutex);++driverCalls;
+    std::array<uint8_t,0x6c> before{};const bool read=Heap(object,0x6c) && Read(object,before);
+    // Native update copied the requested mode into its volatile output and
+    // queried the corresponding gear actions. Restore configuration immediately;
+    // only output state carries the session choice into the physics consumer.
+    if(transmissionApplied && read && ReadLocalControllerIdentity(base,object,[](uintptr_t at,void* data,size_t bytes){return ReadMemory(reinterpret_cast<void*>(at),data,bytes);}) &&
+       !std::memcmp(before.data()+4,appliedSettings.data()+4,4) && !std::memcmp(before.data()+0x44,appliedSettings.data()+0x44,4)) {
+        std::memcpy(reinterpret_cast<void*>(object+4),nativeSettings.data()+4,4);
+        std::memcpy(reinterpret_cast<void*>(object+0x44),nativeSettings.data()+0x44,4);
+    }
+    if(stopped){CountOutputGate(OutputGate::Stopped);return;}
+    if(failed){CountOutputGate(OutputGate::Failed);return;}
+    if(!installed){CountOutputGate(OutputGate::NotInstalled);return;}
+    if(!sampledAt || GetTickCount64()-sampledAt>250){CountOutputGate(OutputGate::Stale);return;}
+    DWORD foreground{};GetWindowThreadProcessId(GetForegroundWindow(),&foreground);
+    if(foreground!=GetCurrentProcessId()){CountOutputGate(OutputGate::Unfocused);return;}
+    const auto current=ReadInputRoute(base,[](uintptr_t at,void* data,size_t bytes){return ReadMemory(reinterpret_cast<void*>(at),data,bytes);});
+    if(!current.valid || current.controller!=object || current.input!=owner || !SameInputRoute(route,current) || !Instance(owner,shadowTable) || !Heap(object,0x6c)){CountOutputGate(OutputGate::Route);return;}
+    if(!read || before[0x40]!=1){CountOutputGate(OutputGate::Inactive);return;}
+    // Use the same native eligibility gate as RVA 1aab72. Focus is an
+    // additional gate for our physical-device sampling, never an override.
+    if(!Function<bool (__thiscall*)(void*,unsigned)>(0x32a260)(reinterpret_cast<void*>(owner),current.map)){CountOutputGate(OutputGate::MapDisabled);return;}
+    uint32_t blocked{};uint8_t enabled{};
+    if(!Read(owner+0x2b0,blocked) || !Read(owner+0x248,enabled) || !NativeInputEnabled(blocked,enabled)){CountOutputGate(OutputGate::InputDisabled);return;}
+    CountOutputGate(OutputGate::Ready);
+    SupplementalInput custom;
+    WheelSteeringInput steering;steering.other=nativeOtherSteering;
+    for(size_t i=0;i<steeringActions.size();++i)
+        if(!Function<bool (__thiscall*)(void*,unsigned,const uint32_t*)>(0x3bf8c0)(reinterpret_cast<void*>(owner),current.map,&steeringActions[i]))steering.other[i]=0;
+    for(size_t i=0;i<bindings.size();++i) {
+        auto& c=coverage[i];if(!c.connectedDevices)continue;
+        const auto& action=bindings[i].action;
+        const auto gear=HPatternIndex(action);
+        const bool steer=action=="Steer Left" || action=="Steer Right";
+        if(action!="Clutch" && gear<0 && !steer)continue;
+        // The native query's per-action allow mask defaults to allowed for an
+        // absent mask entry; it does not require a saved H-pattern binding.
+        if(!Function<bool (__thiscall*)(void*,unsigned,const uint32_t*)>(0x3bf8c0)(reinterpret_cast<void*>(owner),current.map,&identities[i].action))continue;
+        if(steer) {
+            const bool wheel=Guid(bindings[i].device) && DirectAxis(bindings[i].input);
+            auto& value=(wheel?steering.wheel:steering.other)[action=="Steer Right"?1:0];
+            value=std::max(value,c.customValue);steering.connected|=wheel;
+        }
+        else if(action=="Clutch") {custom.clutchConnected=true;custom.clutch=std::max(custom.clutch,c.customValue);}
+        else custom.gears[gear]=custom.gears[gear] || c.customValue>=.5f;
+    }
+    auto after=before;
+    if(ApplySupplementalInput(after,custom)) {
+        // Limit writes to the two proven output fields; retain the native
+        // state machine, device type, controller/map pointers and FFB path.
+        std::memcpy(reinterpret_cast<void*>(object+0x24),after.data()+0x24,4);
+        std::memcpy(reinterpret_cast<void*>(object+0x30),after.data()+0x30,4);++driverApplied;
+    }
+    uint32_t outputTransmission{},forcedInput{};
+    std::memcpy(&outputTransmission,after.data()+0x34,4);std::memcpy(&forcedInput,after.data()+0x3c,4);
+    shift::Permit(current,settings.clutchShiftSettings && settings.transmission==Transmission::HPatternClutch &&
+        outputTransmission==1 && forcedInput!=1,sampledAt);
+    if(custom.clutchConnected) {
+        float native{},output{};std::memcpy(&native,before.data()+0x30,4);std::memcpy(&output,after.data()+0x30,4);
+        if(std::isfinite(native) && std::isfinite(output) && std::isfinite(custom.clutch)) {
+            auto& c=clutchOutput;++c.samples;c.custom=custom.clutch;c.native=native;c.output=output;
+            c.customPeak=std::max(c.customPeak,c.custom);c.nativePeak=std::max(c.nativePeak,native);c.outputPeak=std::max(c.outputPeak,output);
+            c.fullSamples+=output==1.f;
+            std::memcpy(&c.transmission,after.data()+0x34,4);std::memcpy(&c.selection,after.data()+0x44,4);
+            std::memcpy(&c.forced,after.data()+0x3c,4);std::memcpy(&c.gear,after.data()+0x24,4);
+            c.endStopSamples+=custom.clutch<1.f && native<1.f && output==1.f;
+        }
+    }
+    // A route may have been temporarily unavailable before the native call.
+    // Recover its owned curve now, never replacing an unresolved older record.
+    RestoreCurve(object);
+    float nativeCurve{};
+    if(settings.wheelSettings && !curveOverride.object && Read(object+0x2c,nativeCurve) && std::isfinite(nativeCurve) && nativeCurve>=-1 && nativeCurve<=1 &&
+       ApplyWheelSteering(after,steering,settings.steeringLinearity)) {
+        float curve{};std::memcpy(&curve,after.data()+0x2c,4);curveOverride={object,nativeCurve,curve};
+        std::memcpy(reinterpret_cast<void*>(object+0x28),after.data()+0x28,8);
+        *reinterpret_cast<uint8_t*>(object+0x38)=after[0x38];++wheelUpdates;steeringSource="wheel";
+    }
+}
 bool Guards() {
+    struct OptionGuard { uintptr_t rva;std::initializer_list<uint8_t> bytes; };
+    const OptionGuard options[]{
+        {0x175ce5,{0xc7,0x43,0x04,0x04,0x00,0x00,0x00,0x89,0x4b,0x44}},
+        {0x175cf8,{0x89,0x4b,0x04,0xc7,0x43,0x44,0x02,0x00,0x00,0x00}},
+        {0x175d0a,{0xb8,0x02,0x00,0x00,0x00,0x5e,0x89,0x43,0x04,0x89,0x43,0x44}},
+        {0x175d1f,{0x89,0x4b,0x44,0xc7,0x43,0x04,0x02,0x00,0x00,0x00}},
+        {0x892a4a,{0xc5,0xf8,0x2e,0x05}}, {0x892a52,{0x9f,0xf6,0xc4,0x44,0x7b,0x0e}},
+        {0xd76b6c,{0x00,0x00,0x80,0x3f}},
+        {0x1aabbf,{0x8b,0x4e,0x04,0x8b,0x56,0x5c}}, {0x1aabcb,{0x89,0x4e,0x34}},
+        {0x1aae84,{0xc5,0xfa,0x11,0x46,0x28}}, {0x9845a0,{0x8d,0x41,0x14,0xc3}},
+        {0x2f08b0,{0xc5,0xfa,0x10,0x45,0x0c,0xc5,0xfa,0x11,0x40,0x18}},
+        {0x1aac65,{0x80,0x4e,0x38,0x20}}, {0x1aacad,{0x80,0x66,0x38,0xdf}},
+        {0x520e1a,{0xf6,0x46,0x24,0x20,0x75,0x3f}}, {0x520e43,{0xe8,0xd2,0x5a,0x5a,0x00}},
+        {0x520f75,{0x8a,0x4e,0x24,0xc0,0xe9,0x05,0x80,0xe1,0x01,0x88,0x8f,0x18,0x13,0x00,0x00}},
+        {0x88f23c,{0x80,0xbe,0x18,0x13,0x00,0x00,0x00,0x0f,0x84,0x9f,0x01,0x00,0x00}},
+        {0x88f3e8,{0xd9,0x86,0x0c,0x13,0x00,0x00,0x5e,0xd8,0x4b,0x08}}
+    };
+    for(const auto& guard:options)if(!MatchesInstructions(reinterpret_cast<void*>(base+guard.rva),std::span(guard.bytes.begin(),guard.bytes.size())))return false;
+    uint32_t clutchCompare{};
+    if(!Read(base+0x892a4e,clutchCompare) || clutchCompare!=base+0xd76b6c)return false;
     struct Guard { uintptr_t rva;std::array<uint8_t,16> bytes; };
     constexpr Guard guards[]{
         {0x791ba0,{0x53,0x56,0x57,0x8b,0x79,0x0c,0x8b,0x37,0x33,0xdb,0x3b,0xf7,0x74,0x5d,0x8b,0xff}},
@@ -315,8 +554,62 @@ bool Guards() {
     constexpr uint8_t calibration[]{0x8b,0x4d,0x10,0x83,0xc0,0x14,0x3b,0xc8,0x74,0x16,0x8b,0x10,0x89,0x11};
     if(!MatchesInstructions(reinterpret_cast<void*>(base+0x3b5dd0),service) ||
        !MatchesInstructions(reinterpret_cast<void*>(base+0x2c2912),calibration))return false;
+    // Proven clutch store, H-pattern mode/default/gear store and native
+    // eligibility call. No executable instructions are patched.
+    constexpr uint8_t clutchStore[]{0xc5,0xfa,0x11,0x46,0x30,0x83,0xf8,0x01};
+    constexpr uint8_t gearMode[]{0x83,0xf8,0x02,0x0f,0x85,0x70,0x01,0x00,0x00};
+    constexpr uint8_t gearStore[]{0x89,0x5e,0x24,0x8b,0x46,0x5c,0x8b,0x4e,0x10};
+    constexpr uint8_t neutral[]{0x8d,0x58,0x07,0xe8,0x37,0xda,0x3a,0x00};
+    constexpr uint8_t valueGate[]{0x8b,0x8e,0xb0,0x02,0x00,0x00,0x8a,0x86,0x48,0x02,0x00,0x00,0xc5,0xfa,0x11,0x45,0xfc,0xf7,0xc1,0xff,0x00,0x00,0x00,0x7f,0x2f,0x84,0xc0,0x74,0x2b};
+    constexpr uint8_t heldGate[]{0x8b,0x96,0xb0,0x02,0x00,0x00,0x8a,0x8e,0x48,0x02,0x00,0x00,0x32,0xc0,0xf7,0xc2,0xff,0x00,0x00,0x00,0x7f,0x31,0x84,0xc9,0x74,0x2d};
+    constexpr uint8_t actionMask[]{0x55,0x8b,0xec,0x83,0x7d,0x08,0x00,0x53,0x56,0x8b,0xf1,0xb3,0x01,0x74,0x26};
+    if(!MatchesInstructions(reinterpret_cast<void*>(base+0x1aaf28),clutchStore) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x1ab0dc),gearMode) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x1ab252),gearStore) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x1ab0f1),neutral) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x1aab72),RelativeCall(0x1aab72,0x32a260)) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x141eab),valueGate) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x558b36),heldGate) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x3bf8c0),actionMask) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x141ed4),RelativeCall(0x141ed4,0x3bf8c0)) ||
+       !MatchesInstructions(reinterpret_cast<void*>(base+0x558b5c),RelativeCall(0x558b5c,0x3bf8c0)))return false;
+    for(size_t i=0;i<std::size(driverMethods);++i) {uintptr_t pointer{};if(!Read(base+driverTable+4*i,pointer) || pointer!=base+driverMethods[i])return false;}
     for(size_t i=0;i<std::size(methods);++i) {uintptr_t pointer{};if(!Read(base+inputTable+4*i,pointer) || pointer!=base+methods[i])return false;}
     return true;
+}
+InputRoute DriverRoute() {
+    // Raw kernel reads only: also used while peers are paused for attachment.
+    return ReadInputRoute(base,[](uintptr_t at,void* output,size_t bytes){SIZE_T copied{};
+        return at>=0x10000 && ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(at),output,bytes,&copied) && copied==bytes;});
+}
+bool DriverInstance(uintptr_t object) {
+    const auto current=DriverRoute();uintptr_t table{};
+    return current.valid && object==driverCandidate.controller && current.controller==object && current.input==owner &&
+        current.input==driverCandidate.input && current.map==driverCandidate.map && Heap(object,0x6c) &&
+        Read(object,table) && table==driverExpected;
+}
+void DriverAttached(uintptr_t object) noexcept {
+    RegisterLocalControllerShadow(base,object,reinterpret_cast<uintptr_t>(driverShadow));
+}
+void AttachDriver() {
+    if(!driverShadow)return;
+    if(curveOverride.object) {
+        uintptr_t oldTable{};
+        // The verified native destructor replaces the private vptr before free.
+        // A different rooted controller alone is not proof that the old one died.
+        if(!Heap(curveOverride.object,0x6c) || (Read(curveOverride.object,oldTable) && oldTable!=reinterpret_cast<uintptr_t>(driverShadow)))curveOverride={};
+    }
+    driverCandidate=DriverRoute();
+    if(!driverCandidate.valid || driverCandidate.input!=owner) {driverHook=false;driverReason="waiting_for_local_controller";return;}
+    uintptr_t table{};uint8_t active{};
+    if(!Read(driverCandidate.controller,table) || !Read(driverCandidate.controller+0x40,active) || active!=1) {driverHook=false;driverReason="waiting_for_active_controller";return;}
+    if(driverCandidate.controller==driverObject && table==reinterpret_cast<uintptr_t>(driverShadow)) {driverHook=true;driverReason="private_instance_attached";return;}
+    if(table!=base+driverTable){driverReason="foreign_controller_table";return;}
+    driverExpected=base+driverTable;
+    const auto failure=AttachInputInstance(reinterpret_cast<void*>(driverCandidate.controller),reinterpret_cast<void*>(driverExpected),
+        driverShadow,base,DriverInstance,driverBusy,DriverAttached);
+    if(failure) {driverHook=false;driverReason=failure;return;}
+    driverObject=driverCandidate.controller;driverHook=true;++driverAttachments;driverReason="private_instance_attached";Status();
 }
 uintptr_t Discover() {
     // Discovery is sliced across Present calls (<=8 MiB per slice) and runs
@@ -357,12 +650,17 @@ void Install(uintptr_t gameBase,const std::filesystem::path& output) {
     static bool attempted{};if(attempted)return;attempted=true;
     std::ifstream request(output/L"driving-controls.request",std::ios::binary);if(!request)return;
     base=gameBase;folder=output;
-    if(std::filesystem::file_size(output/L"driving-controls.request")>131072){Refuse("request_size");Status();return;}
+    if(std::filesystem::file_size(output/L"driving-controls.request")>524288){Refuse("request_size");Status();return;}
     const std::string text((std::istreambuf_iterator<char>(request)),{});
-    if(!std::filesystem::exists(output/L"driving-controls.xml") || !Parse(text,bindings)){Refuse("invalid_request");Status();return;}
+    if(!std::filesystem::exists(output/L"driving-controls.xml") || !Parse(text,bindings,&settings)){Refuse("invalid_request");Status();return;}
+    wheelConfigured=settings.wheelSettings && std::any_of(bindings.begin(),bindings.end(),[](const auto& binding){
+        return Guid(binding.device) && DirectAxis(binding.input) && (binding.action=="Steer Left" || binding.action=="Steer Right");});
     coverage.resize(bindings.size());activity.resize(bindings.size());
     if(!Guards()){Refuse("input_instruction_guard");Status();return;}
+    shift::Configure(base,settings.clutchShiftThreshold,settings.clutchShiftSettings && settings.transmission==Transmission::HPatternClutch);
+    try {physicalInput.Configure(bindings);}catch(...) {Refuse("input_reader_configuration");Status();return;}
     originalServiceUpdate=Function<ServiceUpdateFn>(0x3b5dd0);
+    originalDriverUpdate=Function<ServiceUpdateFn>(0x1aab50);
     // Retain this private table for process lifetime. Native destruction restores
     // the original/base tables itself; no native allocator ever owns this table.
     auto** allocation=static_cast<void**>(VirtualAlloc(nullptr,14*sizeof(void*),MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE));
@@ -370,17 +668,58 @@ void Install(uintptr_t gameBase,const std::filesystem::path& output) {
         if(allocation)VirtualFree(allocation,0,MEM_RELEASE);Refuse("input_shadow_allocation");Status();return;}
     allocation[2]=reinterpret_cast<void*>(ServiceUpdate);DWORD old{};
     if(!VirtualProtect(allocation,14*sizeof(void*),PAGE_READONLY,&old)){VirtualFree(allocation,0,MEM_RELEASE);Refuse("input_shadow_protection");Status();return;}
+    if(settings.transmission!=Transmission::Game || wheelConfigured || std::any_of(bindings.begin(),bindings.end(),[](const auto& binding){return binding.action=="Clutch" ||
+        HPatternIndex(binding.action)>=0;})) {
+        // The game hashes image bytes during startup and later. Never patch
+        // its shared table, even before the first driving update. Prepare an
+        // immutable private copy; attach only to a proven live local object.
+        // The preceding native word is preserved, not assumed to be RTTI.
+        auto** driverAllocation=static_cast<void**>(VirtualAlloc(nullptr,14*sizeof(void*),MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE));
+        if(!driverAllocation || !ReadMemory(reinterpret_cast<void*>(base+driverTable-4),driverAllocation,14*sizeof(void*))) {
+            if(driverAllocation)VirtualFree(driverAllocation,0,MEM_RELEASE);VirtualFree(allocation,0,MEM_RELEASE);Refuse("driver_shadow_allocation");Status();return;
+        }
+        driverAllocation[4]=reinterpret_cast<void*>(DriverUpdate);
+        if(!VirtualProtect(driverAllocation,14*sizeof(void*),PAGE_READONLY,&old)) {
+            VirtualFree(driverAllocation,0,MEM_RELEASE);VirtualFree(allocation,0,MEM_RELEASE);Refuse("driver_shadow_protection");Status();return;
+        }
+        driverShadow=driverAllocation+1;driverReason="waiting_for_local_controller";
+    }
     shadowTable=allocation+1;requested=true;reason="waiting_for_input_instance";Status();
 }
 void Tick() {
     if(!requested || stopped || failed)return;
     std::lock_guard guard(mutex);
-    if(owner && Instance(owner,shadowTable))return;
+    shift::Tick();
+    if(owner && Instance(owner,shadowTable)){AttachDriver();return;}
     if(owner) {owner=0;installed=false;previous.clear();maps={};devices={};coverage.assign(bindings.size(),{});reason="waiting_for_input_replacement";Status();}
     const auto object=Discover();if(!object)return;
     const auto failure=AttachInputInstance(reinterpret_cast<void*>(object),reinterpret_cast<void*>(base+inputTable),shadowTable,base,OriginalInstance);
     if(failure){reason=failure;Status();return;}
-    owner=object;installed=true;++attachments;reason="waiting_for_input_update";Status();
+    owner=object;installed=true;++attachments;reason="waiting_for_input_update";AttachDriver();Status();
 }
-void Stop() {stopped=true;std::lock_guard guard(mutex);Status();}
+void Stop() {
+    stopped=true;shift::Stop();std::lock_guard guard(mutex);
+    if(driverObject) {
+        driverCandidate=DriverRoute();driverExpected=reinterpret_cast<uintptr_t>(driverShadow);
+        if(driverCandidate.valid && driverCandidate.controller==driverObject && DriverInstance(driverObject)) {
+            const auto failure=AttachInputInstance(reinterpret_cast<void*>(driverObject),driverShadow,reinterpret_cast<void*>(base+driverTable),base,DriverInstance,driverBusy,RestoreCurve);
+            driverReason=failure?failure:"private_instance_restored";
+            if(!failure){driverHook=false;RegisterLocalControllerShadow(0,0,0);}
+        } else {driverHook=false;driverReason="controller_no_longer_current";}
+    }
+    // Tables stay allocated for process lifetime. A stale object can safely
+    // forward to its native destructor even when shutdown cannot prove ownership.
+    Status();physicalInput.Release();
+}
+#if defined(GRID2VR_DRIVING_CONTROLS_TEST)
+namespace testing {
+void DriverUpdate(void* object,void* nativeUpdate) {
+    const auto saved=originalDriverUpdate;
+    originalDriverUpdate=reinterpret_cast<ServiceUpdateFn>(nativeUpdate);
+    const double delta=1.0/60.0;
+    grid2vr::drivingcontrols::DriverUpdate(object,nullptr,&delta);
+    originalDriverUpdate=saved;
+}
+}
+#endif
 }

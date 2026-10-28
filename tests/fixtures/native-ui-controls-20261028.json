@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "date": "2026-10-28",
+  "scope": "Offline regression fixtures from supplied live HUD logs and installed shader pack; not headset acceptance.",
+  "cameras": [
+    {
+      "fixture": "native-ui-pc4090-orthographic.bin",
+      "sha256": "78e8a2420999df476d0d90aaf7e2a3d5529217c4f7783efecf2945bbc318c8f3",
+      "source": "C:\\Temp\\g2_issues\\controls\\PC4090\\20261028-161039-570\\screen-ui-cameras.jsonl",
+      "sourceSha256": "fbb7ef7b08dcd9a3f8c313361bd9b6e73474dee07835a3bc6180d600b812332c",
+      "line": 1,
+      "sourceFnv64": "e1f54a97ceab4aa5",
+      "viewport": [
+        0,
+        0,
+        2016,
+        2240
+      ],
+      "previousSupportedCamera": false
+    },
+    {
+      "fixture": "native-ui-pc4090-perspective.bin",
+      "sha256": "ac00defbc684900a87ebbd0ab27e9392825e9d55eb20db3304cdbf3fe5b4eb1e",
+      "source": "C:\\Temp\\g2_issues\\controls\\PC4090\\20261028-161039-570\\screen-ui-cameras.jsonl",
+      "sourceSha256": "fbb7ef7b08dcd9a3f8c313361bd9b6e73474dee07835a3bc6180d600b812332c",
+      "line": 6,
+      "sourceFnv64": "f479a9c2e055de85",
+      "viewport": [
+        0,
+        0,
+        2016,
+        2240
+      ],
+      "previousSupportedCamera": false
+    },
+    {
+      "fixture": "native-ui-pc5090-perspective.bin",
+      "sha256": "0abd967b73e4e7360df8e481e4678661872fe55284e563c0a98984b24801f7cd",
+      "source": "C:\\Temp\\g2_issues\\controls\\PC5090\\20261028-154814-115\\screen-ui-cameras.jsonl",
+      "sourceSha256": "e5b7ed4ac4b53d04e773fd6681914be8531a27179c9a79ba2fe04f3dd70aa963",
+      "line": 6,
+      "sourceFnv64": "7242898a47710308",
+      "viewport": [
+        0,
+        0,
+        3400,
+        3468
+      ],
+      "previousSupportedCamera": false
+    },
+    {
+      "fixture": "native-ui-pc5090-other.bin",
+      "sha256": "41d58927eaa85ab1ef5f54f1768314e2d77cc67bb09272a597893812e48da250",
+      "source": "C:\\Temp\\g2_issues\\controls\\PC5090\\20261028-155805-922\\screen-ui-cameras.jsonl",
+      "sourceSha256": "b74c12a62546871fe78277507f463226ea680ab8d1cb941a6e54daa9c14ece86",
+      "line": 7,
+      "sourceFnv64": "8213dc0f1e4fc646",
+      "viewport": [
+        0,
+        0,
+        3400,
+        3468
+      ],
+      "previousSupportedCamera": false
+    }
+  ],
+  "shaderpack": {
+    "source": "E:\\SteamLibrary\\steamapps\\common\\grid 2\\shaderpack\\dx11\\ui.pssg",
+    "sha256": "e1225583f8d8c3ed7495869dc7115fed83a64cc79d128af1456c53d00b6a25d4",
+    "bytes": 2274417,
+    "programs": [
+      {
+        "fixture": "native-ui-radial-vertex.bin",
+        "fnv64": "4dd4ed841ce0d62e",
+        "sha256": "873babc3f49b3e2b5bab5bcb8177e88b8eeae7a96bc3b082551060a43b071c22",
+        "offset": 1222777,
+        "bytes": 3444,
+        "varyingMask": 63
+      },
+      {
+        "fixture": "native-ui-osd-vertex.bin",
+        "fnv64": "0f53b20492bb7c46",
+        "sha256": "c9f839356d7acacf6b0befbc4d98f72330ec25e4c45565762c943817d7687381",
+        "offset": 1750018,
+        "bytes": 3376,
+        "varyingMask": 55
+      }
+    ]
+  }
+}

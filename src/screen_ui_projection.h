@@ -9,12 +9,12 @@ namespace grid2vr {
 // mandatory. Include colour/mask geometry as well as image/distance-field text.
 // Frosted/bokeh background and text use original clip XY/W as a background UV;
 // post-VS projection preserves it. Both were observed with the exact native UI
-// camera in garage run 20261024-224755-324. Clip-derived artwork programs with
-// additional varyings (4dd4ed841ce0d62e,0f53b20492bb7c46) remain excluded.
+// camera in garage run 20261024-224755-324. The OSD/radial programs witnessed
+// on PC4090/PC5090 also retain their clip-derived artwork in TEXCOORD5.
 // See docs/evidence/render-slider-ui-candidate-2026-10-24.json before promotion.
-inline constexpr std::array<uint64_t,9> screenUiShaders{0xe057d253ecd4296eull,0x4f6292c5bc65747bull,0x6980d3e81754047dull,
+inline constexpr std::array<uint64_t,11> screenUiShaders{0xe057d253ecd4296eull,0x4f6292c5bc65747bull,0x6980d3e81754047dull,
     0x588d9cc776122d0cull,0xa904c98e05d8c928ull,0xad7b09c4361f558dull,0x5d848c8b6735974full,
-    0x0ef1c3aff7d5fd94ull,0x7115b259dffd0f6aull};
+    0x0ef1c3aff7d5fd94ull,0x7115b259dffd0f6aull,0x0f53b20492bb7c46ull,0x4dd4ed841ce0d62eull};
 inline size_t ScreenUiShaderIndex(uint64_t shader) {
     const auto found=std::find(screenUiShaders.begin(),screenUiShaders.end(),shader);
     return size_t(found-screenUiShaders.begin());
@@ -23,9 +23,9 @@ inline bool ScreenUiVertexShader(uint64_t shader) { return ScreenUiShaderIndex(s
 // Observation only. These exact installed ui.pssg programs include overlay and
 // frosted/bokeh text paths which are not qualified for stereo projection. Keep
 // them separate from screenUiShaders: recording a draw must never enable it.
-inline constexpr std::array<uint64_t,9> screenUiObservedShaders{0x7daadac4d591f788ull,
+inline constexpr std::array<uint64_t,7> screenUiObservedShaders{0x7daadac4d591f788ull,
         0x50bfdc0327161633ull,0x6d11a1a3430512b8ull,0xc4acd869afab5c6full,0x7d34bb36e718a024ull,
-        0xb544d9c782ef20e1ull,0xe5aa765123374f27ull,0x0f53b20492bb7c46ull,0x4dd4ed841ce0d62eull};
+        0xb544d9c782ef20e1ull,0xe5aa765123374f27ull};
 inline size_t ScreenUiWitnessIndex(uint64_t shader) {
     const auto projected=ScreenUiShaderIndex(shader);if (projected<screenUiShaders.size()) return projected;
     return screenUiShaders.size()+size_t(std::find(screenUiObservedShaders.begin(),screenUiObservedShaders.end(),shader)-screenUiObservedShaders.begin());
@@ -43,7 +43,10 @@ inline uint64_t ScreenUiCameraIdentity(std::span<const uint8_t> data) {
     // independent captures. Live 20261024 evidence differs only in the final
     // twelve uninitialized padding bytes. Ignore those in identity, preserve
     // them in output. Keep every actual native camera field bit-exact.
-    return hash==0x56b67c51213d9ad8ull || hash==0xf1fb9ea46321746full?hash:0;
+    // PC4090's native UI view/inverse matrices have a different, repeatable
+    // floating-point result. Retain its complete normalized fingerprint rather
+    // than accepting approximately screen-shaped world cameras.
+    return hash==0x56b67c51213d9ad8ull || hash==0xf1fb9ea46321746full || hash==0xd508427cf507be3bull?hash:0;
 }
 inline bool ScreenUiCamera(std::span<const uint8_t> data) { return ScreenUiCameraIdentity(data)!=0; }
 // The two retained native UI camera families use the renderer's pixel aspect,
@@ -59,25 +62,34 @@ inline bool FlatScreenUiCamera(std::span<const uint8_t> source,unsigned width,un
     const bool ortho=value(60)==1;
     const float originalX=ortho?.1403159201145172f:1.4894007444381714f;
     const float originalY=ortho?.24945054948329926f:2.6478235721588135f;
-    if (ortho && py!=originalY) return false;
+    if (ortho && std::abs(py-originalY)>originalY*2e-6f) return false;
     const double sx=px/originalX,sy=py/originalY;
     struct Field {unsigned offset,bits;int axis;}; // +/-1=X, +/-2=Y; negative is inverse
-    constexpr Field orthographic[]={{0,0x3e0faefa,1},{64,0x3e0faefa,1},{240,0x40e40e8a,-1},
-        {260,0x4080482d,0},{280,0xc69c4000,0},{296,0x461c4000,0},{300,0x3f800000,0}};
+    constexpr Field orthographic[]={{0,0x3e0faefa,1},{20,0x3e7f6ff7,2},{64,0x3e0faefa,1},{84,0x3e7f6ff7,2},{240,0x40e40e8a,-1},
+        {260,0x4080482d,-2},{280,0xc69c4000,0},{296,0x461c4000,0},{300,0x3f800000,0}};
     constexpr Field perspective[]={{0,0x3fbea4af,1},{20,0x402975f1,2},{64,0x3fbea4af,1},{68,0xa90055a1,2},
         {84,0x402975f1,2},{96,0xb425e79c,1},{100,0xb493788a,2},{112,0x93bea4b0,1},{116,0x9fdbdf63,2},
-        {240,0x3f2be197,-1},{260,0x3ec15dc9,-2}};
-    std::array<uint8_t,320> candidate{};std::copy(source.begin(),source.end(),candidate.begin());
+        {240,0x3f2be197,-1},{260,0x3ec15dc9,-2},{300,0x40a00069,0}};
     const std::span<const Field> fields=ortho?std::span<const Field>(orthographic):std::span<const Field>(perspective);
-    for (const auto& field:fields) {
-        float original;memcpy(&original,&field.bits,4);
-        const double scale=std::abs(field.axis)==1?sx:std::abs(field.axis)==2?sy:1.;
-        const double expected=field.axis<0?original/scale:original*scale,actual=value(field.offset);
-        if (!std::isfinite(actual) || std::abs(actual-expected)>std::max(1e-35,std::abs(expected)*2e-6)) return false;
-        memcpy(candidate.data()+field.offset,&field.bits,4);
+    for (unsigned variant=0;variant<(ortho?1u:2u);++variant) {
+        std::array<uint8_t,320> candidate{};std::copy(source.begin(),source.end(),candidate.begin());
+        bool valid=true;
+        for (const auto& field:fields) {
+            auto bits=field.bits;
+            // The alternate view has ~2.27e-13 translation residuals. Only
+            // those two lens-scaled fields differ here; its remaining view,
+            // projection and inverse fields must match the full fingerprint.
+            if (variant && field.offset==112) bits=0x2abea4af;
+            if (variant && field.offset==116) bits=0x2b2975f0;
+            float original;memcpy(&original,&bits,4);
+            const double scale=std::abs(field.axis)==1?sx:std::abs(field.axis)==2?sy:1.;
+            const double expected=field.axis<0?original/scale:original*scale,actual=value(field.offset);
+            if (!std::isfinite(actual) || std::abs(actual-expected)>std::max(1e-35,std::abs(expected)*2e-6)) {valid=false;break;}
+            memcpy(candidate.data()+field.offset,&bits,4);
+        }
+        if (valid && ScreenUiCamera(candidate)) {output=candidate;return true;}
     }
-    if (!ScreenUiCamera(candidate)) return false;
-    output=candidate;return true;
+    return false;
 }
 // Stereo retains the native vertex shader and artwork varyings. Only its clip
 // position is mapped back to the verified 16:9 canvas by the post-VS plane.
@@ -156,6 +168,8 @@ inline bool ScreenUiPlaneProjection(const SceneViews& views,unsigned eye,const S
 }
 inline unsigned ScreenUiVaryingMask(uint64_t shader) {
     if (!ScreenUiVertexShader(shader)) return 0;
+    if (shader==0x0f53b20492bb7c46ull) return 55; // T0, T1, T2, T4, T5
+    if (shader==0x4dd4ed841ce0d62eull) return 63; // T0 through T5
     return shader==0x6980d3e81754047dull || shader==0x588d9cc776122d0cull || shader==0xad7b09c4361f558dull ||
         shader==0x7115b259dffd0f6aull?31:23;
 }

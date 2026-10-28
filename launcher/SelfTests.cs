@@ -15,7 +15,7 @@ internal static class SelfTests
             var client = new SessionClient(fixture);
             ProfileTests.Run(fixture);
             var defaults = new Choices();
-            Check(!defaults.Graphics.VrMirrorBorderless);
+            Check(!defaults.Graphics.VrMirrorBorderless && defaults.Graphics.DesktopBorderless);
             Check(SessionClient.CarLabel("z28") == "Chevrolet Camaro Z28");
             Check(SessionClient.CarLabel("unverified_car") == "unverified_car");
             Check(SessionClient.LocationLabel("circuits/brands_hatch") == "Brands Hatch");
@@ -50,15 +50,20 @@ internal static class SelfTests
                 foreach (var mode in new[] { "Normal", "Practice", "Race" })
                     foreach (var borderless in new[] { false, true })
                     {
-                        var mirrorOptions = selection with { Runtime = runtime, LaunchMode = mode, Graphics = graphics with { VrMirrorBorderless = borderless } };
+                        var mirrorOptions = selection with { Runtime = runtime, LaunchMode = mode, Graphics = graphics with { VrMirrorBorderless = borderless, DesktopBorderless = borderless } };
                         client.Save(mirrorOptions); Check(client.Load() == mirrorOptions);
                         Check(client.LaunchCommand(mirrorOptions, true).ArgumentList.Contains("-VrMirrorBorderless") == borderless);
                         Check(!client.LaunchCommand(mirrorOptions, false).ArgumentList.Contains("-VrMirrorBorderless"));
+                        var desktopArgs = client.LaunchCommand(mirrorOptions, false).ArgumentList;
+                        Check(desktopArgs[desktopArgs.IndexOf("-DesktopBorderless") + 1] == (borderless ? "1" : "0"));
+                        Check(desktopArgs[desktopArgs.IndexOf("-RenderScale") + 1] == graphics.EffectiveDesktopRenderScale.ToString());
+                        Check(!client.LaunchCommand(mirrorOptions, true).ArgumentList.Contains("-DesktopBorderless"));
                     }
             var legacyMirror = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(client.Artifacts, "launcher-settings.json")))!.AsObject();
             legacyMirror["Graphics"]!.AsObject().Remove("VrMirrorBorderless");
+            legacyMirror["Graphics"]!.AsObject().Remove("DesktopBorderless");
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-settings.json"), legacyMirror.ToJsonString());
-            Check(!client.Load().Graphics.VrMirrorBorderless);
+            Check(!client.Load().Graphics.VrMirrorBorderless && client.Load().Graphics.DesktopBorderless);
             client.Save(selection);
             foreach (var value in new[] { defaults with { Car = "pag; Stop-Process steam" }, defaults with { Track = "../foreign" }, defaults with { Runtime = "Auto" },
                 defaults with { RecenterKey = 27 }, defaults with { RecenterModifiers = 8 }, defaults with { RecenterKey = 115, RecenterModifiers = 2 },

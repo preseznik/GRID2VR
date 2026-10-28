@@ -69,6 +69,23 @@ class RuntimeEvidenceTests(unittest.TestCase):
                        dict(terminatedOwnedProcessIds=[1]), dict(exits=[dict(id=79316, code=-1073741819)])):
             self.assertEqual(classify_faults([line], {**bounded, **change})['unexpectedFaults'], [line])
 
+    def test_pc4090_clean_desktop_and_fatal_vr_captures_remain_distinct(self):
+        captures = json.loads((Path(__file__).parent/'fixtures/native-startup-seh-pc4090-20261028.json').read_text())
+        for capture in captures:
+            lines, session = capture['faults'], capture['session']
+            self.assertEqual(hashlib.sha256(('\r\n'.join(lines)+'\r\n').encode()).hexdigest(), capture['sourceFaultLogSha256'])
+            result = classify_faults(lines, session)
+            with self.subTest(run=capture['sourceRun']):
+                if capture['cleanExit']:
+                    self.assertEqual(result['knownNativeExceptions'], lines)
+                    self.assertEqual(result['unexpectedFaults'], [])
+                else:
+                    self.assertEqual(result['unexpectedFaults'], lines)
+                    # Even an exit-code reporting error must retain the fatal read.
+                    exited = {**session, 'result': 'process_exited', 'terminatedOwnedProcessIds': [],
+                              'exits': [dict(id=p['id'], code=0) for p in session['processes']]}
+                    self.assertEqual(classify_faults(lines, exited)['unexpectedFaults'], lines[1:])
+
     def test_known_native_signal_does_not_replace_stop_or_other_fault_evidence(self):
         fixture = self.startup_signal()
         with tempfile.TemporaryDirectory() as name:

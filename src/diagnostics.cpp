@@ -169,6 +169,7 @@ const char* BeforeGameExit() {
         return "renderer_not_restored";
     }
     runtimeStopped=true;
+    frontendvideo::Stop();
     playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();cockpitanimation::Stop();
     if (!flatMenuUi.Reset()) return "flat_menu_not_restored";
 #ifdef GRID2VR_ENABLE_XR_SESSION
@@ -633,7 +634,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     if(runtimeSession) {
         // Live input state overrides also serve Press Start and frontend menus.
         // The host fingerprint is verified before Present is attached; this
-        // path keeps native code intact and waits for a guarded heap instance.
+        // path keeps native code intact and waits for guarded input/job instances.
         if(!f) drivingcontrols::Install(gameBase,output);
         drivingcontrols::Tick();
     }
@@ -967,12 +968,11 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     return hr;
 }
 
-bool InstallFrontendVideoResize();
-void PrepareSwapchainChange() {
-    // Native reset reaches the front-end target rebuild after this DXGI call.
-    // Leave initial startup/target creation entirely outside the new hook.
-    if (runtimeSession && std::filesystem::is_regular_file(output/L"scene-size.request") && !InstallFrontendVideoResize())
-        Log("session frontend_video_reset hook refused");
+void PrepareSwapchainChange(bool nativeResize) {
+    // The native resize event is queued after DXGI returns. Its owned callback
+    // corrects the video size without modifying integrity-checked game code.
+    if (nativeResize && runtimeSession && std::filesystem::is_regular_file(output/L"scene-size.request") && !frontendvideo::Install(gameBase,output))
+        Log("session frontend_video_reset callback refused");
     nativeUiWitness.End(true);
     FinishLateUi(false);lateUi.Reset();
     previewFrame.Reset();
@@ -982,32 +982,10 @@ void PrepareSwapchainChange() {
         if (!suspended) engine::FailSession();
     }
 }
-using FrontendVideoResizeFn=void(__thiscall*)(void*,unsigned,unsigned,bool);
-FrontendVideoResizeFn realFrontendVideoResize{};
-void __fastcall FrontendVideoResize(void* camera,void*,unsigned width,unsigned height,bool force) {
-    const auto caller=reinterpret_cast<uintptr_t>(_ReturnAddress());
-    if (caller==gameBase+frontendvideo::resetReturnRva) {
-        const auto incomingWidth=width,incomingHeight=height;
-        const bool owned=sceneresolution::OwnsNativeResize(gameBase);
-        const bool corrected=owned && frontendvideo::ResetArguments(gameBase,caller,camera,width,height,force);
-        Log("session frontend_video_reset corrected=%u owned=%u incoming=%ux%u base=%ux%u",
-            corrected,owned,incomingWidth,incomingHeight,width,height);
-    }
-    realFrontendVideoResize(camera,width,height,force);
-}
-bool InstallFrontendVideoResize() {
-    if (realFrontendVideoResize) return true;
-    if (!frontendvideo::InstructionsMatch(gameBase)) return false;
-    auto* target=reinterpret_cast<void*>(gameBase+frontendvideo::resizeRva);
-    if (MH_CreateHook(target,reinterpret_cast<void*>(FrontendVideoResize),reinterpret_cast<void**>(&realFrontendVideoResize))!=MH_OK) return false;
-    if (MH_EnableHook(target)!=MH_OK) {MH_RemoveHook(target);realFrontendVideoResize=nullptr;return false;}
-    Log("session frontend_video_reset installed=1");
-    return true;
-}
 HRESULT STDMETHODCALLTYPE Resize(IDXGISwapChain* chain,UINT count,UINT width,UINT height,DXGI_FORMAT format,UINT flags) {
     const auto incomingWidth=width,incomingHeight=height;
     const auto change=sceneresolution::PrepareResize(gameBase,reinterpret_cast<uintptr_t>(_ReturnAddress()),chain,width,height,format);
-    PrepareSwapchainChange();
+    PrepareSwapchainChange(bool(change));
     Log("ResizeBuffers requested=%ux%u effective=%ux%u format=%u enforced=%u",incomingWidth,incomingHeight,width,height,format,bool(change));
     const auto hr=realResize(chain,count,width,height,format,flags);
     sceneresolution::CompleteResize(change,hr);
@@ -1024,7 +1002,7 @@ void AttachSwapchain(IDXGISwapChain* chain) {
 HRESULT STDMETHODCALLTYPE CreateSwapchain(IDXGIFactory* factory,IUnknown* device,DXGI_SWAP_CHAIN_DESC* desc,IDXGISwapChain** chain) {
     Stack("CreateSwapChain");
     const auto change=sceneresolution::PrepareCreate(gameBase,output,device,desc,chain,reinterpret_cast<uintptr_t>(_ReturnAddress()));
-    if(change && change.recreation)PrepareSwapchainChange();
+    if(change && change.recreation)PrepareSwapchainChange(true);
     const auto hr=realSwap(factory,device,desc,chain);
     Log("CreateSwapChain hr=0x%08lx",hr);
     sceneresolution::CompleteCreate(change,hr,SUCCEEDED(hr) && chain?*chain:nullptr);
