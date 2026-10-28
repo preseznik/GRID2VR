@@ -13,9 +13,9 @@ Standalone installations launch directly and use **Current game career**. Manage
 | Channel | Published release | Downloads |
 | --- | --- | --- |
 | Stable | [0.2.0 Stable / Latest](https://github.com/preseznik/GRID2VR/releases/latest) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/GRID2VR-0.2.0-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/GRID2VR-0.2.0.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/SHA256SUMS.txt) |
-| Experimental | [0.1.11 Experimental](https://github.com/preseznik/GRID2VR/releases/tag/v0.1.11) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.1.11/GRID2VR-0.1.11-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.1.11/GRID2VR-0.1.11.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.1.11/SHA256SUMS.txt) |
+| Experimental | [0.2.1 Experimental](https://github.com/preseznik/GRID2VR/releases/tag/v0.2.1) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.2.1/GRID2VR-0.2.1-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.2.1/GRID2VR-0.2.1.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.2.1/SHA256SUMS.txt) |
 
-GitHub's **Latest** link selects Stable. The older 0.1.11 Experimental release remains available above; see [all releases](https://github.com/preseznik/GRID2VR/releases) for future previews. The Stable promotion adds no gameplay changes to 0.1.11. Headset, graphics and performance coverage remains limited; a reported fault when quitting some VR Practice sessions still needs verification.
+GitHub's **Latest** link selects Stable. Choose **0.2.1 Experimental** above for the new driving controls, clutch/transmission options and HUD/startup improvements; see [all releases](https://github.com/preseznik/GRID2VR/releases) for future previews. Broader wheel, shifter, headset and graphics coverage remains limited; a reported fault when quitting some VR Practice sessions still needs verification.
 
 1. Download the installer for your chosen channel above.
 2. Close GRID 2 and the GRID2VR launcher, then run the installer. Select your existing GRID 2 game folder.
