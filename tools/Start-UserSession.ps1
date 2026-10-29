@@ -36,6 +36,7 @@ param(
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
+    [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
@@ -176,7 +177,7 @@ try {
         HardwareSettingsFile=$hardware;HeadsetScale=$HeadsetScale;CaptureAfterSeconds=1;TimeoutSeconds=150;PythonPath=$python;
         FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy;ChaseCameraObserver=[bool]$ChaseCameraObserver;
         ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;DesktopBorderless=$DesktopBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
-    if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection }
+    if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection; $parameters.DeviceClaim=$DeviceClaim }
     if($headsetResolution) {
         $parameters.HeadsetWidth=$headsetResolution.width; $parameters.HeadsetHeight=$headsetResolution.height; $parameters.VrRenderScale=$VrRenderScale
     }

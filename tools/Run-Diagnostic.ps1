@@ -44,6 +44,7 @@ param(
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
+    [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
@@ -140,6 +141,7 @@ Assert-RecenterKey $RecenterKey $RecenterModifiers
 . (Join-Path $PSScriptRoot 'Borderless-Desktop.ps1')
 Assert-RecenterDevice (Split-Path $PSScriptRoot -Parent) $RecenterDeviceBase64
 . (Join-Path $PSScriptRoot 'Practice-Flow.ps1')
+. (Join-Path $PSScriptRoot 'Device-Preset.ps1')
 . (Join-Path $PSScriptRoot 'Native-Startup.ps1')
 . (Join-Path $PSScriptRoot 'Cinema-Matte.ps1')
 . (Join-Path $PSScriptRoot 'Cockpit-Camera.ps1')
@@ -171,6 +173,7 @@ function Restore-Diagnostic {
     if($journal.instanceCapacity) { Restore-InstanceCapacity $game $journal.run $journal.instanceCapacity }
     if($journal.startupMovies) { Restore-StartupMovies $game $journal.run $journal.startupMovies }
     if($journal.practiceFlow) { Restore-PracticeFlow $game $journal.run $journal.practiceFlow }
+    if($journal.devicePreset) { Restore-DevicePreset $game $journal.run $journal.devicePreset }
     foreach($entry in $journal.files) {
         $target=Join-Path $game $entry.name
         if(Test-Path -LiteralPath $target) {
@@ -188,6 +191,7 @@ $launchBackend=Get-Grid2LaunchBackend $game
 Assert-Grid2LaunchCareer $launchBackend $CareerProfile
 . (Join-Path $PSScriptRoot 'Driving-Controls.ps1')
 $validatedDrivingControls=Read-DrivingControls $DrivingControls
+$deviceClaimRequest=ConvertTo-DeviceClaimRequest $DeviceClaim
 if (Test-Path -LiteralPath (Join-Path (Get-Grid2DataRoot $root) 'practice-flow-pending.json')) { throw 'Restore the earlier experimental practice flow before launching.' }
 $selectedSession=$null
 if ($SessionDirectory) {
@@ -293,6 +297,9 @@ if($headsetResolution) { Assert-HeadsetResolutionProxy $proxy }
 if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy }
 if(Test-Path -LiteralPath (Join-Path $run 'session.json')) { throw 'Diagnostic run already exists; retained its logs.' }
 $drivingControlsReceipt=Save-DrivingControls $validatedDrivingControls $run
+# Practice/Race only; Normal keeps the game's own Press Start claim.
+$deviceClaimWritten=[bool]($deviceClaimRequest -and $SessionDirectory -and !$NormalLaunch)
+if($deviceClaimWritten) { [IO.File]::WriteAllText((Join-Path $run 'device-claim.request'),$deviceClaimRequest,[Text.Encoding]::ASCII) }
 if ($selectedSession) {
     # Freeze a private XML copy for this run. The backend rejects changed inputs,
     # linked paths and existing output. GRID 2 receives an owned relative filename.
@@ -416,6 +423,8 @@ if ($selectedSession) {
 # Persist ownership before copying, so recovery works after interrupted deployment.
 $practiceFlow=$null
 if($selectedSession -and $selectedSession.control -eq 'human') { $practiceFlow=New-PracticeFlowDeployment $game $run }
+# Only a claimed DirectInput wheel without a shipped preset gets a session preset.
+$devicePreset=if($deviceClaimWritten){New-DevicePresetDeployment $game $run $deviceClaimRequest $validatedDrivingControls}else{$null}
 $startupMovies=$null # Retain the journal field for recovery of older deployments.
 $nativeStartup=if($SkipIntro) { Write-NativeStartupRequest $game $run } else { $null }
 $cinemaMatte=$null
@@ -432,7 +441,7 @@ if($InstanceCapacity -eq 'Expand') {
     if($LASTEXITCODE) { throw 'Native capacity configuration preparation failed; nothing deployed.' }
     $instanceDeployment=New-InstanceCapacityDeployment $game $run
 }
-@{gameRoot=$game;run=$run;files=$entries;practiceFlow=$practiceFlow;startupMovies=$startupMovies;cinemaMatte=$cinemaMatte;cockpitCamera=$cockpitCamera;cockpitAssets=$cockpitAssets;instanceCapacity=$instanceDeployment} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $journalPath
+@{gameRoot=$game;run=$run;files=$entries;practiceFlow=$practiceFlow;devicePreset=$devicePreset;startupMovies=$startupMovies;cinemaMatte=$cinemaMatte;cockpitCamera=$cockpitCamera;cockpitAssets=$cockpitAssets;instanceCapacity=$instanceDeployment} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $journalPath
 $receipt=[ordered]@{startedUtc=[DateTime]::UtcNow.ToString('o');runKind=$RunKind;timeoutSeconds=$TimeoutSeconds;captureAfterSeconds=$CaptureAfterSeconds;proxyMode=$ProxyMode;engineTrace=[bool]$EngineTrace;captureStageTargets=[bool]$CaptureStageTargets;traceSceneBoundary=[bool]$TraceSceneBoundary;replayOnce=[bool]$ReplayOnce;executableSha256=$expected;executableBuild='grid2-avx-1.0.85.8679';proxySha256=$entries[0].sha256;processes=@();terminatedOwnedProcessIds=@();result='prepared';uiAutomation=$false}
 $receipt.vrHud=@{enabled=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly);distance=$HudDistance;followView=[bool]$HudFollowView;hiddenElements=$HudHiddenElements}
 $receipt.performanceDisplay=[bool]$PerformanceDisplay
@@ -455,6 +464,8 @@ $receipt.exposureAudit=[bool]$ExposureAudit
 $receipt.removeCinemaMatte=[bool]$RemoveCinemaMatte
 $receipt.diagnosticLogging=[bool]$DiagnosticLogging
 $receipt.drivingControls=$drivingControlsReceipt
+$receipt.deviceClaim=if($deviceClaimWritten){$DeviceClaim}else{$null}
+$receipt.devicePreset=$devicePreset
 $receipt.msaaAudit=[bool]$MsaaAudit
 $receipt.nativeSceneResolution=@{enabled=($SceneWidth -gt 0);width=$SceneWidth;height=$SceneHeight}
 $receipt.flickerDiagnostic=[bool]$FlickerDiagnostic
@@ -516,6 +527,7 @@ try {
     Write-Output "Diagnostic evidence: $run"
     if($UntilExit) { Write-Output 'GRID2VR_LAUNCH|Installing temporary session files...' }
     if($practiceFlow) { Install-PracticeFlow $game $run $practiceFlow }
+    if($devicePreset) { Install-DevicePreset $game $run $devicePreset }
     if($cockpitCamera) { Install-CockpitCamera $game $run $cockpitCamera }
     if($cockpitAssets.Count) { Install-CockpitAssets $game $run $cockpitAssets }
     if($cinemaMatte) { Install-CinemaMatte $game $run $cinemaMatte }

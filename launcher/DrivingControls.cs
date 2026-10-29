@@ -32,6 +32,11 @@ internal sealed class DrivingControls
     public string Transmission { get; set; } = "game";
     public int SteeringLinearity { get; set; }
     public int ClutchShiftThreshold { get; set; } = 50;
+    // Practice/Race skip GRID 2's Press Start screen, which normally claims the
+    // driving device (and with it rumble/force feedback). "auto" claims the
+    // steering-binding device, then an Xbox pad; "keyboard" claims nothing;
+    // "xinput_pad" or a DirectInput product GUID names one device family.
+    public string DirectLaunchDevice { get; set; } = "auto";
     public List<DrivingBinding> Bindings { get; set; } = [];
     internal static readonly string[] Transmissions = ["game", "automatic", "sequential", "hpattern", "hpattern_clutch"];
     public static readonly string[] Actions = ["Steer Left", "Steer Right", "Accelerate", "Brake", "Clutch", "Handbrake",
@@ -77,7 +82,7 @@ internal sealed class DrivingControls
         Validate();
         if (Enabled && Problems() is { Count: > 0 } problems) throw new IOException(string.Join(Environment.NewLine, problems));
         var value = new DrivingControls { Enabled = Enabled, ListenAllDevices = ListenAllDevices, Transmission = Transmission, SteeringLinearity = SteeringLinearity,
-            ClutchShiftThreshold = ClutchShiftThreshold, Bindings = [.. Bindings] };
+            ClutchShiftThreshold = ClutchShiftThreshold, DirectLaunchDevice = DirectLaunchDevice, Bindings = [.. Bindings] };
         var bytes = JsonSerializer.SerializeToUtf8Bytes(value, Json);
         if (bytes.Length > MaxFileBytes) throw new IOException("Driving controls file is too large.");
         path = Path.GetFullPath(path);
@@ -92,6 +97,8 @@ internal sealed class DrivingControls
         if (!Transmissions.Contains(Transmission)) throw new IOException("Invalid transmission setting.");
         if (SteeringLinearity is < -10 or > 10) throw new IOException("Wheel steering linearity must be between -10 and 10.");
         if (ClutchShiftThreshold is < 10 or > 100) throw new IOException("Clutch shift threshold must be between 10% and 100%.");
+        if (DirectLaunchDevice is not ("auto" or "keyboard" or "xinput_pad") && !(DirectLaunchDevice is { Length: 38 } && Guid.TryParseExact(DirectLaunchDevice, "B", out _)))
+            throw new IOException("Invalid direct-launch controls device.");
         var slots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var devices = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var b in Bindings)
@@ -140,6 +147,17 @@ internal sealed class DrivingControls
         Bindings.Add(binding);
     }
     public void ApplyXboxPreset() { foreach (var binding in XboxPreset()) Assign(binding); }
+    // Session worker spec for Practice/Race (tools/Driving-Controls.ps1). Wheels
+    // precede an Xbox pad, as in the game's own input/paths.xml priorities.
+    internal string? DeviceClaimSpec()
+    {
+        Validate();
+        if (DirectLaunchDevice == "keyboard") return null;
+        if (DirectLaunchDevice != "auto") return "device;" + DirectLaunchDevice;
+        var steering = Enabled ? Bindings.Where(b => b.Action is "Steer Left" or "Steer Right" && !b.Keyboard).Select(b => b.DeviceType)
+            .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(type => type == "xinput_pad").Take(8) : [];
+        return string.Join(";", steering.Prepend("auto"));
+    }
     // Both the product family and physical instance are required by the session reader.
     public XDocument ToXml()
     {

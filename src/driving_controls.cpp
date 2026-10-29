@@ -6,6 +6,7 @@
 #include "driving_controls_producer.h"
 #include "driving_controls_steering.h"
 #include "driving_controls_shift.h"
+#include "device_claim_model.h"
 #include "guarded_hooks.h"
 #include <atomic>
 #include <cctype>
@@ -77,6 +78,15 @@ InputRoute route;
 struct StatePatch { uintptr_t map{},registry{},head{},node{},address{};uint32_t action{};Axis native{},applied{}; };
 std::vector<StatePatch> previous;
 struct LiveMap { uintptr_t address{};uint32_t id{}; };
+// Direct-launch device claim (device_claim_model.h). Runs in Input2 Update;
+// claim-only sessions attach the same private Input2 table without bindings.
+struct Claim {
+    bool requested{},pending{},only{},called{};ClaimRequest request;std::vector<ClaimCandidate> candidates;
+    const char* reason="not_requested";const char* matched="";
+    uint64_t updates{};ULONGLONG routeSince{};DWORD thread{};
+    uint32_t map{},saveMap{},activeMap{},result{};Device device{};std::vector<uint32_t> before,after,mapsSeen;
+} claim;
+std::array<uint32_t,2> claimActions{};
 template<class T> T Function(uintptr_t rva) { return reinterpret_cast<T>(base+rva); }
 // This reader is also used during the brief suspended-peer attachment interval.
 // It deliberately has no profiling, logging, allocation or user-mode locks.
@@ -377,10 +387,110 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
     }
     reason=std::all_of(coverage.begin(),coverage.end(),[](const auto& c){return c.routed;})?"input_routes_ready":"input_routes_pending";return true;
 }
+void WriteClaim() {
+    if(folder.empty() || !claim.requested)return;
+    std::ofstream file(folder/L"device-claim.json",std::ios::trunc);
+    const auto list=[&](const std::vector<uint32_t>& values){file<<'[';for(size_t i=0;i<values.size();++i){if(i)file<<',';file<<values[i];}file<<']';};
+    file << "{\"schema\":1,\"mode\":\"" << (claim.request.automatic?"auto":"device") << "\",\"families\":[";
+    for(size_t i=0;i<claim.request.families.size();++i){if(i)file<<',';file<<'"'<<claim.request.families[i]<<'"';}
+    file << "],\"pending\":" << (claim.pending?"true":"false") << ",\"reason\":\"" << claim.reason << "\",\"claimOnly\":" << (claim.only?"true":"false")
+         << ",\"inputThread\":" << claim.thread << ",\"updates\":" << claim.updates
+         << ",\"consumedMap\":" << claim.map << ",\"saveMap\":" << claim.saveMap << ",\"activeMap\":" << claim.activeMap
+         << ",\"keyboardFamily\":" << keyboardFamily << ",\"consumedMapsSeen\":";list(claim.mapsSeen);
+    file << ",\"familiesBefore\":";list(claim.before);
+    file << ",\"familiesAfter\":";list(claim.after);
+    file << ",\"nativeCall\":" << (claim.called?"true":"false") << ",\"nativeResult\":" << claim.result
+         << ",\"device\":{\"family\":" << claim.device.family << ",\"index\":" << claim.device.index << ",\"matched\":\"" << claim.matched << "\"}"
+         << ",\"bindTarget\":\"Input2 5c1db0 (ScreenPressStart 7dcec4)\",\"gameCodeWrites\":0}\n";
+}
+void FinishClaim(const char* why) { claim.pending=false;claim.reason=why;WriteClaim(); }
+bool ClaimCompile() {
+    if(claimActions[0])return true;
+    if(!Compile())return false;
+    claimActions={Intern("Accelerate"),Intern("Brake")};
+    for(const auto& family:claim.request.families) {
+        auto upper=family;for(auto& c:upper)c=static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        claim.candidates.push_back({Intern(family),Intern(upper)});
+        if(!claim.candidates.back().family || !claim.candidates.back().familyUpper)return false;
+    }
+    return claimActions[0] && claimActions[1];
+}
+// Caller holds the library lock. Collects the device families bound to the
+// driving actions of one live map; no native vector or binding is changed.
+bool MapFamilies(uintptr_t object,uint32_t id,std::vector<uint32_t>& families,uintptr_t& registry) {
+    std::vector<LiveMap> live;families.clear();
+    if(!LibraryMaps(object,live))return false;
+    const auto found=std::find_if(live.begin(),live.end(),[&](const auto& m){return m.id==id;});
+    if(found==live.end() || !Read(found->address+4,registry) || !registry)return false;
+    for(const auto action:{claimActions[0],claimActions[1],steeringActions[0],steeringActions[1]}) {
+        uintptr_t node{};std::array<uint32_t,2> range{};
+        if(!Find(found->address+8,action,node))return false;
+        if(!node)continue;
+        if(!Read(node+0x20,range) || range[1]<range[0] || (range[1]-range[0])%sizeof(Axis) || (range[1]-range[0])/sizeof(Axis)>256)return false;
+        std::vector<Axis> axes((range[1]-range[0])/sizeof(Axis));
+        if(!axes.empty() && (!Heap(range[0],axes.size()*sizeof(Axis)) || !ReadMemory(reinterpret_cast<void*>(range[0]),axes.data(),axes.size()*sizeof(Axis))))return false;
+        for(const auto& axis:axes)if(!CarriesFamily(families,axis.device.family))families.push_back(axis.device.family);
+    }
+    return true;
+}
+void ClaimDevice(uintptr_t object) {
+    if(!claim.pending || stopped)return;
+    if(!claim.thread)claim.thread=GetCurrentThreadId();
+    if(++claim.updates%15)return;
+    const auto current=ReadInputRoute(base,[](uintptr_t at,void* output,size_t bytes){return ReadMemory(reinterpret_cast<void*>(at),output,bytes);});
+    if(!current.valid || current.input!=object) {
+        if(claim.reason!=std::string_view("waiting_for_local_controller")){claim.reason="waiting_for_local_controller";WriteClaim();}
+        return;
+    }
+    if(!Read(object+0x24c,claim.saveMap) || !Read(object+0x250,claim.activeMap)){FinishClaim("input_maps_unreadable");return;}
+    claim.map=current.map;
+    if(std::find(claim.mapsSeen.begin(),claim.mapsSeen.end(),current.map)==claim.mapsSeen.end() && claim.mapsSeen.size()<8) {
+        claim.mapsSeen.push_back(current.map);WriteClaim();
+    }
+    // Press Start binds the profile map, which the native save also uses. A
+    // direct race first routes the controller through the combined any-device
+    // map (FFFFFFFF) and moves it to the profile map later: wait, never bind
+    // the combined map.
+    if(claim.saveMap!=current.map) {
+        if(claim.reason!=std::string_view("waiting_for_profile_map")){claim.reason="waiting_for_profile_map";WriteClaim();}
+        return;
+    }
+    const auto now=GetTickCount64();if(!claim.routeSince)claim.routeSince=now;
+    if(!ClaimCompile()){FinishClaim("claim_identity");return;}
+    // Decide under the library lock; receipts are written after releasing it.
+    const char* refusal{};std::optional<Device> selected;
+    {
+        LibraryLock lock(object);uintptr_t registry{};
+        if(!MapFamilies(object,current.map,claim.before,registry))refusal="consumed_map_shape";
+        else if(claim.before.empty())refusal="consumed_map_without_driving_actions";
+        else if(!KeyboardOnly(claim.before,keyboardFamily))refusal="map_already_has_device";
+        else if(!Enumerate(registry))refusal="device_enumeration";
+        else selected=SelectClaimDevice(devices.devices,claim.candidates,keyboardFamily);
+    }
+    if(refusal){FinishClaim(refusal);return;}
+    if(!selected) {
+        if(now-claim.routeSince>30000){FinishClaim("device_not_connected");return;}
+        if(claim.reason!=std::string_view("waiting_for_device")){claim.reason="waiting_for_device";WriteClaim();}
+        return;
+    }
+    const auto device=*selected;
+    claim.device=device;
+    for(size_t i=0;i<claim.candidates.size();++i)
+        if(device.family==claim.candidates[i].family || device.family==claim.candidates[i].familyUpper){claim.matched=claim.request.families[i].c_str();break;}
+    // The receipt names the attempt before the call: a fault stays attributable.
+    claim.reason="native_bind_called";claim.called=true;WriteClaim();
+    // Exactly ScreenPressStart's bind (VA 7dcec4): Input2 this, profile map,
+    // native device record. Outside the library lock; it locks natively.
+    claim.result=Function<uint32_t (__thiscall*)(void*,uint32_t,const Device*)>(0x1c1db0)(reinterpret_cast<void*>(object),current.map,&device);
+    bool shaped{};
+    {LibraryLock lock(object);uintptr_t registry{};shaped=MapFamilies(object,current.map,claim.after,registry);}
+    FinishClaim(!shaped?"claimed_map_shape":CarriesFamily(claim.after,device.family)?"claimed":"bind_left_map_keyboard_only");
+}
 void __fastcall ServiceUpdate(void* self,void*,const double* delta) {
     std::lock_guard guard(mutex);
     const auto object=reinterpret_cast<uintptr_t>(self);
     if(object!=owner || !Instance(object,shadowTable)) {originalServiceUpdate(self,delta);return;}
+    if(claim.only) {originalServiceUpdate(self,delta);ClaimDevice(object);return;}
     std::vector<LiveMap> live;
     try {LibraryLock lock(object);if(!LibraryMaps(object,live))Refuse("input_map_tree");else RestoreStates(live);}
     catch(...) {Refuse("input_restore_exception");}
@@ -388,6 +498,9 @@ void __fastcall ServiceUpdate(void* self,void*,const double* delta) {
     // backend locks. This preserves the game's existing lock order. Always
     // forward exactly once, including any observer allocation failure.
     originalServiceUpdate(self,delta);
+    // Previous overlay states are already restored; the next preparation
+    // rereads every live map, including any vectors the native bind replaced.
+    ClaimDevice(object);
     if(stopped || failed){if(failed)Status();return;}
     ++updates;live.clear();
     try {physicalInput.Poll();sampledAt=GetTickCount64();
@@ -577,6 +690,30 @@ bool Guards() {
     for(size_t i=0;i<std::size(methods);++i) {uintptr_t pointer{};if(!Read(base+inputTable+4*i,pointer) || pointer!=base+methods[i])return false;}
     return true;
 }
+// Input2 bind 5c1db0(map, const Device*): prologue, preset lookup, library
+// find, non-keyboard default merge, calibration propagation and two-argument
+// return. ScreenPressStart passes the device record and the profile map, with
+// its device map from the PC stub 443250 (always 0). No bytes are patched.
+bool ClaimGuards() {
+    constexpr uint8_t prologue[]{0x55,0x8b,0xec,0x83,0xec,0x2c,0x53,0x56,0x57,0x8b,0xf9,0x8b,0x4d,0x0c,0x8d,0x45,0xfc,0x50,0x51,0x8b,0xcf,0xbb,0x58,0x00,0x00,0x00};
+    constexpr uint8_t epilogue[]{0x5f,0x5e,0x8b,0xc3,0x5b,0x8b,0xe5,0x5d,0xc2,0x08,0x00};
+    constexpr uint8_t pressStart[]{0x51,0x52,0x8b,0xcf,0x89,0x43,0x10};
+    constexpr uint8_t mapStub[]{0x33,0xc0,0xc2,0x04,0x00};
+    const auto at=[](uintptr_t rva,std::span<const uint8_t> bytes){return MatchesInstructions(reinterpret_cast<void*>(base+rva),bytes);};
+    return at(0x1c1db0,prologue) && at(0x1c1ed3,epilogue) && at(0x1c1dd1,RelativeCall(0x1c1dd1,0x499220)) &&
+        at(0x1c1dea,RelativeCall(0x1c1dea,0x55e820)) && at(0x1c1e42,RelativeCall(0x1c1e42,0x2ead40)) &&
+        at(0x1c1ece,RelativeCall(0x1c1ece,0x1a1cf0)) && at(0x3dcebd,pressStart) && at(0x3dcec4,RelativeCall(0x3dcec4,0x1c1db0)) &&
+        at(0x43250,mapStub) && at(0x3dce77,RelativeCall(0x3dce77,0x43250));
+}
+void LoadClaim(const std::filesystem::path& output) {
+    claim.requested=true;
+    std::ifstream file(output/L"device-claim.request",std::ios::binary);
+    std::error_code error;const auto size=std::filesystem::file_size(output/L"device-claim.request",error);
+    const std::string text=file && !error && size<=1024?std::string((std::istreambuf_iterator<char>(file)),{}):std::string();
+    if(!ParseClaimRequest(text,claim.request)){claim.reason="invalid_request";WriteClaim();return;}
+    if(!ClaimGuards()){claim.reason="claim_instruction_guard";WriteClaim();return;}
+    claim.pending=true;claim.reason="waiting_for_input_instance";WriteClaim();
+}
 InputRoute DriverRoute() {
     // Raw kernel reads only: also used while peers are paused for attachment.
     return ReadInputRoute(base,[](uintptr_t at,void* output,size_t bytes){SIZE_T copied{};
@@ -646,28 +783,46 @@ uintptr_t Discover() {
     return result;
 }
 }
+// Retain this private table for process lifetime. Native destruction restores
+// the original/base tables itself; no native allocator ever owns this table.
+const char* PrepareInputShadow(void**& allocation) {
+    originalServiceUpdate=Function<ServiceUpdateFn>(0x3b5dd0);
+    allocation=static_cast<void**>(VirtualAlloc(nullptr,14*sizeof(void*),MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE));
+    if(!allocation || !ReadMemory(reinterpret_cast<void*>(base+inputTable-4),allocation,14*sizeof(void*))) {
+        if(allocation)VirtualFree(allocation,0,MEM_RELEASE);allocation=nullptr;return "input_shadow_allocation";}
+    allocation[2]=reinterpret_cast<void*>(ServiceUpdate);DWORD old{};
+    if(!VirtualProtect(allocation,14*sizeof(void*),PAGE_READONLY,&old)){VirtualFree(allocation,0,MEM_RELEASE);allocation=nullptr;return "input_shadow_protection";}
+    return nullptr;
+}
+// A refused bindings install cannot attach Input2, so a pending claim ends too.
+void RefuseInstall(const char* why) { Refuse(why);Status();if(claim.pending)FinishClaim("driving_controls_refused"); }
 void Install(uintptr_t gameBase,const std::filesystem::path& output) {
     static bool attempted{};if(attempted)return;attempted=true;
-    std::ifstream request(output/L"driving-controls.request",std::ios::binary);if(!request)return;
+    const bool claimRequested=std::filesystem::is_regular_file(output/L"device-claim.request");
+    std::ifstream request(output/L"driving-controls.request",std::ios::binary);if(!request && !claimRequested)return;
     base=gameBase;folder=output;
-    if(std::filesystem::file_size(output/L"driving-controls.request")>524288){Refuse("request_size");Status();return;}
+    if(claimRequested)LoadClaim(output);
+    if(!request) {
+        // Claim only: no bindings, transmission, wheel or menu overlay; the
+        // private Input2 Update forwards natively and performs the claim.
+        claim.only=true;if(!claim.pending)return;
+        if(!Guards()){FinishClaim("input_instruction_guard");return;}
+        void** allocation{};
+        if(const auto failure=PrepareInputShadow(allocation)){FinishClaim(failure);return;}
+        shadowTable=allocation+1;requested=true;reason="waiting_for_input_instance";Status();return;
+    }
+    if(std::filesystem::file_size(output/L"driving-controls.request")>524288){RefuseInstall("request_size");return;}
     const std::string text((std::istreambuf_iterator<char>(request)),{});
-    if(!std::filesystem::exists(output/L"driving-controls.xml") || !Parse(text,bindings,&settings)){Refuse("invalid_request");Status();return;}
+    if(!std::filesystem::exists(output/L"driving-controls.xml") || !Parse(text,bindings,&settings)){RefuseInstall("invalid_request");return;}
     wheelConfigured=settings.wheelSettings && std::any_of(bindings.begin(),bindings.end(),[](const auto& binding){
         return Guid(binding.device) && DirectAxis(binding.input) && (binding.action=="Steer Left" || binding.action=="Steer Right");});
     coverage.resize(bindings.size());activity.resize(bindings.size());
-    if(!Guards()){Refuse("input_instruction_guard");Status();return;}
+    if(!Guards()){RefuseInstall("input_instruction_guard");return;}
     shift::Configure(base,settings.clutchShiftThreshold,settings.clutchShiftSettings && settings.transmission==Transmission::HPatternClutch);
-    try {physicalInput.Configure(bindings);}catch(...) {Refuse("input_reader_configuration");Status();return;}
-    originalServiceUpdate=Function<ServiceUpdateFn>(0x3b5dd0);
+    try {physicalInput.Configure(bindings);}catch(...) {RefuseInstall("input_reader_configuration");return;}
     originalDriverUpdate=Function<ServiceUpdateFn>(0x1aab50);
-    // Retain this private table for process lifetime. Native destruction restores
-    // the original/base tables itself; no native allocator ever owns this table.
-    auto** allocation=static_cast<void**>(VirtualAlloc(nullptr,14*sizeof(void*),MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE));
-    if(!allocation || !ReadMemory(reinterpret_cast<void*>(base+inputTable-4),allocation,14*sizeof(void*))) {
-        if(allocation)VirtualFree(allocation,0,MEM_RELEASE);Refuse("input_shadow_allocation");Status();return;}
-    allocation[2]=reinterpret_cast<void*>(ServiceUpdate);DWORD old{};
-    if(!VirtualProtect(allocation,14*sizeof(void*),PAGE_READONLY,&old)){VirtualFree(allocation,0,MEM_RELEASE);Refuse("input_shadow_protection");Status();return;}
+    void** allocation{};DWORD old{};
+    if(const auto failure=PrepareInputShadow(allocation)){RefuseInstall(failure);return;}
     if(settings.transmission!=Transmission::Game || wheelConfigured || std::any_of(bindings.begin(),bindings.end(),[](const auto& binding){return binding.action=="Clutch" ||
         HPatternIndex(binding.action)>=0;})) {
         // The game hashes image bytes during startup and later. Never patch
@@ -676,11 +831,11 @@ void Install(uintptr_t gameBase,const std::filesystem::path& output) {
         // The preceding native word is preserved, not assumed to be RTTI.
         auto** driverAllocation=static_cast<void**>(VirtualAlloc(nullptr,14*sizeof(void*),MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE));
         if(!driverAllocation || !ReadMemory(reinterpret_cast<void*>(base+driverTable-4),driverAllocation,14*sizeof(void*))) {
-            if(driverAllocation)VirtualFree(driverAllocation,0,MEM_RELEASE);VirtualFree(allocation,0,MEM_RELEASE);Refuse("driver_shadow_allocation");Status();return;
+            if(driverAllocation)VirtualFree(driverAllocation,0,MEM_RELEASE);VirtualFree(allocation,0,MEM_RELEASE);RefuseInstall("driver_shadow_allocation");return;
         }
         driverAllocation[4]=reinterpret_cast<void*>(DriverUpdate);
         if(!VirtualProtect(driverAllocation,14*sizeof(void*),PAGE_READONLY,&old)) {
-            VirtualFree(driverAllocation,0,MEM_RELEASE);VirtualFree(allocation,0,MEM_RELEASE);Refuse("driver_shadow_protection");Status();return;
+            VirtualFree(driverAllocation,0,MEM_RELEASE);VirtualFree(allocation,0,MEM_RELEASE);RefuseInstall("driver_shadow_protection");return;
         }
         driverShadow=driverAllocation+1;driverReason="waiting_for_local_controller";
     }
@@ -709,7 +864,7 @@ void Stop() {
     }
     // Tables stay allocated for process lifetime. A stale object can safely
     // forward to its native destructor even when shutdown cannot prove ownership.
-    Status();physicalInput.Release();
+    Status();WriteClaim();physicalInput.Release();
 }
 #if defined(GRID2VR_DRIVING_CONTROLS_TEST)
 namespace testing {

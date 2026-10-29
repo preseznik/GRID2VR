@@ -43,6 +43,29 @@ internal static class DrivingControlsTests
         new DrivingControls { Enabled = false, Bindings = preset.Bindings }.Save(root);
         Check(!client.PrepareLaunchCommand(new Choices(), false).ArgumentList.Contains("-DrivingControls"));
         Check(File.ReadAllText(export) == exportedText);
+        // Direct-launch device claim: Practice/Race only, auto by default, and
+        // legacy settings without the field keep the automatic claim.
+        Check(initial.DirectLaunchDevice == "auto" && preset.DeviceClaimSpec() == "auto;xinput_pad");
+        Check(new DrivingControls { Enabled = false, Bindings = preset.Bindings }.DeviceClaimSpec() == "auto");
+        Check(new DrivingControls { DirectLaunchDevice = "keyboard" }.DeviceClaimSpec() is null);
+        const string wheelFamily = "{C24F046D-0000-0000-0000-504944564944}";
+        Check(new DrivingControls { DirectLaunchDevice = wheelFamily }.DeviceClaimSpec() == "device;" + wheelFamily);
+        var wheelSteer = new DrivingBinding { Action = "Steer Left", Device = "Wheel", DeviceId = "{00000001-0002-0003-0004-000000000005}", DeviceType = wheelFamily, Input = "di_x_axis", Calibration = "biDirLower" };
+        Check(new DrivingControls { Enabled = true, Bindings = [.. preset.Bindings, wheelSteer] }.DeviceClaimSpec() == "auto;" + wheelFamily + ";xinput_pad");
+        foreach (var invalid in new[] { "off", "Keyboard", "di_default", "{bad}", "" })
+            Reject(() => new DrivingControls { DirectLaunchDevice = invalid }.Validate());
+        File.WriteAllText(DrivingControls.SettingsPath(root), "{\"Version\":2,\"Enabled\":true,\"Bindings\":[]}");
+        Check(DrivingControls.Load(root).DirectLaunchDevice == "auto");
+        preset.Save(root);
+        foreach (var mode in new[] { "Normal", "Practice", "Race" })
+        {
+            var arguments = client.PrepareLaunchCommand(new Choices { LaunchMode = mode }, false).ArgumentList;
+            var index = arguments.IndexOf("-DeviceClaim");
+            Check(mode == "Normal" ? index < 0 : index >= 0 && arguments[index + 1] == "auto;xinput_pad");
+        }
+        new DrivingControls { Enabled = true, Bindings = preset.Bindings, DirectLaunchDevice = "keyboard" }.Save(root);
+        Check(!client.PrepareLaunchCommand(new Choices { LaunchMode = "Race" }, true).ArgumentList.Contains("-DeviceClaim"));
+        Check(DrivingControls.Load(root).DirectLaunchDevice == "keyboard");
         preset.Save(root);
         foreach (var broken in new[]
         {

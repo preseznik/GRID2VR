@@ -15,6 +15,8 @@ internal sealed class DrivingControlsForm : LauncherForm
     private readonly TrackBar clutchShiftThreshold = new() { Name = "ClutchShiftThresholdSlider", AccessibleName = "Clutch shift threshold percent", Minimum = 10, Maximum = 100,
         SmallChange = 1, LargeChange = 5, TickFrequency = 10, TickStyle = TickStyle.BottomRight, AutoSize = false, Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Label clutchShiftValue = new() { Name = "ClutchShiftThresholdValue", Text = "50%", AutoSize = true, Anchor = AnchorStyles.Right, Margin = new(8, 0, 4, 0) };
+    private readonly ComboBox directDevice = new() { Name = "DrivingDirectLaunchDevice", AccessibleName = "Practice and Race controls device", DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
+    private sealed record DeviceChoice(string Value, string Label) { public override string ToString() => Label; }
     private readonly ListView rows = new() { View = View.Details, FullRowSelect = true, MultiSelect = false, Dock = DockStyle.Fill, HideSelection = false, ShowItemToolTips = true };
     private readonly Button bindKeyboard, bindDevice, calibrate, removeBinding, resetAction;
     public DrivingControlsForm(string workspaceRoot)
@@ -40,6 +42,8 @@ internal sealed class DrivingControlsForm : LauncherForm
         options.Controls.Add(enabled);
         options.Controls.Add(new Label { Text = "Transmission", AutoSize = true, Margin = new(14, 6, 6, 0) });
         options.Controls.Add(transmission);
+        options.Controls.Add(new Label { Text = "Practice/Race device", AutoSize = true, Margin = new(14, 6, 6, 0) });
+        options.Controls.Add(directDevice);
         var linearity = new TableLayoutPanel { Dock = DockStyle.Fill, Height = 42, MinimumSize = new(0, 42), ColumnCount = 3, RowCount = 1, Margin = Padding.Empty };
         linearity.ColumnStyles.Add(new(SizeType.AutoSize)); linearity.ColumnStyles.Add(new(SizeType.Percent, 100)); linearity.ColumnStyles.Add(new(SizeType.AutoSize));
         linearity.RowStyles.Add(new(SizeType.Percent, 100));
@@ -50,10 +54,13 @@ internal sealed class DrivingControlsForm : LauncherForm
         clutchThreshold.RowStyles.Add(new(SizeType.Percent, 100));
         clutchThreshold.Controls.Add(new Label { Text = "Clutch shift threshold (%)", AutoSize = true, Anchor = AnchorStyles.Left });
         clutchThreshold.Controls.Add(clutchShiftThreshold); clutchThreshold.Controls.Add(clutchShiftValue);
-        var header = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 5, Margin = Padding.Empty };
+        var header = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 6, Margin = Padding.Empty };
         header.ColumnStyles.Add(new(SizeType.Percent, 100));
-        for (var i = 0; i < 5; ++i) header.RowStyles.Add(new(SizeType.AutoSize));
-        header.Controls.Add(options); header.Controls.Add(linearity);
+        for (var i = 0; i < 6; ++i) header.RowStyles.Add(new(SizeType.AutoSize));
+        header.Controls.Add(options);
+        header.Controls.Add(new Label { Text = "Practice/Race skip the game's Press Start screen. This device is claimed instead, so its rumble/force feedback works. Normal is unchanged.",
+            AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
+        header.Controls.Add(linearity);
         header.Controls.Add(new Label { Text = "Assigned wheel steering only. 0 is linear; negative values respond faster near the centre.", AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
         header.Controls.Add(clutchThreshold);
         header.Controls.Add(new Label { Text = "A held gear engages at this clutch level. Analogue response is unchanged.", AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
@@ -126,6 +133,18 @@ internal sealed class DrivingControlsForm : LauncherForm
         rows.EndUpdate();
         if (rows.SelectedItems.Count == 0 && rows.Items.Cast<ListViewItem>().FirstOrDefault(r => r.Text == selected) is { } fallback) fallback.Selected = true;
         UpdateSelection();
+        RefreshDirectDevices((directDevice.SelectedItem as DeviceChoice)?.Value ?? settings.DirectLaunchDevice);
+    }
+    // Only bound devices are useful: in Practice/Race any other device has no
+    // game binding until it is claimed. A removed device stays selectable.
+    private void RefreshDirectDevices(string selected)
+    {
+        var choices = new List<DeviceChoice> { new("auto", "Auto (steering device, then Xbox)"), new("keyboard", "Keyboard only"), new("xinput_pad", "Xbox controller") };
+        foreach (var binding in settings.Bindings.Where(b => !b.Keyboard && b.DeviceType != "xinput_pad"))
+            if (!choices.Any(c => StringComparer.OrdinalIgnoreCase.Equals(c.Value, binding.DeviceType))) choices.Add(new(binding.DeviceType, binding.Device));
+        if (!choices.Any(c => StringComparer.OrdinalIgnoreCase.Equals(c.Value, selected))) choices.Add(new(selected, "Saved device"));
+        directDevice.BeginUpdate(); directDevice.Items.Clear(); directDevice.Items.AddRange([.. choices]);
+        directDevice.SelectedItem = choices.First(c => StringComparer.OrdinalIgnoreCase.Equals(c.Value, selected)); directDevice.EndUpdate();
     }
     private void UpdateSelection()
     {
@@ -168,6 +187,7 @@ internal sealed class DrivingControlsForm : LauncherForm
         settings = loaded; enabled.Checked = loaded.Enabled;
         transmission.SelectedIndex = Array.IndexOf(DrivingControls.Transmissions, loaded.Transmission);
         steeringLinearity.Value = loaded.SteeringLinearity; clutchShiftThreshold.Value = loaded.ClutchShiftThreshold; RefreshRows();
+        RefreshDirectDevices(loaded.DirectLaunchDevice);
     }
     private void ReadOptions()
     {
@@ -175,6 +195,7 @@ internal sealed class DrivingControlsForm : LauncherForm
         settings.Transmission = DrivingControls.Transmissions[transmission.SelectedIndex];
         settings.SteeringLinearity = steeringLinearity.Value;
         settings.ClutchShiftThreshold = clutchShiftThreshold.Value;
+        settings.DirectLaunchDevice = ((DeviceChoice)directDevice.SelectedItem!).Value;
     }
     private void Save()
     {
