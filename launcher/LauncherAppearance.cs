@@ -39,7 +39,8 @@ internal static class LauncherAppearance
             root.ForeColor = styled ? Ink : Dark && !SystemInformation.HighContrast ? Color.White : input ? SystemColors.WindowText : SystemColors.ControlText;
             if (root.Tag is "hint" or "section" && styled) root.ForeColor = Accent;
             if (root.Tag is "setting-row") root.Margin = styled ? new Padding(0, 0, 0, Px(root, 6)) : original.Margin;
-            if (root is Button button)
+            // Section headers keep their borderless heading look in both themes.
+            if (root is Button button && root.Tag is not "section")
             {
                 button.FlatStyle = styled ? FlatStyle.Flat : original.Flat;
                 button.Padding = styled && button.Name != "HelpAbout" ? new Padding(Px(root, 9), Px(root, 3), Px(root, 9), Px(root, 3)) : original.Padding;

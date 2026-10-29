@@ -194,6 +194,13 @@ internal static class SelfTests
             client.SaveWindow(new LauncherWindow(-1, 810)); Check(client.LoadWindow() == window);
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-window.json"), "{invalid"); Check(client.LoadWindow() == new LauncherWindow());
             File.WriteAllText(Path.Combine(client.Artifacts, "launcher-window.json"), "{\"Width\":99999,\"Height\":720}"); Check(client.LoadWindow() == new LauncherWindow());
+            // Collapsed sections persist with the window, ordered and de-duplicated; oversize state is refused.
+            var collapsedWindow = new LauncherWindow().WithCollapsed(["VR HUD", "Graphics preset", "VR HUD", "Bad|Title"]);
+            Check(collapsedWindow.CollapsedSections == "Graphics preset|VR HUD" && collapsedWindow.Collapsed().SetEquals(["Graphics preset", "VR HUD"]));
+            client.SaveWindow(collapsedWindow); Check(client.LoadWindow() == collapsedWindow);
+            Check(new LauncherWindow().WithCollapsed([]).CollapsedSections is null && new LauncherWindow().Collapsed().Count == 0);
+            Check(!(new LauncherWindow(CollapsedSections: new string('x', 2049))).Valid);
+            File.Delete(Path.Combine(client.Artifacts, "launcher-window.json"));
             Check(client.LogsFolder() == client.Artifacts);
             var olderLogs = Path.Combine(client.Artifacts, "diagnostic-20260101-000000-001");
             var newerLogs = Path.Combine(client.Artifacts, "diagnostic-20260101-000000-002");
@@ -351,6 +358,7 @@ internal static class SelfTests
             DrivingControlsTests.Run(fixture);
             ChaseCameraTests.Run(root, client);
             ResponsiveLayoutTests.Run(root, client);
+            SectionCollapseTests.Run(client);
             SelectableStatusTests.Run(root, client);
             VrResolutionTests.Run(client);
             SaveLauncherPreviews(root, client);

@@ -1,9 +1,42 @@
 namespace GRID2VR;
 
 // Match DiRT2VR's responsive layout without rebuilding controls during resize.
+// A focusable section heading. Collapsing hides the rows after it in its stack,
+// up to the next heading; rows are never removed, recreated or reordered.
+internal sealed class SectionHeader : Button
+{
+    private bool collapsed;
+    public SectionHeader(string title)
+    {
+        Title = title; Name = "Section" + new string(title.Where(char.IsLetterOrDigit).ToArray());
+        Tag = "section"; AutoSize = true; TextAlign = ContentAlignment.MiddleLeft; UseMnemonic = false;
+        FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0; AccessibleName = title;
+        UpdateText(); Click += (_, _) => Collapsed = !Collapsed;
+    }
+    public string Title { get; }
+    public event EventHandler? CollapsedChanged;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool Collapsed
+    {
+        get => collapsed;
+        set
+        {
+            if (collapsed == value) return;
+            collapsed = value; UpdateText(); Parent?.PerformLayout();
+            CollapsedChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+    private void UpdateText()
+    {
+        Text = (collapsed ? "▸ " : "▾ ") + Title;
+        AccessibleDescription = collapsed ? "Collapsed section; press to expand" : "Expanded section; press to collapse";
+    }
+}
+
 internal class VerticalStack : Panel
 {
     private readonly HashSet<Control> excluded = [];
+    private readonly HashSet<Control> collapsedHidden = [];
     internal static void SetShown(Control control, bool shown)
     {
         if (control.Parent is VerticalStack parent)
@@ -23,6 +56,8 @@ internal class VerticalStack : Panel
     protected override void OnControlRemoved(ControlEventArgs e)
     {
         excluded.Remove(e.Control!);
+        // A row moved to another stack (Simple view) keeps no collapse state here.
+        if (collapsedHidden.Remove(e.Control!)) e.Control!.Visible = true;
         e.Control!.SizeChanged -= ChildSizeChanged; base.OnControlRemoved(e);
     }
     private void ChildSizeChanged(object? sender, EventArgs e) => PerformLayout();
@@ -34,9 +69,20 @@ internal class VerticalStack : Panel
         try
         {
             var y = Padding.Top;
+            var collapsed = false;
             foreach (Control child in Controls)
             {
-                if (excluded.Contains(child)) { child.Bounds = Rectangle.Empty; continue; }
+                if (child is SectionHeader header) collapsed = header.Collapsed;
+                // Hide only rows this stack would otherwise show, and restore exactly
+                // those, so Simple-view exclusions are never undone by expanding.
+                if (excluded.Contains(child)) { collapsedHidden.Remove(child); child.Bounds = Rectangle.Empty; continue; }
+                if (collapsed && child is not SectionHeader)
+                {
+                    // Also on hidden pages: a zero-size row must not keep tab focus.
+                    collapsedHidden.Add(child); child.Visible = false;
+                    child.Bounds = Rectangle.Empty; continue;
+                }
+                if (collapsedHidden.Remove(child)) child.Visible = true;
                 var width = Math.Max(1, ClientSize.Width - Padding.Horizontal - child.Margin.Horizontal);
                 if (child is Label label) label.MaximumSize = new Size(width, 0);
                 var fixedWidth = child is Button or LinkLabel;

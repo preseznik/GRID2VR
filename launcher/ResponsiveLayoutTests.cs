@@ -225,6 +225,7 @@ internal static class ResponsiveLayoutTests
             var previousBottom = 0;
             foreach (Control child in parent.Controls)
             {
+                if (child.Bounds == Rectangle.Empty) continue; // Hidden (Simple view or collapsed section).
                 Require(child.Top >= previousBottom, "Stacked controls overlap."); previousBottom = child.Bottom;
             }
         }

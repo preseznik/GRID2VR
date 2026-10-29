@@ -77,6 +77,7 @@ internal sealed partial class MainForm : LauncherForm
     private LaunchProgressForm? launchProgress;
     private bool launchingVr;
     private LauncherWindow window = new();
+    private readonly List<SectionHeader> sectionHeaders = [];
     private bool windowLoaded;
 
     public MainForm(SessionClient value, ProfileStore? profileStore = null, Func<bool, CancellationToken, Task<AppRelease?>>? releaseCheck = null,
@@ -333,7 +334,7 @@ internal sealed partial class MainForm : LauncherForm
         {
             if (!windowLoaded || WindowState == FormWindowState.Minimized) return;
             window = WindowState == FormWindowState.Maximized ? window with { Maximized = true }
-                : LauncherWindow.FromClientSize(ClientSize, DeviceDpi) with { AdvancedView = window.AdvancedView };
+                : LauncherWindow.FromClientSize(ClientSize, DeviceDpi) with { AdvancedView = window.AdvancedView, CollapsedSections = window.CollapsedSections };
         };
         FormClosing += (_, _) =>
         {
@@ -376,7 +377,9 @@ internal sealed partial class MainForm : LauncherForm
         ClientSize = window.ClientSizeAtDpi(DeviceDpi, available);
         Location = new Point(work.Left + (work.Width - Width) / 2, work.Top + (work.Height - Height) / 2);
         var advanced = client.UseAdvancedView(window);
-        window = LauncherWindow.FromClientSize(ClientSize, DeviceDpi) with { Maximized = window.Maximized, AdvancedView = advanced };
+        var collapsed = window.CollapsedSections;
+        window = LauncherWindow.FromClientSize(ClientSize, DeviceDpi) with { Maximized = window.Maximized, AdvancedView = advanced, CollapsedSections = collapsed };
+        ApplyCollapsedSections(collapsed);
         viewPicker.Advanced = advanced;
         if (window.Maximized) WindowState = FormWindowState.Maximized;
         windowLoaded = true;
@@ -748,7 +751,21 @@ internal sealed partial class MainForm : LauncherForm
     }
     private void Section(Control content, string title)
     {
-        var label = TextLabel(title); label.Tag = "section"; label.Font = new Font(Font, FontStyle.Bold); label.Margin = new Padding(0, 12, 0, 8); content.Controls.Add(label);
+        var header = new SectionHeader(title) { Font = new Font(Font, FontStyle.Bold), Margin = new Padding(0, 12, 0, 8) };
+        header.CollapsedChanged += (_, _) =>
+        {
+            // Headers sharing a title (Simple and Advanced views) open and close together.
+            foreach (var other in sectionHeaders) if (other.Title == title) other.Collapsed = header.Collapsed;
+            window = window.WithCollapsed(sectionHeaders.Where(h => h.Collapsed).Select(h => h.Title).Distinct());
+        };
+        sectionHeaders.Add(header); content.Controls.Add(header);
+    }
+    internal IReadOnlyList<SectionHeader> SectionHeaders => sectionHeaders;
+    internal string? CollapsedSections => window.CollapsedSections;
+    internal void ApplyCollapsedSections(string? saved)
+    {
+        var collapsed = (window with { CollapsedSections = saved }).Collapsed();
+        foreach (var header in sectionHeaders) header.Collapsed = collapsed.Contains(header.Title);
     }
     private static void Field(Control content, string title, Control control)
     {
