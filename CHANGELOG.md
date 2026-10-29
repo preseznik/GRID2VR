@@ -1,3 +1,10 @@
+# GRID2VR 0.2.10 — Experimental VR HUD camera local candidate
+
+- Fix the race HUD appearing out of view and doubled in the headset at some render resolutions. GRID 2 draws the HUD through a perspective camera whose inverse-projection terms round slightly differently per render size. At the tester's 2150×2284 eye size one value differed in its last bit from the recorded camera, so every race-HUD draw was rejected and drawn flat in each eye: 54,243 draws per eye from four HUD shaders, none placed. Those two rounding-sensitive values are now checked within a small bound, and normalised only to roundings already seen in recorded cameras. Every other camera value must still match exactly, and unknown cameras are still rejected.
+- Add the tester's live camera as a regression fixture, with bounds cases.
+
+The tester confirmed the race HUD is now in view and no longer doubled in the headset.
+
 # GRID2VR 0.2.9 — Experimental nearby-LOD thread gate local candidate
 
 - Fix nearby opponents still dropping to low detail once alongside or behind in 0.2.8. The 0.2.8 user run refused 1,406 of 1,503 floors at the confirming check because VR permission flags changed between the two reads, with zero motion-only cases. The game selects car detail on its own thread, while GRID2VR clears permission at the start of every frame and marks eye-pair rendering on the render thread. Each such flip refused the floor and let the game's forward-only low detail through.

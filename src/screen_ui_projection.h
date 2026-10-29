@@ -70,6 +70,12 @@ inline bool FlatScreenUiCamera(std::span<const uint8_t> source,unsigned width,un
     constexpr Field perspective[]={{0,0x3fbea4af,1},{20,0x402975f1,2},{64,0x3fbea4af,1},{68,0xa90055a1,2},
         {84,0x402975f1,2},{96,0xb425e79c,1},{100,0xb493788a,2},{112,0x93bea4b0,1},{116,0x9fdbdf63,2},
         {240,0x3f2be197,-1},{260,0x3ec15dc9,-2},{300,0x40a00069,0}};
+    // +284/+296 are perspective inverse-projection terms computed from the
+    // lens; their last bit varies with render size (2150x2284 headset run
+    // 20261029-132258-607 rounds +284 one ULP). Bound them like +300, then try
+    // only the two roundings seen in the recorded native fingerprints.
+    struct Rounding {unsigned offset;std::array<uint32_t,2> bits;};
+    constexpr Rounding rounding[]={{284,{0xc09fff98,0xc09fff97}},{296,{0xbf800000,0xbf7fffff}}};
     const std::span<const Field> fields=ortho?std::span<const Field>(orthographic):std::span<const Field>(perspective);
     for (unsigned variant=0;variant<(ortho?1u:2u);++variant) {
         std::array<uint8_t,320> candidate{};std::copy(source.begin(),source.end(),candidate.begin());
@@ -87,7 +93,20 @@ inline bool FlatScreenUiCamera(std::span<const uint8_t> source,unsigned width,un
             if (!std::isfinite(actual) || std::abs(actual-expected)>std::max(1e-35,std::abs(expected)*2e-6)) {valid=false;break;}
             memcpy(candidate.data()+field.offset,&bits,4);
         }
-        if (valid && ScreenUiCamera(candidate)) {output=candidate;return true;}
+        if (!valid) continue;
+        if (ortho) {
+            if (ScreenUiCamera(candidate)) {output=candidate;return true;}
+            continue;
+        }
+        for (const auto& field:rounding) {
+            float original;memcpy(&original,&field.bits[0],4);const double actual=value(field.offset);
+            if (!std::isfinite(actual) || std::abs(actual-original)>std::abs(original)*2e-6) {valid=false;break;}
+        }
+        if (!valid) continue;
+        for (unsigned choice=0;choice<4;++choice) {
+            for (unsigned i=0;i<2;++i) memcpy(candidate.data()+rounding[i].offset,&rounding[i].bits[(choice>>i)&1],4);
+            if (ScreenUiCamera(candidate)) {output=candidate;return true;}
+        }
     }
     return false;
 }
