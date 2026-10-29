@@ -2,6 +2,7 @@ namespace GRID2VR;
 
 internal static class Branding
 {
+    public const string Patreon = "https://www.patreon.com/cw/bohloney";
     public static Icon LoadIcon()
     {
         using var stream = typeof(Branding).Assembly.GetManifestResourceStream("GRID2VR.ico") ?? throw new IOException("Launcher icon is missing.");

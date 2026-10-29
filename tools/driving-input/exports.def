@@ -6,3 +6,4 @@ EXPORTS
     CaptureName=_CaptureName
     CaptureProduct=_CaptureProduct
     CaptureRead=_CaptureRead
+    CaptureFeedback=_CaptureFeedback

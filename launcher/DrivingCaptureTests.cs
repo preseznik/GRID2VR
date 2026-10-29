@@ -94,6 +94,12 @@ internal static class DrivingCaptureTests
         Check(DrivingInputMonitor.ButtonsText(xbox, xboxSample) == "button a", "monitor labels Xbox buttons");
         Check(DrivingInputMonitor.HatsText(diagonal).Contains("0: 45°", StringComparison.Ordinal), "monitor retains exact POV diagonal angle");
         Check(DrivingInputMonitor.ButtonsText(wheel, missing) == "Disconnected", "monitor clears stale disconnected state");
+        Check(DrivingInput.FeedbackMessage(xbox, 1).StartsWith("Rumbling", StringComparison.Ordinal) &&
+              DrivingInput.FeedbackMessage(wheel, 1).Contains("force-feedback shake", StringComparison.Ordinal), "feedback test names rumble and wheel force feedback");
+        Check(DrivingInput.FeedbackMessage(wheel, -1).Contains("no force feedback", StringComparison.Ordinal) &&
+              DrivingInput.FeedbackMessage(wheel, -2).Contains("Close GRID 2", StringComparison.Ordinal) &&
+              DrivingInput.FeedbackMessage(wheel, -3).Contains("could not start", StringComparison.Ordinal) &&
+              DrivingInput.FeedbackMessage(wheel, 0).Contains("unavailable", StringComparison.Ordinal), "feedback test explains every refusal");
         Check(DrivingInput.InputDescription(saved) == "button 2", "binding label separates input from device");
     }
 }

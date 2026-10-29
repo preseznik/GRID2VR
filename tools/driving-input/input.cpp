@@ -1,4 +1,5 @@
 // Launcher-only, non-exclusive capture. The game continues to read its own inputs.
+// Only the explicit feedback test briefly takes a wheel exclusively.
 #define DIRECTINPUT_VERSION 0x0800
 #include <windows.h>
 #include <dinput.h>
@@ -16,13 +17,24 @@ struct Sample {
     unsigned char buttons[128]{};
     unsigned pov[4]{};
 };
+// A launcher feedback test owns a second, exclusive handle only while it plays.
+struct Feedback {
+    IDirectInputDevice8W* device{};
+    IDirectInputEffect* effect{};
+    ~Feedback() {
+        if(effect) { effect->Stop(); effect->Unload(); effect->Release(); }
+        if(device) { device->SendForceFeedbackCommand(DISFFC_STOPALL); device->Unacquire(); device->Release(); }
+    }
+};
 struct Device {
     IDirectInputDevice8W* input{};
+    GUID instance{};
     std::wstring id, name, product;
     unsigned axes{};
     AxisLayout layout;
     int xbox{-1};
-    ~Device() { if(input) { input->Unacquire(); input->Release(); } }
+    std::unique_ptr<Feedback> feedback;
+    ~Device() { feedback.reset(); if(input) { input->Unacquire(); input->Release(); } }
 };
 struct Capture {
     IDirectInput8W* input{};
@@ -42,7 +54,7 @@ BOOL CALLBACK Enumerate(const DIDEVICEINSTANCEW* info, void* user) {
        FAILED(device->input->SetCooperativeLevel(capture.window,DISCL_NONEXCLUSIVE|DISCL_BACKGROUND))) return DIENUM_CONTINUE;
     wchar_t guid[40]{};
     StringFromGUID2(info->guidInstance,guid,40);
-    device->id=guid; device->name=info->tszProductName;
+    device->id=guid; device->name=info->tszProductName; device->instance=info->guidInstance;
     StringFromGUID2(info->guidProduct,guid,40); device->product=guid;
     device->layout=ReadAxes(device->input); device->axes=device->layout.mask;
     device->input->Acquire();
@@ -81,6 +93,45 @@ extern "C" __declspec(dllexport) int __cdecl CaptureName(void* capture,unsigned 
 extern "C" __declspec(dllexport) int __cdecl CaptureProduct(void* capture,unsigned index,wchar_t* product,unsigned count) {
     if(!capture || index>=CaptureCount(capture) || !product) return 0;
     return wcscpy_s(product,count,static_cast<Capture*>(capture)->devices[index]->product.c_str())==0;
+}
+// Plays a short test effect: both Xbox motors at half strength, or a 10 Hz sine
+// shake on a wheel's first force-feedback axis. milliseconds==0 stops it. The
+// wheel is acquired exclusively only for the test; the game must not be running.
+enum FeedbackResult { FeedbackStarted=1, FeedbackInvalid=0, FeedbackUnsupported=-1, FeedbackBusy=-2, FeedbackFailed=-3 };
+BOOL CALLBACK FirstActuator(const DIDEVICEOBJECTINSTANCEW* object, void* user) {
+    *static_cast<DWORD*>(user)=object->dwOfs; return DIENUM_STOP;
+}
+extern "C" __declspec(dllexport) int __cdecl CaptureFeedback(void* capture,unsigned index,unsigned milliseconds) {
+    if(!capture || index>=CaptureCount(capture) || milliseconds>5000) return FeedbackInvalid;
+    auto& owner=*static_cast<Capture*>(capture);
+    auto& device=*owner.devices[index];
+    if(device.xbox>=0) {
+        XINPUT_VIBRATION motors{};
+        if(milliseconds) motors.wLeftMotorSpeed=motors.wRightMotorSpeed=32768;
+        return XInputSetState(device.xbox,&motors)==ERROR_SUCCESS ? FeedbackStarted : FeedbackFailed;
+    }
+    device.feedback.reset();
+    if(!milliseconds) return FeedbackStarted;
+    DIDEVCAPS caps{sizeof(caps)};
+    if(FAILED(device.input->GetCapabilities(&caps)) || !(caps.dwFlags&DIDC_FORCEFEEDBACK)) return FeedbackUnsupported;
+    auto feedback=std::make_unique<Feedback>();
+    if(FAILED(owner.input->CreateDevice(device.instance,&feedback->device,nullptr)) ||
+       FAILED(feedback->device->SetDataFormat(&c_dfDIJoystick2)) ||
+       FAILED(feedback->device->SetCooperativeLevel(owner.window,DISCL_EXCLUSIVE|DISCL_FOREGROUND))) return FeedbackFailed;
+    if(FAILED(feedback->device->Acquire())) return FeedbackBusy;
+    DWORD axis=DIJOFS_X;
+    feedback->device->EnumObjects(FirstActuator,&axis,DIDFT_AXIS|DIDFT_FFACTUATOR);
+    LONG direction=0;
+    DIPERIODIC shake{5000,0,0,100000};
+    DIEFFECT effect{sizeof(effect)};
+    effect.dwFlags=DIEFF_CARTESIAN|DIEFF_OBJECTOFFSETS;
+    effect.dwDuration=milliseconds*1000;effect.dwGain=DI_FFNOMINALMAX;effect.dwTriggerButton=DIEB_NOTRIGGER;
+    effect.cAxes=1;effect.rgdwAxes=&axis;effect.rglDirection=&direction;
+    effect.cbTypeSpecificParams=sizeof(shake);effect.lpvTypeSpecificParams=&shake;
+    if(FAILED(feedback->device->CreateEffect(GUID_Sine,&effect,&feedback->effect,nullptr)) ||
+       FAILED(feedback->effect->Start(1,0))) return FeedbackFailed;
+    device.feedback=std::move(feedback);
+    return FeedbackStarted;
 }
 extern "C" __declspec(dllexport) int __cdecl CaptureRead(void* capture,unsigned index,Sample* result) {
     if(!result) return 0;
