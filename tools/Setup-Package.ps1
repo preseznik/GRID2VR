@@ -8,6 +8,7 @@ $env:PYTHONIOENCODING='utf-8'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'Paths.ps1')
 . (Join-Path $PSScriptRoot 'User-Session.ps1')
+. (Join-Path $PSScriptRoot 'Cockpit-Assets.ps1')
 if(!(Test-Grid2Package $root)) { throw 'Setup requires an installed package.' }
 $game=Get-Grid2GameRoot $root
 $data=Get-Grid2DataRoot $root
@@ -18,8 +19,21 @@ $converter=Get-Grid2Converter $root
 function Progress-Step([int]$Percent,[string]$Message) {
     Write-Output "GRID2VR_PROGRESS|$Percent|$Message"
 }
+function Test-BankFile([string]$Path,[string]$Expected) {
+    return (Test-Path -LiteralPath $Path -PathType Leaf) -and (Get-FileHash -LiteralPath $Path).Hash -eq $Expected
+}
 function Test-PreparedBank([string]$Bank,[string]$Folder) {
-    # Quiet check: a stale bank is rebuilt, and a failing rebuild reports its own reason.
+    # Quiet check: a stale or damaged bank is rebuilt, and a failing rebuild reports its own reason.
+    # Cockpit banks are compared with the pinned catalog only; the final verification checks
+    # the game's own cameras and reports a changed game file with its path.
+    if($Bank -eq 'cockpit-cameras') {
+        $catalog=Read-CockpitAssetCatalog $root
+        foreach($car in $catalog.cars) {
+            foreach($mode in @('HeadOnly','HideDriver')) { if(!(Test-BankFile (Join-Path $Folder "$($car.car)/$mode.bin") $car.$mode)) { return $false } }
+        }
+        return (Test-BankFile (Join-Path $Folder 'intro.xml') $catalog.intro.sha256)
+    }
+    if($Bank -eq 'cockpit-start') { return (Test-BankFile (Join-Path $Folder 'startsequence.xml') (Read-CockpitAssetCatalog $root).startsequence.sha256) }
     $module=if($Bank -eq 'startup-movies'){'startup_movies'}else{'practice_entry'}
     & $python -c "import sys; sys.path.insert(0,sys.argv[1]); from $module import verify; verify(sys.argv[2],sys.argv[3])" (Join-Path $root 'tools') $game $Folder 2>$null | Out-Null
     return !$LASTEXITCODE
@@ -42,9 +56,10 @@ foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras','
     }
     $target=Join-Path $data $bank
     if(Test-Path -LiteralPath $target) {
-        # These banks record the player's executable hash. Steam can rewrite it with another
-        # valid variant (for example Verify integrity), so a stale bank is rebuilt from originals.
-        if($bank -notin @('practice-flow-20261014','startup-movies') -or (Test-PreparedBank $bank $target)) { continue }
+        # A reused bank can go stale: Steam may rewrite the executable with another valid variant
+        # (for example Verify integrity), files can be damaged, or a release can change the
+        # cockpit catalog. Rebuilding from the originals heals each case without a new folder name.
+        if(Test-PreparedBank $bank $target) { continue }
         Remove-PreparedBank $target
     }
     $temporary=Join-Path $data ($bank+'-preparing-'+[guid]::NewGuid().ToString('N'))
@@ -66,7 +81,6 @@ foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras','
         }
     }
 }
-. (Join-Path $root 'tools/Cockpit-Assets.ps1')
 & $python (Join-Path $root 'tools/cockpit_start.py') --game-root $game --verify (Join-Path $data 'cockpit-start')
 if($LASTEXITCODE) { throw 'Prepared cockpit starting view verification failed.' }
 Progress-Step 90 'Verifying head-only cockpit cameras…'
