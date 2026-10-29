@@ -1,6 +1,6 @@
 # Build-time only: create a standard .NET apphost that uses the packaged runtime.
 param([Parameter(Mandatory)][string]$Output,[Parameter(Mandatory)][string]$Assembly,
-    [Parameter(Mandatory)][string]$Resources,[string]$RuntimeVersion='10.0.13')
+    [Parameter(Mandatory)][string]$Resources,[string]$RuntimeVersion='10.0.14')
 $ErrorActionPreference='Stop'
 $dotnet=Split-Path (Get-Command dotnet -ErrorAction Stop).Source -Parent
 $sdk=(& dotnet --version).Trim()

@@ -97,7 +97,7 @@ def stage(a):
     (mod/'ReleaseNotes.txt').write_text(notes,encoding='utf-8-sig')
     (out/'ReleaseNotes.md').write_text(notes.split('\n',1)[1].lstrip(),encoding='utf-8')
     tree(ROOT/'licenses',mod/'licenses')
-    runtime='10.0.13'
+    runtime='10.0.14'
     stage_powershell(Path('C:/Program Files/PowerShell/7'),payload/'powershell',runtime)
     py=a.python.parent
     for p in py.iterdir():

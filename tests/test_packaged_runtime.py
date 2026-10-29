@@ -13,7 +13,7 @@ def verify(package, output, game):
     stage=package.resolve()/'stage';mod=stage/'GRID2VR'
     output=output.resolve();output.mkdir(parents=True,exist_ok=True)
     runtime=mod/'payload/dotnet'
-    assert (runtime/'shared/Microsoft.NETCore.App/10.0.13/coreclr.dll').is_file()
+    assert (runtime/'shared/Microsoft.NETCore.App/10.0.14/coreclr.dll').is_file()
     assert not (mod/'payload/powershell/coreclr.dll').exists()
     assert (mod/'payload/powershell/ref/System.Runtime.dll').is_file()
     config=json.loads((mod/'payload/powershell/pwsh.runtimeconfig.json').read_text())
@@ -55,7 +55,7 @@ Get-FileHash -LiteralPath (Join-Path $Mod 'package.json') | Out-Null
     converter_trace=run('converter',[mod/'payload/xml-convert/xml-convert.exe','decode',game/'system/flow.bin',output/'flow.xml'],environment=converter_env)
     for trace in (launcher_trace,converter_trace):
         text=trace.read_text(encoding='utf-8-sig').replace('\\','/').lower()
-        assert str(runtime).replace('\\','/').lower()+'/shared/microsoft.netcore.app/10.0.13/coreclr.dll' in text,trace
+        assert str(runtime).replace('\\','/').lower()+'/shared/microsoft.netcore.app/10.0.14/coreclr.dll' in text,trace
     with tempfile.TemporaryDirectory(prefix='missing-runtime-',dir=output) as temporary:
         scratch=Path(temporary);assert scratch.resolve().parent==output
         shutil.copyfile(stage/'GRID2VR.exe',scratch/'GRID2VR.exe')
