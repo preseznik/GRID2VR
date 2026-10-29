@@ -1,4 +1,5 @@
 #include "diagnostics.h"
+#include "build_identity.h"
 #include "game_executable.h"
 #include "foreground_hold.h"
 #include "garage_presentation.h"
@@ -1806,6 +1807,7 @@ bool Active() {
             if(runtimeSession) {chaseobserver::Prepare(gameBase,output);chasecamera::Prepare(gameBase,output);}
             engine::ObserveFaults(gameBase,output);
             Log("GRID2VR diagnostic supported AVX host; engine replay and game-device OpenXR probe separately opt-in; no headset image submission");
+            Log("GRID2VR renderer source revision=%s",SourceRevision());
             return true;
         } catch (...) { return false; }
     }();

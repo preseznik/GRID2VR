@@ -66,14 +66,43 @@ def verify_native_mode(path):
             'Native renderer lacks the nearby-opponent LOD fix; build with GRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION=ON.')
 
 
+REVISION_MARKER = b'grid2vr_source_revision='
+
+
+def native_revisions(path):
+    binary = path.read_bytes()
+    found, start = set(), 0
+    while (start := binary.find(REVISION_MARKER, start)) >= 0:
+        end = binary.find(b'\0', start)
+        found.add(binary[start+len(REVISION_MARKER):end if end >= 0 else len(binary)].decode('ascii', 'replace'))
+        start += len(REVISION_MARKER)
+    return found
+
+
+def publishable_native(release):
+    # Public releases ship the renderer built from the released commit, or a
+    # renderer pinned on purpose with explicit approval recorded at packaging.
+    if release.get('nativeSource') == 'source':
+        require(release.get('nativeRevision') == release['revision'],
+                'Native renderer was built from uncommitted or different source; commit and repackage before publishing.')
+    else:
+        require(release.get('nativeSource') == 'pinned' and release.get('pinnedPublishApproved') is True,
+                'Native renderer was not built from the released commit; repackage without -NativeBinary or approve the pinned renderer.')
+
+
 def native_path(root, native=None):
     return native if native is not None else root/'build/win32/bin/RelWithDebInfo/d3d11.dll'
 
 
-def prepare(root, out, version, channel, revision, pack=None, native=None, native_sha256=None):
+def prepare(root, out, version, channel, revision, pack=None, native=None, native_sha256=None,
+            native_revision=None, allow_pinned_publish=False):
     tag = identity(version, channel)
     require(re.fullmatch('[a-f0-9]{40}', revision), 'A full source commit is required.')
     require((native is None) == (native_sha256 is None), 'Native path and SHA-256 must be supplied together.')
+    if native_revision is not None:
+        require(native is not None and native_revision in (revision, revision+'-dirty'),
+                'A source-built renderer must be supplied with the packaged commit.')
+        require(not allow_pinned_publish, 'Pinned-renderer approval does not apply to a source-built renderer.')
     selected_native = native_path(root, native)
     if native is not None:
         require(re.fullmatch('[a-f0-9]{64}', native_sha256), 'Invalid native SHA-256.')
@@ -94,12 +123,18 @@ def prepare(root, out, version, channel, revision, pack=None, native=None, nativ
     native = selected_native
     verify_native_pack(native, catalog)
     verify_native_mode(native)
+    if native_revision is not None:
+        require(native_revisions(native) == {native_revision}, 'Native renderer was not built from the packaged source revision.')
     out.mkdir(parents=True, exist_ok=True)
     require(not (out/name).exists() and not (out/'release-inputs.json').exists(), 'Release inputs already exist; choose a new package folder.')
     shutil.copyfile(pack, out/name)
     verify_file(out/name, expected)
     frozen = dict(schema=1, repository=REPOSITORY, tag=tag, version=version, channel=channel, revision=revision,
                   catalogSha256=sha(catalog_path), nativeSha256=sha(native), cockpitTextures=dict(version=catalog['version'], **asset(out/name, tag)))
+    if native_revision is not None:
+        frozen.update(nativeSource='source', nativeRevision=native_revision)
+    else:
+        frozen.update(nativeSource='pinned', pinnedPublishApproved=bool(allow_pinned_publish))
     write(out/'release-inputs.json', frozen)
     return frozen
 
@@ -163,5 +198,8 @@ if __name__ == '__main__':
     parser.add_argument('--pack', type=Path)
     parser.add_argument('--native', type=Path)
     parser.add_argument('--native-sha256')
+    parser.add_argument('--native-revision')
+    parser.add_argument('--allow-pinned-publish', action='store_true')
     args = parser.parse_args()
-    print(json.dumps(prepare(ROOT, args.output.resolve(), args.version, args.channel, args.revision, args.pack, args.native, args.native_sha256), indent=2))
+    print(json.dumps(prepare(ROOT, args.output.resolve(), args.version, args.channel, args.revision, args.pack, args.native,
+                             args.native_sha256, args.native_revision, args.allow_pinned_publish), indent=2))

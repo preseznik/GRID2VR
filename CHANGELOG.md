@@ -2,6 +2,7 @@
 
 - Build the nearby-opponent detail fix into every main renderer. `GRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION` now defaults to ON; the diagnostic build must turn it off explicitly.
 - The renderer embeds its LOD build mode, and release packaging refuses a renderer built without the fix. The local launcher's development pins now accept the rebuilt main renderer in place of the old frozen 0.2.0/0.2.1 build.
+- Release packaging now builds the renderer, XR runtime probe and controller-input DLL from the source being released, instead of copying an existing renderer. The renderer embeds its source commit (also logged at startup), and packaging refuses a mismatch. Public releases require committed source. A hand-picked renderer can still be packaged for local tests, but publishing one needs `-AllowPinnedNative` and is recorded in the manifest.
 
 # GRID2VR 0.2.10 — Experimental VR HUD camera local candidate
 

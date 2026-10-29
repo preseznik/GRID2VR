@@ -164,13 +164,19 @@ class ReleasePublication(unittest.TestCase):
         self.native = self.root/'build/win32/bin/RelWithDebInfo/d3d11.dll'
         self.native.parent.mkdir(parents=True)
         self.native.write_bytes(('GRID2VR/addons/cockpit-textures/'+self.pack_version).encode('utf-16-le')+
-                                self.catalog['files']['textures/cat.dds'].encode('ascii')+assets.NATIVE_LOD_MODE)
+                                self.catalog['files']['textures/cat.dds'].encode('ascii')+assets.NATIVE_LOD_MODE+b'\0'+
+                                assets.REVISION_MARKER+b'a'*40+b'\0')
 
-    def prepare(self, version='0.1.10', channel='Experimental', out=None):
-        return assets.prepare(self.root, out or self.out, version, channel, 'a'*40, self.pack)
+    def prepare(self, version='0.1.10', channel='Experimental', out=None, native_revision='a'*40, allow_pinned_publish=False):
+        # Default: the renderer Package.ps1 builds from the packaged commit.
+        if native_revision is None:
+            return assets.prepare(self.root, out or self.out, version, channel, 'a'*40, self.pack,
+                                  allow_pinned_publish=allow_pinned_publish)
+        return assets.prepare(self.root, out or self.out, version, channel, 'a'*40, self.pack,
+                              self.native, assets.sha(self.native), native_revision)
 
-    def complete(self, channel='Experimental'):
-        frozen = self.prepare(channel=channel)
+    def complete(self, channel='Experimental', **native):
+        frozen = self.prepare(channel=channel, **native)
         for source, destination in [(self.catalog_path, 'tools/data/cockpit-texture-pack.json'),
                                     (self.native, 'payload/d3d11.dll')]:
             target = self.out/'stage/GRID2VR'/destination
@@ -208,6 +214,34 @@ class ReleasePublication(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'nearby-opponent LOD'):
             self.prepare()
         self.assertFalse((self.out/'release-inputs.json').exists())
+
+    def test_source_built_renderer_must_carry_the_packaged_commit(self):
+        self.native.write_bytes(self.native.read_bytes().replace(b'a'*40, b'b'*40))
+        with self.assertRaisesRegex(ValueError, 'packaged source revision'):
+            self.prepare()
+        with self.assertRaisesRegex(ValueError, 'packaged commit'):
+            self.prepare(native_revision='b'*40)
+        self.assertFalse((self.out/'release-inputs.json').exists())
+
+    def test_uncommitted_source_package_cannot_be_published(self):
+        self.native.write_bytes(self.native.read_bytes().replace(b'a'*40+b'\0', b'a'*40+b'-dirty\0'))
+        plan, github = self.complete(native_revision='a'*40+'-dirty')
+        self.assertEqual((plan['nativeSource'], plan['nativeRevision']), ('source', 'a'*40+'-dirty'))
+        with self.assertRaisesRegex(ValueError, 'uncommitted'):
+            publisher.publish(self.out, github)
+        self.assertEqual(github.calls, [])
+
+    def test_pinned_renderer_needs_explicit_publish_approval(self):
+        plan, github = self.complete(native_revision=None)
+        self.assertEqual((plan['nativeSource'], plan['pinnedPublishApproved']), ('pinned', False))
+        with self.assertRaisesRegex(ValueError, 'not built from the released commit'):
+            publisher.publish(self.out, github)
+        self.assertEqual(github.calls, [])
+        approved = self.root/'approved'
+        self.out = approved
+        plan, github = self.complete(native_revision=None, allow_pinned_publish=True)
+        self.assertTrue(plan['pinnedPublishApproved'])
+        self.assertTrue(publisher.publish(self.out, github)['published'])
 
     def test_pinned_candidate_is_used_instead_of_default_native(self):
         candidate = self.root/'accepted.dll'

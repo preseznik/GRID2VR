@@ -53,9 +53,13 @@ GRID2VR requires your own copy of GRID 2. No game files or saves are included.
 
 ## Building and publishing
 
-Build and validate the native renderer first. Run `tools/Package.ps1` with the new release's `-Version` and `-Channel Stable` or `-Channel Experimental`. Packaging requires the exact cockpit ZIP named by `tools/data/cockpit-texture-pack.json`, normally in `artifacts/cockpit-packs/all-cars`; use `-TexturePack` to supply another local path. Missing or changed artwork, or a native renderer built for another pack, stops packaging before the launcher build.
+Run `tools/Package.ps1` with the new release's `-Version` and `-Channel Stable` or `-Channel Experimental`. Packaging builds the native renderer, XR runtime probe and controller-input DLL from the current source in `build/release-native` (Release, XR session/probe and nearby-opponent LOD on). The renderer embeds its source commit, and packaging refuses a renderer whose commit differs, so every committed fix ships. An uncommitted tree packages as `<commit>-dirty` for local testing and cannot be published; `-Publish` requires committed source.
 
-The write-free diagnostic renderer uses `-DGRID2VR_OPPONENT_LOD_SINGLE_ATTEMPT_DIAGNOSTIC=ON`. The explicitly approved controlled activation uses `-DGRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION=ON`, with the diagnostic option Off. Both default Off and are mutually exclusive. Package the isolated DLL using `-NativeBinary` and its exact `-NativeSha256`. Ordinary builds retain the stricter unscoped busy list. Do not confuse a write-free probe with a visual fix or publish test candidates automatically.
+Packaging requires the exact cockpit ZIP named by `tools/data/cockpit-texture-pack.json`, normally in `artifacts/cockpit-packs/all-cars`; use `-TexturePack` to supply another local path. Missing or changed artwork, or a native renderer built for another pack, stops packaging before the launcher build.
+
+To package a specific renderer instead (for example a diagnostic test build), pass `-NativeBinary` with its exact `-NativeSha256`. The manifest records it as pinned. Publishing a pinned renderer also requires `-AllowPinnedNative`.
+
+Nearby-opponent LOD (`GRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION`) defaults On, and packaging refuses a renderer without it. The write-free diagnostic uses `-DGRID2VR_OPPONENT_LOD_SINGLE_ATTEMPT_DIAGNOSTIC=ON` with `-DGRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION=OFF`; it is for local tests only. Do not publish test candidates automatically.
 
 The package folder contains the installer, portable ZIP, matching cockpit ZIP, checksums and `release-assets.json`. The launcher embeds that pack's catalog and downloads from **its own build's GitHub release tag**. Every release carries its compatible pack, including when the artwork is unchanged. Older releases and download URLs stay intact.
 

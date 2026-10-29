@@ -126,6 +126,17 @@ target_sources(d3d11 PRIVATE src/screen_ui.cpp src/spotlight_witness.cpp src/spo
 # faults. Keep its isolated fixture for investigation, outside the game DLL.
 target_sources(d3d11 PRIVATE src/cockpit_animation.cpp)
 target_sources(d3d11 PRIVATE src/opponent_lod_native.cpp src/opponent_lod_runtime.cpp src/opponent_lod_bridge.cpp src/quiesced_heap_transaction.cpp)
+# tools/Package.ps1 sets this to the commit being packaged; release packaging
+# refuses a renderer whose embedded revision differs.
+set(GRID2VR_SOURCE_REVISION "unversioned" CACHE STRING "Source commit embedded in the renderer")
+string(REGEX REPLACE "-dirty$" "" GRID2VR_SOURCE_COMMIT "${GRID2VR_SOURCE_REVISION}")
+string(LENGTH "${GRID2VR_SOURCE_COMMIT}" GRID2VR_SOURCE_COMMIT_LENGTH)
+if(NOT GRID2VR_SOURCE_REVISION STREQUAL "unversioned" AND
+   (NOT GRID2VR_SOURCE_COMMIT MATCHES "^[0-9a-f]+$" OR NOT GRID2VR_SOURCE_COMMIT_LENGTH EQUAL 40))
+  message(FATAL_ERROR "GRID2VR_SOURCE_REVISION must be a full commit hash, optionally with -dirty, or unversioned")
+endif()
+target_sources(d3d11 PRIVATE src/build_identity.cpp)
+set_source_files_properties(src/build_identity.cpp PROPERTIES COMPILE_DEFINITIONS "GRID2VR_SOURCE_REVISION=\"${GRID2VR_SOURCE_REVISION}\"")
 if(GRID2VR_OPPONENT_LOD_SINGLE_ATTEMPT_DIAGNOSTIC)
   target_compile_definitions(d3d11 PRIVATE GRID2VR_OPPONENT_LOD_SINGLE_ATTEMPT_DIAGNOSTIC)
 endif()

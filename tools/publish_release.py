@@ -4,7 +4,7 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
-from release_assets import REPOSITORY, WEB, require, sha, validate, verify_file, write
+from release_assets import REPOSITORY, WEB, publishable_native, require, sha, validate, verify_file, write
 
 
 class Github:
@@ -66,6 +66,7 @@ def verify_remote(out, plan, remote, github, complete=False):
 
 def publish(out, github=None):
     plan = validate(out)  # No network writes if a local asset is absent/changed.
+    publishable_native(plan)
     github = github or Github()
     remote = find_release(github, plan['tag'])
     require(remote is None or remote['draft'], 'This release is already published. Existing assets are retained; use a new build version.')
