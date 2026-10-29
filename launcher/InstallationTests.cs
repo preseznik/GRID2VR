@@ -25,6 +25,17 @@ internal static class InstallationTests
             Check(PreparationProgress.Parse("GRID2VR_PROGRESS|28|Preparing cockpit camera 1 of 51: s20") is { Message: "Preparing cockpit camera 1 of 51: Honda S2000" });
             foreach (var invalid in new[] { "log output", "GRID2VR_PROGRESS|100|not complete yet", "GRID2VR_PROGRESS|-1|bad", "GRID2VR_PROGRESS|20|" })
                 Check(PreparationProgress.Parse(invalid) is null);
+            // Setup failures name the refusal and its remedy in the dialog players screenshot.
+            const string steamGame = @"E:\SteamLibrary\steamapps\common\GRID 2", setupLog = @"C:\Users\Player\AppData\Local\GRID2VR\ID\setup.log";
+            var camera = Installation.SetupFailure("Traceback (most recent call last):\r\n  File \"cockpit_assets.py\", line 60, in inputs\r\nValueError: Installed camera changed: s20\r\nGRID2VR_ERROR|Could not prepare cockpit-cameras; originals are unchanged.\r\n", setupLog, steamGame, true);
+            Check(camera.Contains("Reason: Installed camera changed: Honda S2000 (s20)") && camera.Contains("Verify integrity of game files") && camera.EndsWith(setupLog));
+            var missing = Installation.SetupFailure("\u001b[31;1mFileNotFoundError: [Errno 2] No such file or directory: 'E:\\\\SteamLibrary\\\\steamapps\\\\common\\\\GRID 2\\\\system\\\\flow.bin'\u001b[0m\r\nGRID2VR_ERROR|Could not prepare practice-flow-20261014; originals are unchanged.\r\n", setupLog, steamGame, false);
+            Check(missing.Contains(@"Reason: [Errno 2] No such file or directory: 'E:\SteamLibrary\steamapps\common\GRID 2\system\flow.bin'") &&!missing.Contains("\u001b") && missing.Contains("Restore the original GRID 2 files") && !missing.Contains("In Steam"));
+            var blocked = Installation.SetupFailure("GRID2VR_ERROR|The term 'E:\\SteamLibrary\\steamapps\\common\\GRID 2\\GRID2VR\\payload\\python\\python.exe' is not recognized as a name of a cmdlet, function, script file, or executable program.\r\n", setupLog, steamGame, true);
+            Check(blocked.Contains("antivirus") && !blocked.Contains("Verify integrity"));
+            var other = Installation.SetupFailure("GRID2VR_ERROR|Setup requires an installed package.\r\n", setupLog, steamGame, true);
+            Check(other.Contains("Reason: Setup requires an installed package.") && !other.Contains("antivirus") && !other.Contains("Verify integrity"));
+            Check(Installation.SetupFailure("", setupLog, steamGame, true).Contains("Reason: not reported."));
             File.WriteAllText(file,"changed");Reject(()=>AppPaths.VerifyPackage(root));File.WriteAllText(file,"owned");
             Write("../escaped",hash);Reject(()=>AppPaths.VerifyPackage(root));Write("GRID2VR/test.dat",hash);
             // First install imports preferences/profiles without embedding them in a release.

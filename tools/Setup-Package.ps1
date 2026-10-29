@@ -1,5 +1,10 @@
 param()
 $ErrorActionPreference='Stop'
+# The launcher shows this line; a refusing Python check prints its specific reason before it.
+trap { [Console]::Error.WriteLine('GRID2VR_ERROR|'+($_.Exception.Message -replace '\s+',' ')); exit 1 }
+# UTF-8 keeps progress text and non-ASCII paths intact for the launcher and setup.log.
+try { [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false) } catch { }
+$env:PYTHONIOENCODING='utf-8'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'Paths.ps1')
 . (Join-Path $PSScriptRoot 'User-Session.ps1')
@@ -13,6 +18,19 @@ $converter=Get-Grid2Converter $root
 function Progress-Step([int]$Percent,[string]$Message) {
     Write-Output "GRID2VR_PROGRESS|$Percent|$Message"
 }
+function Test-PreparedBank([string]$Bank,[string]$Folder) {
+    # Quiet check: a stale bank is rebuilt, and a failing rebuild reports its own reason.
+    $module=if($Bank -eq 'startup-movies'){'startup_movies'}else{'practice_entry'}
+    & $python -c "import sys; sys.path.insert(0,sys.argv[1]); from $module import verify; verify(sys.argv[2],sys.argv[3])" (Join-Path $root 'tools') $game $Folder 2>$null | Out-Null
+    return !$LASTEXITCODE
+}
+function Remove-PreparedBank([string]$Folder) {
+    $resolved=[IO.Path]::GetFullPath($Folder)
+    if([IO.Path]::GetDirectoryName($resolved) -ne [IO.Path]::GetFullPath($data)) { throw 'Invalid prepared bank path.' }
+    $null=Assert-PlainPath $resolved
+    if(@(Get-ChildItem -LiteralPath $resolved -Recurse -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Linked prepared data retained.' }
+    Remove-Item -LiteralPath $resolved -Recurse
+}
 # Each bank is generated from this player's original game. Nothing is downloaded
 # or copied from another player's game or career, and no game file is changed.
 foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras','cockpit-start')) {
@@ -23,7 +41,12 @@ foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras','
         'cockpit-start' { Progress-Step 88 'Preparing the VR cockpit starting view…' }
     }
     $target=Join-Path $data $bank
-    if(Test-Path -LiteralPath $target) { continue }
+    if(Test-Path -LiteralPath $target) {
+        # These banks record the player's executable hash. Steam can rewrite it with another
+        # valid variant (for example Verify integrity), so a stale bank is rebuilt from originals.
+        if($bank -notin @('practice-flow-20261014','startup-movies') -or (Test-PreparedBank $bank $target)) { continue }
+        Remove-PreparedBank $target
+    }
     $temporary=Join-Path $data ($bank+'-preparing-'+[guid]::NewGuid().ToString('N'))
     $scriptName=switch($bank){'practice-flow-20261014'{'practice_entry.py'} 'startup-movies'{'startup_movies.py'} 'cockpit-cameras'{'cockpit_assets.py'} 'cockpit-start'{'cockpit_start.py'}}
     $arguments=@('-u',(Join-Path $root "tools/$scriptName"),'--game-root',$game,'--output',$temporary)

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
@@ -10,10 +11,10 @@ internal static class Installation
 {
     internal const string MutexName = @"Global\GRID2VR.Session";
     internal static bool HasPending(string root) => new[]{"session-pending.json","diagnostic-pending.json","practice-flow-pending.json","steamvr-theater-pending.json"}.Any(name=>File.Exists(Path.Combine(AppPaths.Data(root),name)));
-    internal static void ValidateGame(string game)
+    internal static string ValidateGame(string game)
     {
         Updates.PlainPath(game);
-        GameExecutable.ValidateInstallation(game);
+        return GameExecutable.ValidateInstallation(game);
     }
     internal static void RequireIdle(string root, bool allowPending = false)
     {
@@ -60,13 +61,14 @@ internal static class Installation
     }
     internal static async Task Setup(string root, IProgress<PreparationProgress>? progress = null)
     {
+        var backend = "Steam";
         await Task.Run(() =>
         {
             AppPaths.VerifyPackage(root, (done, total) => progress?.Report(new(15 * done / total, $"Checking installed files ({done:N0} of {total:N0})…")));
             progress?.Report(new(15, "Checking GRID 2 installation…"));
-            ValidateGame(AppPaths.Game(root)); RequireIdle(root);
+            backend = ValidateGame(AppPaths.Game(root)); RequireIdle(root);
         });
-        var command=new ProcessStartInfo(AppPaths.Shell(root)){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=root};
+        var command=new ProcessStartInfo(AppPaths.Shell(root)){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,StandardOutputEncoding=Encoding.UTF8,StandardErrorEncoding=Encoding.UTF8,WorkingDirectory=root};
         foreach(var arg in new[]{"-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",Path.Combine(root,"tools","Setup-Package.ps1")})command.ArgumentList.Add(arg);
         using var process=Process.Start(command)??throw new IOException("Setup could not start.");
         var data=AppPaths.Data(root); Directory.CreateDirectory(data);
@@ -77,9 +79,34 @@ internal static class Installation
             await log.WriteLineAsync(line);
             if (PreparationProgress.Parse(line) is { } update) progress?.Report(update);
         }
-        await process.WaitForExitAsync(); await log.WriteAsync(await errors);
-        if(process.ExitCode!=0)throw new IOException("Local asset preparation failed. See "+Path.Combine(data,"setup.log"));
+        await process.WaitForExitAsync(); var error = await errors; await log.WriteAsync(error);
+        if(process.ExitCode!=0)throw new IOException(SetupFailure(error,Path.Combine(data,"setup.log"),AppPaths.Game(root),backend=="Steam"));
         progress?.Report(new(100, "Preparation complete."));
+    }
+    // Players report this dialog as a screenshot, so it carries the refusal and its usual remedy.
+    internal static string SetupFailure(string errors, string log, string game, bool steam)
+    {
+        var text = Regex.Replace(errors, @"\x1b\[[0-9;?]*[ -/]*[@-~]", "");
+        static string? Last(string text, string pattern) => Regex.Matches(text, pattern, RegexOptions.Multiline).LastOrDefault()?.Groups[1].Value.Trim();
+        // A refusing Python check is more specific than the step that ran it.
+        var reason = Last(text, @"^(?:\w+\.)*\w*Error: (.+?)\r?$") ?? Last(text, @"^GRID2VR_ERROR\|(.+?)\r?$") ??
+            text.Split('\n').Select(line => line.Trim().TrimStart('|').Trim()).LastOrDefault(line => line.Length > 0);
+        if (reason is not null)
+        {
+            // Python quotes paths with doubled backslashes.
+            reason = Regex.Replace(reason.Replace(@"\\", @"\"),@"^(Installed camera changed: )([a-z0-9]{3})$", m => m.Groups[1].Value +
+                (CarNames.Label(m.Groups[2].Value) is var name && name != m.Groups[2].Value ? $"{name} ({m.Groups[2].Value})" : m.Groups[2].Value));
+            if (reason.Length > 400) reason = reason[..400] + "…";
+        }
+        var message = "GRID2VR could not prepare its local game assets.\n\nReason: " + (reason ?? "not reported.");
+        if (reason is not null && Regex.IsMatch(reason, @"is not recognized as|failed to run|virus|potentially unwanted|Access is denied|Access to the path .* is denied|Permission denied", RegexOptions.IgnoreCase))
+            message += "\n\nWindows or antivirus software blocked a GRID2VR tool. Allow the GRID2VR folder in your antivirus software, then start GRID2VR again.";
+        else if (reason is not null && (Regex.IsMatch(reason, @"^(Installed camera changed|Unsupported installed file|Unsupported first-career intro|Race-start sequence changed|Unsupported or changed GRID 2)") ||
+                 reason.Contains(game.TrimEnd('\\') + @"\", StringComparison.OrdinalIgnoreCase)))
+            message += steam
+                ? "\n\nA GRID 2 file is missing or differs from the original Steam files, often because of another mod. In Steam, right-click GRID 2 > Properties > Installed Files > Verify integrity of game files, then start GRID2VR again."
+                : "\n\nA GRID 2 file is missing or differs from the supported original files, often because of another mod. Restore the original GRID 2 files, then start GRID2VR again.";
+        return message + "\n\nPreparation never changes game files. Details: " + log;
     }
     internal static void Migrate(string root,string source)
     {
