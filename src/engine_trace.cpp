@@ -5,6 +5,8 @@
 #include "replay_state.h"
 #include "replay_camera.h"
 #include "cockpit_exposure.h"
+#include "opponent_lod_runtime.h"
+#include "opponent_lod_world_policy.h"
 #include "replay_presentation.h"
 #include "garage_presentation.h"
 #include "eye_view.h"
@@ -85,6 +87,8 @@ uintptr_t Rva(const void* address) {
 }
 LONG CALLBACK ObserveException(EXCEPTION_POINTERS* exception) {
     const auto code=exception->ExceptionRecord->ExceptionCode;
+    if(code==EXCEPTION_ACCESS_VIOLATION || code==EXCEPTION_ILLEGAL_INSTRUCTION || code==EXCEPTION_STACK_OVERFLOW)
+        opponentlod::host::RevokeWorld();
     if ((code==EXCEPTION_ACCESS_VIOLATION || code==EXCEPTION_ILLEGAL_INSTRUCTION || code==EXCEPTION_STACK_OVERFLOW) && faultFile!=INVALID_HANDLE_VALUE) {
         const auto address=reinterpret_cast<uintptr_t>(exception->ExceptionRecord->ExceptionAddress);
         size_t site{};
@@ -246,6 +250,7 @@ bool expandVisibility{};
 std::atomic<bool> visibilityHealthy{true};
 std::atomic<uint64_t> visibilityReadyFrame{};
 std::atomic<uint64_t> visibilityConsumerFrame{};
+std::atomic<uint64_t> opponentVisibilityFrame{};
 uint64_t visibilityGapSuspensions{};
 uintptr_t visibilityConsumer{};
 DWORD renderThread{};
@@ -615,10 +620,11 @@ bool RestoreVisibility(const char* reason) {
     }
     Log("visibility restore id=%llu source_frame=%llu restored=%u reason=%s",pending.id,pending.frame,restored,reason);
     pending.active=false;
-    if (!restored) visibilityHealthy=false;
+    if (!restored) {visibilityHealthy=false;opponentlod::host::RevokeWorld();}
     return restored;
 }
 bool PrepareVisibility(bool valid,uintptr_t view,uintptr_t caller) {
+    if(!valid) opponentlod::host::RevokeWorld();
     const bool window=runtimeSession?replaySequence.Available():frame.load()<captureEnd.load();
     {
         // Record attempts too: an invalid callback must not look like loading.
@@ -642,7 +648,7 @@ bool PrepareVisibility(bool valid,uintptr_t view,uintptr_t caller) {
                 return false;
             }
             const bool frozen=provided==ViewResult::Ready && frozenViews.Freeze(frame.load(),views);
-            if (!frozen) visibilityHealthy=false;
+            if (!frozen) {visibilityHealthy=false;opponentlod::host::RevokeWorld();}
             if (frozen) signvisibility::RememberViews(frame.load(),views);
             Log("views frozen valid=%u index=%llu",frozen,replaySequence.Attempts()+1);
             if (frozen) for (unsigned eye=0;eye<2;++eye) {
@@ -724,6 +730,7 @@ bool PrepareVisibility(bool valid,uintptr_t view,uintptr_t caller) {
             }
             if (!applied) {
                 visibilityHealthy=false;
+                opponentlod::host::RevokeWorld();
                 if(trackedVisibility && !visibilityFailureSaved) {
                     // One tiny failure record, not a rolling image capture. The
                     // reason says which inputs were actually read successfully.
@@ -766,15 +773,20 @@ void __fastcall VisibilityConsumer(void* self,void*,uintptr_t a0,uintptr_t conte
                 << ",\"visibilityEnabled\":" << unsigned(Read<uint8_t>(mainObject+0x51)) << "}\n";
         }
     }
-    bool prepared=false;
+    bool prepared=false,qualified=false;
     if (caller==0x1176b4 && reinterpret_cast<uintptr_t>(self)==visibilityConsumer) {
         const bool valid=GetCurrentThreadId()==renderThread && Read<uintptr_t>(mainObject+0x30)==visibilityConsumer && Read<void**>(visibilityConsumer)==visibilityShadow &&
             Read<void**>(mainObject)==mainShadow && context==Read<uintptr_t>(mainObject+0x5e4) && view==mainObject+0x5f0 &&
             a0==Read<uintptr_t>(mainObject+0xa8) && Read<uint8_t>(mainObject+0x138)==1 && Read<uint8_t>(mainObject+0x51)==1 &&
             VisibilityInstructionsMatch();
+        qualified=valid && !inReplay;
+        if(!valid) {opponentVisibilityFrame=0;opponentlod::host::RevokeWorld();}
         prepared=PrepareVisibility(valid,view,caller);
     }
     realVisibilityConsumer(self,a0,context,view,a3,a4);
+    // Unlike the startup marker, this witnesses the guarded ORIGINAL consumer
+    // on every native-center frame, including continuous stereo. Never stamp eyes.
+    if(qualified && GetCurrentThreadId()==renderThread) opponentVisibilityFrame=frame.load();
     if (prepared && GetCurrentThreadId()==renderThread)
         signvisibility::Snapshot(frame.load(),0,0,"visibility-return",mainObject,0);
 }
@@ -797,6 +809,7 @@ uintptr_t __fastcall VisibilityJobReset(void* self,void*) {
             VisibilityDispatchCode(gameBase,ReadLazyMemory) && VisibilityInstructionsMatch();
         if (!valid) {
             visibilityConsumerFrame=frame.load();visibilityHealthy=false;sessionFailureRequested=true;
+            opponentVisibilityFrame=0;opponentlod::host::RevokeWorld();
             Log("alternate visibility refused frame=%llu caller_rva=0x%zx",frame.load(),caller);
             return result;
         }
@@ -804,6 +817,9 @@ uintptr_t __fastcall VisibilityJobReset(void* self,void*) {
         // Share the original volume/pose preparation and restoration contract.
         // Do not call the private consumer which this native branch skips.
         PrepareVisibility(valid,mainObject+0x5f0,caller);
+        // This guarded native alternate dispatch skips VisibilityConsumer. Its
+        // completed pair must still match this frame before LOD can qualify.
+        opponentVisibilityFrame=frame.load();
         static unsigned receipts{};
         if (receipts<8) {
             std::ofstream out(output/L"alternate-visibility.jsonl",receipts++?std::ios::app:std::ios::trunc);
@@ -1142,19 +1158,33 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
     if (dualEyes) Log("stereo eye id=%llu eye=%u accepted=%u gpu_restored=%u",scene.id,replayPass-1,accepted,gpuRestored);
     return accepted;
 }
+// No C++ objects in this SEH boundary: suppress new LOD policy for the WHOLE
+// frozen eye pair, including the gap between eyes, and clear it on native faults.
+bool InvokeReplayPair(const PendingScene& scene,bool nativeStereo,bool firstImageSaved,
+                      bool& allGpuRestored,bool& allEmptyBuilder) {
+    bool accepted=true;
+    __try {
+        opponentlod::runtime::SetEyeReplay(true);
+        for (unsigned pass=1;pass<=(dualEyes?2u:1u) && accepted;++pass) {
+            replayPass=pass;
+            bool restored{};
+            accepted=RenderReplay(scene,nativeStereo,firstImageSaved,restored);
+            allGpuRestored&=restored;
+            allEmptyBuilder&=replayedEmptyBuilder;
+        }
+    } __finally {
+        replayPass=0;
+        opponentlod::runtime::SetEyeReplay(false);
+    }
+    return accepted;
+}
 bool ReplayOnce(const PendingScene& scene,bool nativeStereo,bool firstImageSaved) {
     if (!replayEnabled || !replaySequence.Available()) return false;
-    if (!replaySequence.Begin(scene.frame)) { Log("replay refused id=%llu reason=nonconsecutive_frame",scene.id); return false; }
-    bool accepted=true,allGpuRestored=true,allEmptyBuilder=true;
-    for (unsigned pass=1;pass<=(dualEyes?2u:1u) && accepted;++pass) {
-        replayPass=pass;
-        bool restored{};
-        accepted=RenderReplay(scene,nativeStereo,firstImageSaved,restored);
-        allGpuRestored&=restored;
-        allEmptyBuilder&=replayedEmptyBuilder;
-    }
-    replayPass=0;
+    if (!replaySequence.Begin(scene.frame)) { opponentlod::host::RevokeWorld();Log("replay refused id=%llu reason=nonconsecutive_frame",scene.id); return false; }
+    bool allGpuRestored=true,allEmptyBuilder=true;
+    const bool accepted=InvokeReplayPair(scene,nativeStereo,firstImageSaved,allGpuRestored,allEmptyBuilder);
     replaySequence.Finish(accepted);
+    if(!accepted || !allGpuRestored) opponentlod::host::RevokeWorld();
     if (accepted && allGpuRestored && Read<uint8_t>(mainObject+0x9d)==1) ++alternateVisibilityPairs;
     if (accepted && allGpuRestored && scene.history[0x90]==0) {
         static bool resetProofSaved=false;
@@ -1289,11 +1319,13 @@ bool __fastcall Predicate(void* renderer,void*) {
             const bool stable=complete==currentEyeCamera.camera && nearPlane==CameraWord(complete,0xe8) && farPlane==CameraWord(complete,0xec);
             const bool menu=MenuCamera(currentEyeCamera.camera,complete,
                 CameraWord(currentEyeCamera.camera,0xe8),nearPlane,farPlane) && ClipInstructionsMatch(currentEyeCamera.context);
-            const auto playback=(!replay3d || frontendSceneAudit)?RecordedReplay(gameBase,[](uintptr_t at,void* value,size_t size) {
+            const auto playback=RecordedReplay(gameBase,[](uintptr_t at,void* value,size_t size) {
                 return ReadMemory(reinterpret_cast<void*>(at),value,size);
-            }):RecordedReplayState::Inactive;
+            });
             replaySceneBlocked=!ReplayPresentationAllowed(replay3d,playback);
             UpdateGaragePresentation();
+            if(menu || playback!=RecordedReplayState::Inactive || replaySceneBlocked || garageSceneBlocked)
+                opponentlod::host::RevokeWorld();
             AuditFrontendScene(complete,stable,menu,playback);
             RecordSceneReadiness(complete,stable,menu);
             if (menu || stable) { menuScene=menu;menuSceneFrame=frame.load(); }
@@ -1357,7 +1389,7 @@ bool __fastcall Predicate(void* renderer,void*) {
         const bool restored=RestoreVisibility("scene_complete");
         if (dynamicViews && frozenViews.Pending()) {
             const bool finished=frozenViews.Finish(pendingScene.frame,accepted && restored);
-            if (!finished) visibilityHealthy=false;
+            if (!finished) {visibilityHealthy=false;opponentlod::host::RevokeWorld();}
             Log("views complete id=%llu accepted=%u visibility_restored=%u",pendingScene.id,finished,restored);
             if (observePair) observePair(pendingScene.frame,pendingScene.id,finished);
         }
@@ -1566,7 +1598,7 @@ InstallResult Install(uintptr_t base,const std::filesystem::path& folder,Boundar
         const bool stagesInstalled=InstallStages();
         expandVisibility=traceVisibility && std::filesystem::exists(folder/L"expand-visibility.request");
         const bool visibilityInstalled=!traceVisibility || (stagesInstalled && InstallVisibility());
-        if (!visibilityInstalled) visibilityHealthy=false;
+        if (!visibilityInstalled) {visibilityHealthy=false;opponentlod::host::RevokeWorld();}
         replayEnabled=stagesInstalled && sceneBoundaryEnabled &&
             std::filesystem::exists(folder/L"replay-once.request") &&
             (runtimeSession || std::filesystem::exists(folder/L"short-probe.request")) &&
@@ -1676,6 +1708,7 @@ void Frame(uint64_t nextFrame) {
     if (pendingVisibility.active) RestoreVisibility("present_fallback");
     if (frozenViews.Pending()) {
         const auto dropped=frozenViews.Frame();frozenViews.Finish(dropped,false);visibilityHealthy=false;
+        opponentlod::host::RevokeWorld();
         Log("views incomplete source_frame=%llu",dropped);
         if (observePair) observePair(dropped,0,false);
     }
@@ -1734,6 +1767,31 @@ bool NativeWorldReady() {
         currentEyeCamera.frame+1==frame.load() && visibilityReadyFrame &&
         visibilityReadyFrame+1==frame.load() && Read<uint8_t>(mainObject+0x138)==1;
 }
+bool OpponentLodWorldReady() {
+    // This reads native/XR-adjacent state only on the render/controller thread.
+    // Workers invalidate atomically through RevokeWorld, never through this API.
+    if(GetCurrentThreadId()!=renderThread || !installed || !mainObject || !rendererObject) return false;
+    opponentlod::host::CenterWorld state{};
+    state.presentFrame=frame.load();state.cameraFrame=currentEyeCamera.frame;
+    state.consumerFrame=opponentVisibilityFrame.load();state.pairFrame=replaySequence.LastFrame();
+    state.sceneFrame=menuSceneFrame;
+    state.controller=GetCurrentThreadId()==renderThread;state.installed=installed.load();
+    state.rendering=SessionRendering() && replaySequence.Available();
+    state.failed=SessionFailed() || sessionFailureRequested.load();
+    state.replaying=inReplay || replayPass!=0;state.cameraValid=currentEyeCamera.valid;
+    state.objectsOwned=Read<void**>(mainObject)==mainShadow && Read<void**>(rendererObject)==rendererShadow &&
+        Read<uintptr_t>(mainObject+0x28)==rendererObject && Read<uintptr_t>(mainObject+0x30)==visibilityConsumer &&
+        Read<void**>(visibilityConsumer)==visibilityShadow && Read<uintptr_t>(mainObject+0x2c)==currentEyeCamera.manager &&
+        Read<uintptr_t>(currentEyeCamera.manager)==gameBase+0xcf8108 && Read<uint32_t>(currentEyeCamera.manager+0xa0)==0;
+    state.worldActive=Read<uint8_t>(mainObject+0x138)==1;
+    state.visibilityEnabled=Read<uint8_t>(mainObject+0x51)==1;
+    state.visibilityHealthy=visibilityHealthy.load() && state.consumerFrame==visibilityConsumerFrame.load();
+    const auto read=[](uintptr_t at,void* value,size_t size) {return ReadMemory(reinterpret_cast<void*>(at),value,size);};
+    state.normalPhase=!menuScene && !replaySceneBlocked && !garageSceneBlocked &&
+        RecordedReplay(gameBase,read)==RecordedReplayState::Inactive &&
+        ReadGarageMenu(gameBase,read).state==GarageMenuState::Inactive;
+    return opponentlod::host::Eligible(state);
+}
 const char* CaptureWaitReason() {
     if (runtimeSession) {
         if (!installed) return "engine_not_installed";
@@ -1754,10 +1812,14 @@ bool Continuous() { return runtimeSession && replaySequence.Continuous(); }
 bool SessionRendering() { return Continuous() && replaySequence.Status()==ReplaySequence::State::Rendering; }
 bool SessionFailed() { return runtimeSession && replaySequence.Status()==ReplaySequence::State::Failed; }
 void FailSession() {
-    if (GetCurrentThreadId()!=renderThread) { sessionFailureRequested=true;return; }
+    if (GetCurrentThreadId()!=renderThread) {
+        sessionFailureRequested=true;opponentlod::host::RevokeWorld();return;
+    }
+    opponentlod::host::RevokeWorld();
     if (runtimeSession && !SessionFailed()) { replaySequence.Fail();replayEnabled=false;Log("session failed=1");WriteSessionStatus(); }
 }
 bool SuspendSession() {
+    opponentlod::host::RevokeWorld();
     if (!Continuous() || GetCurrentThreadId()!=renderThread || SessionFailed()) return false;
     if (replaySequence.Status()==ReplaySequence::State::Suspended || replaySequence.Status()==ReplaySequence::State::Stopped) return true;
     if (inReplay || pendingVisibility.active || frozenViews.Pending() || !visibilityHealthy ||
@@ -1765,7 +1827,7 @@ bool SuspendSession() {
         FailSession();return false;
     }
     currentEyeCamera={};previousEyeCamera={};renderedEyeHistories={};pendingScene={};
-    eyeHistoryPrimed=false;visibilityReadyFrame=0;
+    eyeHistoryPrimed=false;visibilityReadyFrame=0;opponentVisibilityFrame=0;
     Log("session suspended=1 epoch=%llu",replaySequence.Epoch());return true;
 }
 bool ResumeSession() {
@@ -1776,6 +1838,7 @@ bool ResumeSession() {
     Log("session rendering=1 epoch=%llu",replaySequence.Epoch());return true;
 }
 bool SuspendForSwapchainChange() {
+    opponentlod::host::RevokeWorld();
     if (!Continuous() || GetCurrentThreadId()!=renderThread || SessionFailed()) return false;
     if (pendingVisibility.active || frozenViews.Pending()) {
         const auto current=frame.load();
@@ -1792,6 +1855,7 @@ bool SuspendForSwapchainChange() {
     return SuspendSession();
 }
 bool StopSession() {
+    opponentlod::host::RevokeWorld();
     if (!SuspendSession() || !replaySequence.Stop()) return false;
     Log("session stopped=1 accepted=%llu",replaySequence.Completed());WriteSessionStatus();return true;
 }

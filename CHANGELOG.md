@@ -1,3 +1,67 @@
+# GRID2VR 0.2.9 — Experimental nearby-LOD thread gate local candidate
+
+- Fix nearby opponents still dropping to low detail once alongside or behind in 0.2.8. The 0.2.8 user run refused 1,406 of 1,503 floors at the confirming check because VR permission flags changed between the two reads, with zero motion-only cases. The game selects car detail on its own thread, while GRID2VR clears permission at the start of every frame and marks eye-pair rendering on the render thread. Each such flip refused the floor and let the game's forward-only low detail through.
+- The confirming check now refuses only on Stop or an owner/manager change. Transient permission flips are counted (`transientGates`) instead of refusing.
+- Eye-pair suppression now applies only to the thread rendering the eyes. Previously it also blocked raises on the game's thread during replay, which applied low detail mid-pair, exactly what the suppression was meant to prevent.
+
+The 30-unit nearby radius is unchanged and matches the DiRT2VR fix the user accepted. The tester confirmed nearby opponents now keep their detail alongside and behind in the headset, with a single brief flicker seen once. Broader performance and track coverage remain to be checked.
+
+# GRID2VR 0.2.8 — Experimental nearby-LOD motion refresh local candidate
+
+- Fix most nearby-opponent floors being skipped in 0.2.7. The floor read the cars twice and refused whenever anything differed, but other game threads keep moving cars and the camera between those reads. In the 0.2.7 user run 2379 of 3302 selection passes refused and only 361 of 3941 planned floors were written; each refused pass let native low LOD through, which matches the reported low detail with flicker.
+- Motion-only differences now recompute the floor from the newer positions. Changes to owner, list, mesh, LOD bounds or the native selection value, and any VR/eye-replay gate change, still refuse with no write.
+- Runtime receipts now count refusals per reason (`floorRefusals`), plus `motionRefreshes`, `retainedPasses` and why native routes ran (`originalByReason`), so any remaining flicker can be attributed.
+
+Nearby body/wheel detail in both eyes, flicker, performance and normal exit still need a user test. Nothing is installed automatically.
+
+# GRID2VR 0.2.7 — Experimental corrected activation local candidate
+
+- Fix the concrete 0.2.6 track-loading crash: preserve and guard the updater's complete eleven-method table instead of copying only its first three methods. The loading lifecycle and clock callbacks remain unchanged; only the intended update method is replaced.
+- Make both launcher session/error messages selectable and read-only. Select text or use Ctrl+A then Ctrl+C; native right-click copy is available. Messages wrap, long messages stay bounded, and unchanged status polling preserves selection.
+- Add full-interface/slot-corruption/owned virtual-dispatch regressions and offscreen selectable-text tests. Keep the one-attempt controlled activation, full instruction/ownership guards and separate restoration budget.
+
+This unpublished candidate corrects an identified loading bug; successful loading, actual LOD body/wheel behavior in both eyes, performance and normal exit still require a new user test. Do not retest the faulty 0.2.6 binary. Nothing is installed automatically.
+
+# GRID2VR 0.2.6 — Experimental controlled activation local candidate
+
+- Enable one guarded, real opponent-LOD attachment attempt per game process, using the scoped checks that passed the 0.2.5 user probe. Both expected native heap pointers must commit together before the nearby policy can run. Refusal or ownership loss disables the controlled session instead of retrying attachment.
+- Keep all 33 instruction/body guards, complete peer-stack checks, foreign-pointer preservation and separate bounded restoration. Eligible nearby opponents use their best loaded native detail within 30 native units; player/cockpit, distant budgets, unsupported assets and replay/eye exclusions remain intact.
+- Add specific snapshot-refusal reasons, separate attachment/restoration counts and bounded policy-result counters. Planned floors are distinct from confirmed selected-record writes.
+
+**This is an activation test, not the earlier write-free diagnostic.** It can now change native LOD pointers and selected records after successful qualification. Actual private-caller behavior, adjacent/behind body and wheel appearance in both eyes, performance and normal exit still need user acceptance. Nearby higher-detail cars can cost more rendering time, including with Potato selected. This candidate remains unpublished and is not installed automatically.
+
+# GRID2VR 0.2.5 — Experimental scoped diagnostic-only local candidate
+
+- Separate the two shared critical-section helpers' code-integrity checks from LOD ownership-busy intervals. Both helpers remain fully fingerprinted; all LOD callers, lifecycle routes and private code remain protected by complete peer-stack checks.
+- Bind the scope proof to the exact game image and all 33 body guards. Add real transaction fixtures showing that a shared-helper stack word alone can pass, while a parked LOD caller still refuses. Corrupt shared-helper instructions still refuse preparation.
+- Keep one write-free probe per process, no native pointer writes/publication and no LOD floors. Logs now report 33 integrity bodies and 32 ownership-busy ranges.
+- Keep the old stricter 34-range list in normal write-capable builds; the narrowed list is diagnostic-only pending live qualification.
+
+**Diagnostic only: opponent detail is still expected to remain unchanged.** This tests whether the remaining target-specific guards pass after correcting the broad shared-helper exclusion. Start a VR Race, wait about ten seconds after the grid appears, then Quit normally and retain the transaction/runtime receipts. No full-race replay or visual acceptance test is needed yet. This is unpublished and does not claim a visual or performance fix.
+
+# GRID2VR 0.2.4 — Experimental diagnostic-only local candidate
+
+- Make one write-free opponent-LOD attachment probe per game process. Record the blocking thread, instruction/stack addresses, first matching value/range and transaction/pause-scope durations, then stop retrying and skip further LOD world checks.
+- Keep all executable, lifetime, complete-stack and ownership guards. Even a successful probe does not write native pointers, call the ownership publisher or enable LOD floors. Logs retain only scalar witnesses, not full stacks or bulky render captures.
+
+**Diagnostic only: opponent detail is expected to remain unchanged.** This unpublished candidate investigates 0.2.3's `BusyStack` refusal and possible attachment-scan hitches; it is not a visual LOD fix or a performance fix. Start the same VR Race, wait about ten seconds after the grid appears, then Quit normally and retain the latest run logs, especially `opponent-lod-transaction.json` and `opponent-lod-runtime.json`.
+
+# GRID2VR 0.2.3 — Experimental local test candidate
+
+- Correct the startup check that prevented 0.2.2's nearby-opponent LOD candidate from activating when Windows rebased the executable's PE header. Accept only the audited file's preferred base or the actual loaded base; all executable/instruction and VR safety guards remain required.
+- Record the loaded/header bases and specific PE refusal reason in the bounded opponent-LOD run log. Add rebased-header integration, malformed-header rejection and Windows nonexecuting image-mapping regressions.
+
+This is an unpublished corrective candidate. The reported 0.2.2 run made zero LOD changes because preparation was refused. This correction addresses that activation defect; adjacent/behind body and wheel detail, both-eye consistency, performance and normal exit still require a new user test. It does not claim a separate wheel-animation fix.
+
+# GRID2VR 0.2.2 — Experimental local test candidate
+
+- Add a guarded VR-only correction for nearby opponents dropping to low-detail models beside or behind the player. Nearby cars use their best loaded detail; distant-car settings and the player cockpit retain native handling. This new runtime path still needs gameplay/headset acceptance.
+- Mirror the game's five graphics-quality presets and individual advanced quality controls in the launcher. **Potato / Low-End** selects Ultra Low quality, VR MSAA Off and 70% VR render scale; Undo restores the previous selection until another graphics edit or reset.
+- Add **Simple / Advanced** views without resetting hidden custom choices. Entering Advanced asks for approval; the controls/seat/profile shortcuts are aligned and equally sized.
+- Make wheel scrolling over sliders, numbers and closed dropdowns scroll the page rather than silently change settings. Clicking, dragging, typing and keyboard editing remain available; open dropdowns retain wheel selection.
+
+This is an unpublished local candidate, not a new public release. Nearby higher-detail cars can increase rendering cost, including with Potato selected. Test adjacent/behind opponents, both-eye consistency, normal exit and restoration before treating the LOD correction as accepted. A failed qualification retains native behavior and is recorded in the session logs. Intel-only graphics extensions remain unavailable; native Automatic hardware detection is not represented as a fixed preset. The prior VR Practice Quit limitation remains under investigation.
+
 # GRID2VR 0.2.1 — Experimental
 
 - Apply launcher driving bindings in game, including combined keyboard, controller, wheel, pedal and separate shifter setups, on desktop and in VR.

@@ -53,7 +53,8 @@ internal sealed partial class MainForm : LauncherForm
     private readonly CheckBox hudFollow = new() { Name = "HudFollowView", Text = "On", AutoSize = true };
     private GraphicsOptions retainedGraphics = new();
     private readonly Button graphicsDefaults = Button("Restore graphics defaults", "GraphicsDefaults");
-    private readonly Label state = TextLabel("Reading session state…"), notice = TextLabel("");
+    private readonly SelectableStatusText state = new() { Name = "SessionStatus", AccessibleName = "Session status", Text = "Reading session state…" },
+        notice = new() { Name = "SessionNotice", AccessibleName = "Session message" };
     private readonly Button desktop = Button("Launch", "LaunchDesktop"), vr = Button("Launch VR", "LaunchVR"),
         save = Button("Save settings", "SaveSettings"), recover = Button("Restore original files", "RestoreOriginalFiles"),
         recenter = Button("F10", "RecenterKey"), stop = Button("Stop VR", "StopVR"), end = Button("End session", "EndSession");
@@ -278,7 +279,7 @@ internal sealed partial class MainForm : LauncherForm
         void FitStatusLabels()
         {
             var width = Math.Max(1, layout.ClientSize.Width - layout.Padding.Horizontal);
-            state.MaximumSize = notice.MaximumSize = new Size(width, 0);
+            state.FitWidth(width); notice.FitWidth(width);
         }
         layout.SizeChanged += (_, _) => FitStatusLabels(); FitStatusLabels();
         eventChoice.SelectedIndexChanged += (_, _) =>

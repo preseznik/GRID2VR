@@ -31,7 +31,7 @@ internal static class LauncherAppearance
     {
         var original = Originals.GetValue(root, c => new(c));
         var styled = Modern && !SystemInformation.HighContrast;
-        var input = root is TextBoxBase or ListControl or NumericUpDown;
+        var input = (root is TextBoxBase or ListControl or NumericUpDown) && root is not SelectableStatusText;
         root.SuspendLayout();
         try
         {

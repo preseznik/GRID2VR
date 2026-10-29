@@ -351,6 +351,7 @@ internal static class SelfTests
             DrivingControlsTests.Run(fixture);
             ChaseCameraTests.Run(root, client);
             ResponsiveLayoutTests.Run(root, client);
+            SelectableStatusTests.Run(root, client);
             VrResolutionTests.Run(client);
             SaveLauncherPreviews(root, client);
             return 0;

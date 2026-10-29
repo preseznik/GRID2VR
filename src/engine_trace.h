@@ -35,6 +35,9 @@ bool ReadyForCapture();
 uint64_t NativeCameraFrame();
 // Real world visibility, after startup initialization; title cameras do not qualify.
 bool NativeWorldReady();
+// Controller-only LOD gate for sustained native-center stereo, not the startup
+// readiness marker. Requires a fresh qualified consumer/camera/completed pair.
+bool OpponentLodWorldReady();
 const char* CaptureWaitReason();
 unsigned CaptureFrameCount();
 bool RepeatingEyes();

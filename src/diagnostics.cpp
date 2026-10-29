@@ -8,6 +8,9 @@
 #include "replay_trace.h"
 #include "spotlight_witness.h"
 #include "cockpit_animation.h"
+#include "opponent_lod_runtime.h"
+#include "opponent_lod_bridge.h"
+#include "opponent_lod_world_policy.h"
 #include "texture_digest.h"
 #include "eye_textures.h"
 #include "eye_mirror.h"
@@ -109,7 +112,28 @@ XrPosef xrReference{};
 float xrUnitsPerMetre{1};
 RecenterShortcut recenterBinding;
 bool recenterBindingValid{};
+bool OpponentXrReady() noexcept {
+    return runtimeSession && !runtimeStopped && !recordedRequested && xrRequested && xrProjection && !xrStopped &&
+        xrSession.Running() && !xrSession.Failed() && xrSession.ReadyForViews(true);
+}
+void PollOpponentXr() {
+    xrSession.Poll();
+    if(!OpponentXrReady()) opponentlod::host::RevokeWorld();
+}
+void ShutdownOpponentXr() {
+    opponentlod::host::RevokeWorld();
+    xrSession.Shutdown();xrStopped=true;
+}
 #endif
+void PublishOpponentWorld() noexcept {
+    opponentlod::host::PublishWorld([]() noexcept {
+#ifdef GRID2VR_ENABLE_XR_SESSION
+        return opponentlod::runtime::WorldChecksNeeded() && engine::OpponentLodWorldReady() && OpponentXrReady();
+#else
+        return false;
+#endif
+    });
+}
 uint64_t eyeTextureScene{},eyeDigestBudget=256ull*1024*1024;
 // Diagnostic metadata belongs to the shader object and follows its COM lifetime.
 constexpr GUID cameraBindingId{0xbe029720,0xb43d,0x437d,{0xa5,0xed,0x47,0x90,0x48,0xf5,0x3c,0x96}};
@@ -161,6 +185,7 @@ void Stack(const char* label) {
 }
 
 const char* BeforeGameExit() {
+    opponentlod::host::RevokeWorld();
     focusCockpit.Summary();
     // ExitProcess can bypass the next Present entirely. Stop at this verified
     // owning-thread boundary, but never attempt to unwind an incomplete eye pair.
@@ -170,12 +195,12 @@ const char* BeforeGameExit() {
     }
     runtimeStopped=true;
     frontendvideo::Stop();
-    playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();cockpitanimation::Stop();
+    playercontrol::Stop();backgroundplay::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();cockpitanimation::Stop();opponentlod::runtime::Stop();
     if (!flatMenuUi.Reset()) return "flat_menu_not_restored";
 #ifdef GRID2VR_ENABLE_XR_SESSION
     recenter::Enable(false);
     if(xrRequested && !xrStopped) {
-        xrSession.Shutdown();
+        ShutdownOpponentXr();
         if(!xrSession.Closed() || xrSession.Failed()) return "xr_shutdown_incomplete";
         xrStopped=true;
     }
@@ -388,29 +413,32 @@ void InitializeXr(ID3D11Device* device) {
             xrSession.InitializeImages(realDraw,width,height);
     }
     Log("openxr session requested=1 initialized=%u first_present=%u",initialized,runtimeSession);
-    if (!initialized) {xrSession.Shutdown();xrStopped=true;}
+    if (!initialized) ShutdownOpponentXr();
 }
 #endif
 
 engine::ViewResult ProvideViews(uint64_t frameId,SceneViews& views) {
     using Result=engine::ViewResult;
+    const auto refuse=[](Result result) {opponentlod::host::RevokeWorld();return result;};
     acquiredViewsFrame=0;
     if (recordedRequested) {
+        opponentlod::host::RevokeWorld();
         if(repeatRecordedViews && recordedIndex==recordedViews.size())recordedIndex=0;
         if (recordedIndex>=recordedViews.size()) return runtimeSession?Result::Unavailable:Result::Failed;
         views=recordedViews[recordedIndex++];acquiredViews=views;acquiredViewsFrame=frameId;return Result::Ready;
     }
 #ifdef GRID2VR_ENABLE_XR_SESSION
-    if (!xrProjection || xrStopped || xrSession.Failed()) return Result::Failed;
+    if (!xrProjection || xrStopped || xrSession.Failed()) return refuse(Result::Failed);
     // Catch dashboard transitions before acquiring views or changing native
     // camera/visibility state. VISIBLE can still report shouldRender=true.
-    if (runtimeSession) xrSession.Poll();
-    if (xrSession.Failed()) return Result::Failed;
-    if (!xrSession.Running() || (runtimeSession && !xrSession.Focused())) return Result::Unavailable;
-    if (!xrSession.BeginFrame(frameId)) return Result::Failed;
+    if (runtimeSession) PollOpponentXr();
+    if (xrSession.Failed()) return refuse(Result::Failed);
+    if (!xrSession.Running() || (runtimeSession && !xrSession.Focused())) return refuse(Result::Unavailable);
+    if (!xrSession.BeginFrame(frameId)) return refuse(Result::Failed);
     const auto* sample=xrSession.Views();
     bool valid=sample && sample->frame==frameId && sample->tracked && sample->shouldRender;
     if (runtimeSession && sample && sample->frame==frameId && !valid) {
+        opponentlod::host::RevokeWorld();
         return xrSession.FinishFrame(frameId,false)?Result::Unavailable:Result::Failed;
     }
     if (valid && !xrRecentered) {
@@ -421,6 +449,7 @@ engine::ViewResult ProvideViews(uint64_t frameId,SceneViews& views) {
     bool outOfRange=false;
     valid=valid && MakeTrackedSceneViews(sample->eyes,sample->head,xrReference,xrUnitsPerMetre,views,&outOfRange);
     if (!valid) {
+        opponentlod::host::RevokeWorld();
         const bool ended=xrSession.FinishFrame(frameId,false);
         if (runtimeSession && outOfRange) {
             Log("tracking translation outside_range frame=%llu limit_native=%.9g",frameId,maxSceneTranslation);
@@ -430,21 +459,23 @@ engine::ViewResult ProvideViews(uint64_t frameId,SceneViews& views) {
         }
     }
     if (valid) {acquiredViews=views;acquiredViewsFrame=frameId;}
-    return valid?Result::Ready:Result::Failed;
+    return valid?Result::Ready:refuse(Result::Failed);
 #else
-    return Result::Failed;
+    return refuse(Result::Failed);
 #endif
 }
 bool ResetEyeHistory() {
+    opponentlod::host::RevokeWorld();
     nativeUiWitness.End(true);
     FinishLateUi(false);lateUi.Reset();
     previewFrame.Reset();
     if (!replaytrace::ResetHistory()) return false;
     eyeTextures.Reset();eyeTextureScene=0;Log("session eye_images_invalidated=1");return true;
 }
-bool CancelEyeHistory() { return replaytrace::CancelBeforeReplay(); }
+bool CancelEyeHistory() { opponentlod::host::RevokeWorld();return replaytrace::CancelBeforeReplay(); }
 void CompleteViews(uint64_t frameId,uint64_t scene,bool accepted) {
     const bool ready=accepted && scene && eyeTextures.Ready(scene) && replaytrace::PairHealthy();
+    if(!ready) opponentlod::host::RevokeWorld();
     bool completed=ready;
     if(mirrorPreview)previewFrame.Publish(frameId,scene,ready,flicker::Capturing(scene));
     flicker::Complete(engineContext.Get(),frameId,scene,ready,
@@ -476,6 +507,7 @@ void CompleteViews(uint64_t frameId,uint64_t scene,bool accepted) {
     }
 #endif
     if (completed) RecordStartupPhase(4,frameId);
+    else opponentlod::host::RevokeWorld();
 }
 
 void FinishLateUi(bool present) {
@@ -491,6 +523,7 @@ void FinishLateUi(bool present) {
     }
 #endif
     if (ready) RecordStartupPhase(4,frameId);
+    else opponentlod::host::RevokeWorld();
     lateUi.End(!present);lateUiScene=0;
 }
 
@@ -622,8 +655,14 @@ bool StageBoundary(engine::StageStamp stage,const char* phase) {
 }
 
 HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
+    // Retain no permission while this Present is still deciding XR/engine state.
+    // Only the final controller decision below can publish another world epoch.
+    opponentlod::host::RevokeWorld();
     if (flags & DXGI_PRESENT_TEST) return realPresent(chain,sync,flags);
-    if(runtimeStopped && stopReceipt.Reported()) return realPresent(chain,sync,flags);
+    if(runtimeStopped && stopReceipt.Reported()) {
+        opponentlod::runtime::Tick(false);
+        return realPresent(chain,sync,flags);
+    }
     nativeUiWitness.End();
     FinishLateUi(true);
     const auto f=frame.fetch_add(1);
@@ -635,13 +674,20 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
         // Live input state overrides also serve Press Start and frontend menus.
         // The host fingerprint is verified before Present is attached; this
         // path keeps native code intact and waits for guarded input/job instances.
-        if(!f) drivingcontrols::Install(gameBase,output);
+        if(!f) {
+            drivingcontrols::Install(gameBase,output);
+            // Active() has already validated the admitted AVX executable. The
+            // LOD module additionally pins every live body/table it consumes.
+            opponentlod::bridge::Configure(output);
+            const bool qualified=opponentlod::runtime::Prepare(gameBase,output,opponentlod::bridge::Transaction);
+            Log("opponent LOD candidate prepared=%u; native execution acceptance pending",qualified);
+        }
         drivingcontrols::Tick();
     }
     processexit::Service();
     // An early window-close request has stopped XR at this restored boundary.
     // Forward native Presents without rearming input, eye rendering or overlays.
-    if(runtimeStopped) return realPresent(chain,sync,flags);
+    if(runtimeStopped) {opponentlod::host::RevokeWorld();opponentlod::runtime::Tick(false);return realPresent(chain,sync,flags);}
 #ifdef GRID2VR_ENABLE_XR_SESSION
     if(runtimeSession && xrProjection && !xrStopped && !engine::SessionFailed())
         cockpitanimation::Tick(engine::NativeWorldReady());
@@ -672,7 +718,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     if(normalLiveXr) {
         // Read current XR focus before evaluating the hold. The existing
         // dashboard suspension and per-frame view-provider guards still apply.
-        xrSession.Poll();
+        PollOpponentXr();
         focusedNormalViews=xrSession.ReadyForViews(true);
         if(focusedNormalViews && (windowState==4 || windowState==5))
             normalGarageState=ReadGarageMenu(gameBase,[](uintptr_t at,void* value,size_t size) {
@@ -795,6 +841,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
                 backgroundplay::Stop();
                 dlccockpit::Stop();
                 cockpitanimation::Stop();
+                opponentlod::runtime::Stop();
                 chaseobserver::Stop();
                 chasecamera::Stop();
                 if (engine::Continuous() && !engine::StopSession()) engine::FailSession();
@@ -854,14 +901,14 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
 #ifdef GRID2VR_ENABLE_XR_SESSION
     const bool manualStartReady=runtimeSession?renderWindowReady:!manualStereoStart || (manualStereoReleased && (!xrProjection || foregroundStable));
     if (xrRequested && !xrStopped) {
-        if(!normalLiveXr) xrSession.Poll();
+        if(!normalLiveXr) PollOpponentXr();
         if (runtimeSession && xrProjection && engine::SessionRendering() && !xrSession.Focused()) {
             if (!engine::SuspendSession()) engine::FailSession();
             capturePending=!runtimeStopped && !engine::SessionFailed();
         }
         if (xrSession.Failed() || (runtimeSession && (runtimeStopped || engine::SessionFailed()))) {
             if (xrSession.Failed() && runtimeSession) engine::FailSession();
-            xrSession.Shutdown();xrStopped=true;
+            ShutdownOpponentXr();
             if (runtimeSession && xrSession.Failed()) engine::FailSession();
         }
     }
@@ -945,13 +992,15 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
             if (SUCCEEDED(chain->GetBuffer(0,IID_PPV_ARGS(&back)))) xrSession.PresentScreen(f+1,back.Get());
         }
         const auto end=captureUntil.load();
-        if (xrSession.Failed() || (end && f>=end)) {xrSession.Shutdown();xrStopped=true;}
+        if (xrSession.Failed() || (end && f>=end)) ShutdownOpponentXr();
     }
 #endif
     FrontendPreview(chain,f);
     MirrorPreview(chain,f);
+    // Polls, recenter/suspension, stop, shutdown and preview decisions are final.
+    PublishOpponentWorld();
     const auto hr=realPresent(chain,sync,flags);
-    if (FAILED(hr)) Log("Present failed hr=0x%08lx",hr);
+    if (FAILED(hr)) {opponentlod::host::RevokeWorld();Log("Present failed hr=0x%08lx",hr);}
     // Wait for all sampled render callbacks to return, not just the first PPM.
     // This marker ends a probe; rejected hooks or missing snapshots still fail
     // their separate evidence checks.
@@ -969,6 +1018,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
 }
 
 void PrepareSwapchainChange(bool nativeResize) {
+    opponentlod::host::RevokeWorld();
     // The native resize event is queued after DXGI returns. Its owned callback
     // corrects the video size without modifying integrity-checked game code.
     if (nativeResize && runtimeSession && std::filesystem::is_regular_file(output/L"scene-size.request") && !frontendvideo::Install(gameBase,output))
@@ -983,6 +1033,7 @@ void PrepareSwapchainChange(bool nativeResize) {
     }
 }
 HRESULT STDMETHODCALLTYPE Resize(IDXGISwapChain* chain,UINT count,UINT width,UINT height,DXGI_FORMAT format,UINT flags) {
+    opponentlod::host::RevokeWorld();
     const auto incomingWidth=width,incomingHeight=height;
     const auto change=sceneresolution::PrepareResize(gameBase,reinterpret_cast<uintptr_t>(_ReturnAddress()),chain,width,height,format);
     PrepareSwapchainChange(bool(change));
@@ -1000,6 +1051,7 @@ void AttachSwapchain(IDXGISwapChain* chain) {
 }
 
 HRESULT STDMETHODCALLTYPE CreateSwapchain(IDXGIFactory* factory,IUnknown* device,DXGI_SWAP_CHAIN_DESC* desc,IDXGISwapChain** chain) {
+    opponentlod::host::RevokeWorld();
     Stack("CreateSwapChain");
     const auto change=sceneresolution::PrepareCreate(gameBase,output,device,desc,chain,reinterpret_cast<uintptr_t>(_ReturnAddress()));
     if(change && change.recreation)PrepareSwapchainChange(true);
@@ -1761,6 +1813,7 @@ bool Active() {
 }
 
 void Attach(ID3D11Device* device,ID3D11DeviceContext* context,IDXGISwapChain* chain) {
+    opponentlod::host::RevokeWorld();
     std::lock_guard lock(attachMutex);
     static const bool initialized=[] { const auto s=MH_Initialize(); return s==MH_OK || s==MH_ERROR_ALREADY_INITIALIZED; }();
     if (!initialized) return;

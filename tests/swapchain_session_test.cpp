@@ -1,5 +1,6 @@
 #include "replay_sequence.h"
 #include "scene_views.h"
+#include "opponent_lod_world_policy.h"
 #include <d3d11.h>
 #include <wrl/client.h>
 #include <atomic>
@@ -9,13 +10,17 @@
 using Microsoft::WRL::ComPtr;
 using grid2vr::ReplaySequence;
 using grid2vr::SceneViewFrame;
+namespace grid2vr::opponentlod::runtime {
+void RevokeWorld() noexcept {} // Extracted production suspension is atomic-only.
+}
 namespace {
+namespace opponentlod=grid2vr::opponentlod;
 ReplaySequence replaySequence;
 SceneViewFrame frozenViews;
 std::atomic<uint64_t> frame{51};
 DWORD renderThread{};
 bool runtimeSession{true},inReplay{},visibilityHealthy{true},eyeHistoryPrimed{};
-uint64_t visibilityReadyFrame{};
+uint64_t visibilityReadyFrame{},opponentVisibilityFrame{};
 struct {bool active{};uint64_t frame{};} pendingVisibility;
 struct {bool valid{};} pendingScene;
 struct Camera {unsigned sentinel{};} currentEyeCamera,previousEyeCamera,renderedEyeHistories;
@@ -48,7 +53,7 @@ void Setup() {
     replaySequence={};frozenViews={};frame=51;renderThread=GetCurrentThreadId();
     runtimeSession=visibilityHealthy=nativeGuard=endFrameOk=historyOk=true;inReplay=false;
     pendingScene={};currentEyeCamera={1};previousEyeCamera={2};renderedEyeHistories={3};
-    eyeHistoryPrimed=true;visibilityReadyFrame=50;restores=ends=resets=0;
+    eyeHistoryPrimed=true;visibilityReadyFrame=opponentVisibilityFrame=50;restores=ends=resets=0;
     observePair=EndFrame;resetHistory=ResetHistory;
     replaySequence.ConfigureSession();replaySequence.Resume();
     const grid2vr::SceneViews views{{grid2vr::ScenePose{},grid2vr::ScenePose{}},
@@ -76,7 +81,7 @@ int main() {
     CHECK(FAILED(chain->ResizeBuffers(0,400,200,DXGI_FORMAT_UNKNOWN,0)));
     Setup();CHECK(SuspendForSwapchainChange() && !SessionFailed());
     CHECK(restores==1 && ends==1 && resets==1 && !ownedBackbuffer && !frozenViews.Pending());
-    CHECK(!eyeHistoryPrimed && !visibilityReadyFrame && !currentEyeCamera.sentinel && !previousEyeCamera.sentinel && !renderedEyeHistories.sentinel);
+    CHECK(!eyeHistoryPrimed && !visibilityReadyFrame && !opponentVisibilityFrame && !currentEyeCamera.sentinel && !previousEyeCamera.sentinel && !renderedEyeHistories.sentinel);
     CHECK(SUCCEEDED(chain->ResizeBuffers(0,400,200,DXGI_FORMAT_UNKNOWN,0)));
     CHECK(ResumeSession() && replaySequence.Epoch()==2);
     const grid2vr::SceneViews views{{grid2vr::ScenePose{},grid2vr::ScenePose{}},
