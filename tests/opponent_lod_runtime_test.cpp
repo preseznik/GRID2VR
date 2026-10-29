@@ -318,7 +318,8 @@ bool StatusCases(World& first,const std::filesystem::path& folder) {
         current.find("\"motionRefreshes\":"+std::to_string(rt::Report().motionRefreshes))!=std::string::npos &&
         current.find("\"retainedPasses\":")!=std::string::npos &&
         current.find("\"originalByReason\":{\"eyeReplay\":")!=std::string::npos &&
-        current.find("\"transientGates\":{\"notReady\":")!=std::string::npos);
+        current.find("\"transientGates\":{\"notReady\":")!=std::string::npos &&
+        current.find("\"buildMode\":\"grid2vr_opponent_lod_mode=")!=std::string::npos);
     CHECK(current.find("\"imageBase\":"+std::to_string(first.base))!=std::string::npos &&
         current.find("\"peImageBase\":"+std::to_string(native::PreferredImageBase))!=std::string::npos);
     rt::Tick(true);

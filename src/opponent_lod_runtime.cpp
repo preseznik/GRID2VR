@@ -204,7 +204,8 @@ void JsonString(std::ostream& log,const char* value) {
     log<<'"';
 }
 void EmitStatus(std::ostream& log,const RuntimeReport& r) {
-    log<<std::boolalpha<<"{\"reason\":";JsonString(log,r.reason);
+    log<<std::boolalpha<<"{\"buildMode\":";JsonString(log,mode::BuildMode);
+    log<<",\"reason\":";JsonString(log,r.reason);
     log<<",\"requested\":"<<r.requested<<",\"prepared\":"<<r.prepared
        <<",\"ready\":"<<r.ready<<",\"worldReady\":"<<r.worldReady<<",\"stopped\":"<<r.stopped
        <<",\"eyeReplay\":"<<r.eyeReplay<<",\"cleanupNotice\":"<<r.cleanupNotice

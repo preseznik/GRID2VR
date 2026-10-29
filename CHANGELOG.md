@@ -1,3 +1,8 @@
+# Unreleased
+
+- Build the nearby-opponent detail fix into every main renderer. `GRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION` now defaults to ON; the diagnostic build must turn it off explicitly.
+- The renderer embeds its LOD build mode, and release packaging refuses a renderer built without the fix. The local launcher's development pins now accept the rebuilt main renderer in place of the old frozen 0.2.0/0.2.1 build.
+
 # GRID2VR 0.2.10 — Experimental VR HUD camera local candidate
 
 - Fix the race HUD appearing out of view and doubled in the headset at some render resolutions. GRID 2 draws the HUD through a perspective camera whose inverse-projection terms round slightly differently per render size. At the tester's 2150×2284 eye size one value differed in its last bit from the recorded camera, so every race-HUD draw was rejected and drawn flat in each eye: 54,243 draws per eye from four HUD shaders, none placed. Those two rounding-sensitive values are now checked within a small bound, and normalised only to roundings already seen in recorded cameras. Every other camera value must still match exactly, and unknown cameras are still rejected.

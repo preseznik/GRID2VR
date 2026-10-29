@@ -164,7 +164,7 @@ class ReleasePublication(unittest.TestCase):
         self.native = self.root/'build/win32/bin/RelWithDebInfo/d3d11.dll'
         self.native.parent.mkdir(parents=True)
         self.native.write_bytes(('GRID2VR/addons/cockpit-textures/'+self.pack_version).encode('utf-16-le')+
-                                self.catalog['files']['textures/cat.dds'].encode('ascii'))
+                                self.catalog['files']['textures/cat.dds'].encode('ascii')+assets.NATIVE_LOD_MODE)
 
     def prepare(self, version='0.1.10', channel='Experimental', out=None):
         return assets.prepare(self.root, out or self.out, version, channel, 'a'*40, self.pack)
@@ -202,6 +202,12 @@ class ReleasePublication(unittest.TestCase):
         self.native.write_bytes(b'old renderer')
         with self.assertRaisesRegex(ValueError, 'rebuild'):
             self.prepare()
+
+    def test_native_without_nearby_lod_fix_is_rejected(self):
+        self.native.write_bytes(self.native.read_bytes().replace(assets.NATIVE_LOD_MODE, b'grid2vr_opponent_lod_mode=strict_ordinary'))
+        with self.assertRaisesRegex(ValueError, 'nearby-opponent LOD'):
+            self.prepare()
+        self.assertFalse((self.out/'release-inputs.json').exists())
 
     def test_pinned_candidate_is_used_instead_of_default_native(self):
         candidate = self.root/'accepted.dll'

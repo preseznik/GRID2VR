@@ -5,11 +5,12 @@ function Get-LauncherVrPreviewProxy {
     param([string]$Root,[switch]$HeadsetResolution)
     if(Test-Grid2Package $Root) { return Get-Grid2Proxy $Root }
     if($HeadsetResolution) {
-        # GPU headlight correction using same-frame light snapshots. Qualification:
-        # docs/evidence/headlight-render-correction-20261028/verification.json.
-        # Headlight pixel/state tests passed; headset acceptance pending. Native light hook remains excluded.
+        # Current main renderer: nearby-opponent LOD (controlled activation, user-
+        # accepted in 0.2.9) and HUD camera rounding (user-accepted in 0.2.10),
+        # plus the earlier GPU headlight correction. Qualification:
+        # docs/evidence/opponent-lod-default-on-20261029/verification.json.
         $current=Get-Grid2Proxy $Root
-        if((Get-FileHash -LiteralPath $current -ErrorAction Stop).Hash -ne '28ef53ff0c6c3ee4722ba8f2a37d06c23b5fe34dc3626e1c1d1a7751b2062196') {
+        if((Get-FileHash -LiteralPath $current -ErrorAction Stop).Hash -ne '24d16049521f4e3708aab2b7adca32eb01fb18ddcb98d913300fe9cd558e27f7') {
             throw 'The headset-resolution preview renderer changed. Rebuild and verify the current candidate before launching.'
         }
         return $current

@@ -54,6 +54,18 @@ def verify_native_pack(path, catalog):
             'Native renderer does not contain this texture catalog; rebuild it before packaging.')
 
 
+NATIVE_LOD_MODE = b'grid2vr_opponent_lod_mode=controlled_activation'
+
+
+def verify_native_mode(path):
+    # Releases must carry the accepted nearby-opponent LOD fix, whatever build
+    # folder or cache produced the renderer.
+    binary = path.read_bytes()
+    require(NATIVE_LOD_MODE in binary and b'grid2vr_opponent_lod_mode=strict_ordinary' not in binary and
+            b'grid2vr_opponent_lod_mode=single_attempt_diagnostic' not in binary,
+            'Native renderer lacks the nearby-opponent LOD fix; build with GRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION=ON.')
+
+
 def native_path(root, native=None):
     return native if native is not None else root/'build/win32/bin/RelWithDebInfo/d3d11.dll'
 
@@ -81,6 +93,7 @@ def prepare(root, out, version, channel, revision, pack=None, native=None, nativ
             require(hashlib.sha256(archive.read(prefix+entry)).hexdigest() == digest, f'Changed texture ZIP entry: {entry}')
     native = selected_native
     verify_native_pack(native, catalog)
+    verify_native_mode(native)
     out.mkdir(parents=True, exist_ok=True)
     require(not (out/name).exists() and not (out/'release-inputs.json').exists(), 'Release inputs already exist; choose a new package folder.')
     shutil.copyfile(pack, out/name)
