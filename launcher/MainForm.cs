@@ -47,6 +47,7 @@ internal sealed partial class MainForm : LauncherForm
     private readonly ComboBox cockpitDriver = Choice("CockpitDriver");
     private readonly ComboBox cockpitTextures = Choice("CockpitTextures");
     private readonly CheckBox cockpitExposure = new() { Name = "CockpitExposureLimit", Text = "Limit cockpit exposure", Checked = true, AutoSize = true };
+    private readonly CheckBox impactGlitch = new() { Name = "HideImpactGlitch", Text = "Hide impact glitch effect", Checked = true, AutoSize = true };
     private readonly SeatAlignmentPanel seatAlignment = new();
     private readonly Button drivingControls = Button("Driving bindings…", "DrivingControls");
     private readonly HudDistanceSlider hudDistance = new();
@@ -142,6 +143,8 @@ internal sealed partial class MainForm : LauncherForm
         measuredScene.Tag = vrResolutionSummary.Tag = desktopResolution.Tag = "hint";
         graphics.Controls.Add(TextLabel("100% renders at the connected headset’s recommended resolution. Lower values trade detail for performance; higher values can improve sharpness and use more GPU time and memory. Headset output stays at 100%. Changes apply on the next VR launch."));
         graphics.Controls.Add(TextLabel("VR anti-aliasing is independent of desktop MSAA and defaults to Off. Higher MSAA uses more GPU time and memory. VR keeps motion blur off; quality follows your launcher choices."));
+        graphics.Controls.Add(impactGlitch);
+        graphics.Controls.Add(TextLabel("Hard impacts flash a screen-wide glitch that looks like a second flat picture over the scene in VR. Hidden by default; untick to keep the game's effect. Applies on the next VR launch."));
         Section(graphics, "VR mirror");
         graphics.Controls.Add(vrMirrorBorderless);
         graphics.Controls.Add(TextLabel("Fill the mirror's monitor without borders on the next VR launch. VR resolution stays independent of window size."));
@@ -190,7 +193,7 @@ internal sealed partial class MainForm : LauncherForm
         renderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
         refreshHeadset.Click += async (_, _) => await RefreshHeadsetResolution();
         desktopRenderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
-        graphicsDefaults.Click += (_, _) => { ClearGraphicsPresetUndo(); ApplyGraphics(GraphicsOptions.Defaults); vrCockpit.Checked = true; cockpitExposure.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
+        graphicsDefaults.Click += (_, _) => { ClearGraphicsPresetUndo(); ApplyGraphics(GraphicsOptions.Defaults); vrCockpit.Checked = true; cockpitExposure.Checked = true; impactGlitch.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
         ApplyGraphics(GraphicsOptions.Defaults);
         InitializeGraphicsEditTracking();
         graphics.Controls.Add(HelpLink("VR rendering"));
@@ -403,6 +406,7 @@ internal sealed partial class MainForm : LauncherForm
         SelectChoice(cockpitDriver, choices.CockpitDriver);
         cockpitDriver.Enabled = choices.VrCockpit;
         cockpitExposure.Checked = choices.CockpitExposureLimit;
+        impactGlitch.Checked = choices.HideImpactGlitch;
         SelectChoice(cockpitTextures, choices.CockpitTextures);
         cockpitExposure.Enabled = choices.VrCockpit;
         recenterKey = choices.RecenterKey; recenterModifiers = choices.RecenterModifiers; UpdateRecenterLabel();
@@ -439,7 +443,7 @@ internal sealed partial class MainForm : LauncherForm
         Graphics = CurrentGraphics(), ModernInterface = modernInterface.Checked, PreviewVrFixes = previewVrFixes.Checked,
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked,
-        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
+        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
     });
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
     private static void SelectChoice(ComboBox box, string id) => box.SelectedItem = box.Items.Cast<ContentItem>().Single(x => x.Id == id);

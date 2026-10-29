@@ -218,6 +218,14 @@ try {
     $exposure=Find-TestStatement $diagnostic "'cockpit-exposure.request'"
     . $exposure
     if(Test-Path -LiteralPath (Join-Path $run 'cockpit-exposure.request')) { throw 'Original DLC camera received a cockpit exposure override.' }
+    # The VR impact-glitch removal is default on, follows the opt-out, and never reaches desktop runs.
+    $impact=Find-TestStatement $diagnostic "'impact-interference.request'"
+    $impactRequest=Join-Path $run 'impact-interference.request'
+    foreach($case in @(@{stereo=$true;native=$false;written=$true},@{stereo=$true;native=$true;written=$false},@{stereo=$false;native=$false;written=$false})) {
+        & { $RuntimeSession=$true;$ReplayStereo=$case.stereo;$PlayerControlOnly=$false;$NativeImpactEffect=$case.native; . $impact }
+        if((Test-Path -LiteralPath $impactRequest) -ne $case.written) { throw "Impact glitch request routing changed: stereo=$($case.stereo) native=$($case.native)" }
+        if(Test-Path -LiteralPath $impactRequest) { Remove-Item -LiteralPath $impactRequest }
+    }
     . (Join-Path $root 'tools/Launch-Backend.ps1')
     function Get-Grid2SteamRoot { return 'C:\Fixture Steam' }
     $plan=Get-Grid2LaunchPlan -Game 'C:\Fixture Game' -Backend Steam -NormalLaunch

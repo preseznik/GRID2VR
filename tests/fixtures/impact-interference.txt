@@ -1,0 +1,15 @@
+impact-interference.dxbc: the shipped Interference.UniFinal pixel shader
+(ps_5_0, 7,872 bytes), extracted read-only from GRID 2's
+shaderpack/dx11/postprocess.pssg (SHA-256
+b14e2b958cce18dc67d8316312661abe54933839e343c8bf8b0e24293c4bd7af) at byte offset
+120058. Its renderer fingerprint (FNV-1a 64 of the bytecode, as passed to
+CreatePixelShader) is 2d81beb22b54d6cc. The same extraction reproduces all four
+known motion-blur fingerprints from that file. The pass's vertex shader
+(Interference.UniFinal.psh.vp_interference) is c28cc7496cb23aae.
+
+The shader glitches a pixel only when the interference map alpha (t0) is below
+cb0[78].w, the interferenceParams gate at byte 1260 of the 1296-byte
+post-process constants (interferenceParams is cb0[76..79], offset 1216).
+Otherwise it takes a pass-through branch (a YUV round trip of t1). The test
+renders this exact shader on WARP and requires the patched constants to match
+the gate-closed pass-through byte for byte.

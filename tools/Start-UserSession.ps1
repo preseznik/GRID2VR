@@ -40,6 +40,7 @@ param(
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
+    [switch]$NativeImpactEffect,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
     [ValidateSet(0,1)][int]$HudFollowView=0,
@@ -114,6 +115,7 @@ try {
     $receipt.cockpitMode=$CockpitMode
     $receipt.cockpitTextures=$CockpitTextures
     $receipt.cockpitExposureLimit=($Mode -eq 'VR' -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
+    $receipt.hideImpactGlitch=($Mode -eq 'VR' -and !$NativeImpactEffect)
     $receipt.vrReplayCameras=[bool]$VrReplayCameras
     $receipt.vrGarageMenus=[bool]$VrGarageMenus
     $receipt.performanceDisplay=($Mode -eq 'VR' -and [bool]$PerformanceDisplay)
@@ -199,6 +201,7 @@ try {
     $parameters.CockpitS2000=$CockpitS2000
     $parameters.CockpitMode=$CockpitMode
     $parameters.NativeCockpitExposure=[bool]$NativeCockpitExposure
+    $parameters.NativeImpactEffect=[bool]$NativeImpactEffect
     $parameters.CockpitTextures=$CockpitTextures
     if($Mode -eq 'VR') { $parameters.RecenterDeviceBase64=$RecenterDeviceBase64; $parameters.RecenterTilt=[bool]$RecenterTilt }
     $parameters.CareerProfile=$career.id

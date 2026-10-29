@@ -48,6 +48,7 @@ param(
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
+    [switch]$NativeImpactEffect,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [string]$CareerProfile='current',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
@@ -320,6 +321,7 @@ if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$VrGarageMe
 if($FrontendSceneAudit) { [IO.File]::WriteAllText((Join-Path $run 'frontend-scene-audit.request'),'Bounded passive frontend scene audit.') }
 if($ExposureAudit) { [IO.File]::WriteAllText((Join-Path $run 'exposure-audit.request'),'At most 600 luminance/constant rows; no full-size images.') }
 if($CockpitMode -ne 'Off' -and !$NativeCockpitExposure) { [IO.File]::WriteAllText((Join-Path $run 'cockpit-exposure.request'),'Retain the authored exposure ceiling in the exact cockpit camera only.') }
+if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect) { [IO.File]::WriteAllText((Join-Path $run 'impact-interference.request'),'Hide the flat impact interference glitch in VR; the game shader takes its pass-through branch.') }
 if ($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) {
     $hudRequest=$HudDistance.ToString([Globalization.CultureInfo]::InvariantCulture)+" $HudFollowView $HudHiddenElements"
     [IO.File]::WriteAllText((Join-Path $run 'vr-hud.request'),$hudRequest,[Text.Encoding]::ASCII)
@@ -460,6 +462,7 @@ $receipt.cockpitModeRequested=$cockpitModeRequested
 $receipt.cockpitApplied=($cockpitAssets.Count -gt 0 -or $dlcCockpit.cars.Count -gt 0)
 $receipt.dlcCockpit=$dlcCockpit
 $receipt.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
+$receipt.hideImpactGlitch=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect)
 $receipt.exposureAudit=[bool]$ExposureAudit
 $receipt.removeCinemaMatte=[bool]$RemoveCinemaMatte
 $receipt.diagnosticLogging=[bool]$DiagnosticLogging

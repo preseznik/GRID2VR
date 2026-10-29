@@ -29,6 +29,13 @@ internal static class LauncherFeaturesTests
         client.Save(exposureChoices); Check(!client.Load().CockpitExposureLimit);
         Check(client.LaunchCommand(exposureChoices, true).ArgumentList.Contains("-NativeCockpitExposure"));
         Check(!client.LaunchCommand(exposureChoices, false).ArgumentList.Contains("-NativeCockpitExposure"));
+        Check(new Choices().HideImpactGlitch);
+        Check(JsonSerializer.Deserialize<Choices>("{}")!.HideImpactGlitch);
+        Check(!client.LaunchCommand(settings with { HideImpactGlitch = true }, true).ArgumentList.Contains("-NativeImpactEffect"));
+        var impactChoices = settings with { HideImpactGlitch = false };
+        client.Save(impactChoices); Check(!client.Load().HideImpactGlitch);
+        Check(client.LaunchCommand(impactChoices, true).ArgumentList.Contains("-NativeImpactEffect"));
+        Check(!client.LaunchCommand(impactChoices, false).ArgumentList.Contains("-NativeImpactEffect"));
         client.Save(settings);
         Check(new Choices().KeepHorizonLevel);
         Check(JsonSerializer.Deserialize<Choices>("{}")!.KeepHorizonLevel);

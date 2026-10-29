@@ -21,6 +21,7 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public bool VrCockpit { get; init; } = true;
     public string CockpitDriver { get; init; } = "HeadOnly";
     public bool CockpitExposureLimit { get; init; } = true;
+    public bool HideImpactGlitch { get; init; } = true;
     public string CockpitTextures { get; init; } = "Off";
     public DrivingBinding? RecenterDevice { get; init; }
     public bool KeepHorizonLevel { get; init; } = true;
@@ -243,6 +244,7 @@ internal sealed class SessionClient(string root)
         }
         if (vr && !value.KeepHorizonLevel) command.ArgumentList.Add("-RecenterTilt");
         if (vr && !value.CockpitExposureLimit) command.ArgumentList.Add("-NativeCockpitExposure");
+        if (vr && !value.HideImpactGlitch) command.ArgumentList.Add("-NativeImpactEffect");
         if (vr && value.RecenterDevice is not null) { command.ArgumentList.Add("-RecenterDeviceBase64"); command.ArgumentList.Add(DeviceRecenter.Encode(value.RecenterDevice)); }
         if (value.SkipIntro) command.ArgumentList.Add("-SkipIntro");
         if (value.DiagnosticLogging) command.ArgumentList.Add("-DiagnosticLogging");

@@ -5,6 +5,7 @@
 #include "texture_digest.h"
 #include "shadow_pass.h"
 #include "motion_blur.h"
+#include "impact_interference.h"
 #include "cockpit_exposure.h"
 #include "draw_witness.h"
 #include "flicker_capture.h"
@@ -63,6 +64,10 @@ std::array<unsigned,3> blurDraws{};
 bool limitCockpitExposure{};
 CockpitExposure cockpitExposure;
 std::array<unsigned,3> exposureDraws{};
+bool removeImpactInterference{};
+ImpactInterference impactInterference;
+std::array<unsigned,3> impactDraws{};
+bool impactInterferenceLogged{};
 CenterDrawWitness centerDraws;
 bool centerFailureDumped{},defaultShadowProofSaved{};
 bool isolateModels{};
@@ -456,6 +461,7 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
     spotlightCorrection.Configure(dispatch);
     disableMotionBlur=requested && std::filesystem::exists(folder/L"disable-motion-blur.request");nativeDispatch=dispatch;
     limitCockpitExposure=requested && runtimeSession && std::filesystem::exists(folder/L"cockpit-exposure.request");
+    removeImpactInterference=requested && runtimeSession && dispatch && std::filesystem::exists(folder/L"impact-interference.request");
     compact=requested && std::filesystem::exists(folder/L"compact-stereo.request") && std::filesystem::exists(folder/L"stereo-eyes.request");
     isolateModels=requested && std::filesystem::exists(folder/L"isolate-models.request");
     restoreComputeState=requested && std::filesystem::exists(folder/L"restore-compute-state.request");
@@ -468,6 +474,16 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
             !runtimeSession || std::filesystem::exists(output/L"diagnostic-logging.request"));
         log << "capture_mode compact=" << compact << '\n';log.flush();
     }
+}
+// Optional: an inconsistent pass schedule falls back to the native effect
+// without stopping VR. An unrestored binding remains a pair failure.
+void CheckImpactInterference(unsigned pass) {
+    if (!removeImpactInterference) return;
+    pairHealthy&=!impactInterference.Pending();
+    if (pass<impactDraws.size() && impactInterference.PassComplete(impactDraws[0],impactDraws[pass])) return;
+    removeImpactInterference=false;
+    log << "impact_interference disabled=1 native_fallback=1 reason=schedule pass=" << pass
+        << " center_draws=" << impactDraws[0] << '\n';log.FlushNow();
 }
 void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
     if (!restoreComputeState || !Active()) return;
@@ -492,6 +508,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
             shadowIdentity={};shadowDraws={};
             blurDraws={};
             exposureDraws={};
+            impactDraws={};
             for (auto& count:computeOrdinal) count=0;
             computeSchedule={};lightCullSorted={};
             if (compact) centerDraws.Begin(engine::CurrentScene().id);
@@ -501,6 +518,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
     if (!strcmp(phase,"scene-complete")) {
         if (disableMotionBlur) pairHealthy&=motionBlur.PassComplete(blurDraws[0],blurDraws[0]);
         if (limitCockpitExposure) pairHealthy&=cockpitExposure.PassComplete(exposureDraws[0],exposureDraws[0]);
+        CheckImpactInterference(0);
         if (isolateShadowSampler) pairHealthy&=ShadowPassComplete(0);
         completedCompute.Read(context); computeAfterSaved=true;
         if (aoIncomingSaved && aoCompleted) aoCompletedSaved=CopyScratch(context,aoCompleted.Get(),aoResource.Get());
@@ -537,6 +555,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
     if (!strcmp(phase,"replay-complete") && engine::RepeatingEyes()) {
         if (disableMotionBlur) pairHealthy&=motionBlur.PassComplete(blurDraws[0],blurDraws[engine::CurrentScene().pass]);
         if (limitCockpitExposure) pairHealthy&=cockpitExposure.PassComplete(exposureDraws[0],exposureDraws[engine::CurrentScene().pass]);
+        CheckImpactInterference(engine::CurrentScene().pass);
         if (isolateShadowSampler) pairHealthy&=ShadowPassComplete(engine::CurrentScene().pass);
         if (aoIncomingSaved) {
             eye.saved=aoPrepared && eye.texture && CopyScratch(context,eye.texture.Get(),aoResource.Get());
@@ -602,7 +621,8 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
 bool CancelBeforeReplay() {
     const auto scene=engine::CurrentScene();
     if (!runtimeSession || !enabled || GetCurrentThreadId()!=ownerThread || !sceneOpen || eyeReplayStarted ||
-        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
+        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() ||
+        screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // No eye state was applied. Missing race-only passes in a native menu do
     // not poison GPU history; any unfinished binding still refuses above.
@@ -611,7 +631,8 @@ bool CancelBeforeReplay() {
     log << "session center_cancelled_before_replay=1 scene=" << scene.id << '\n';log.FlushNow();return true;
 }
 bool ResetHistory() {
-    if (!enabled || GetCurrentThreadId()!=ownerThread || sceneOpen || !pairHealthy || motionBlur.Pending() || cockpitExposure.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
+    if (!enabled || GetCurrentThreadId()!=ownerThread || sceneOpen || !pairHealthy || motionBlur.Pending() || cockpitExposure.Pending() ||
+        impactInterference.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // The verified normal Quit path suspends and resets on the render owner.
     // Flush cumulative counts here rather than leaving the last periodic sample.
@@ -623,7 +644,7 @@ bool ResetHistory() {
     incomingCompute={};completedCompute={};shadowOrdinal=0;shadowIdentity={};
     aoIncomingSaved=aoCompletedSaved=aoPrepared=computeBeforeSaved=computeAfterSaved=false;
     firstScene=activeScene=workScene=pairNumber=0;
-    shadowDraws={};blurDraws={};exposureDraws={};centerDraws={};
+    shadowDraws={};blurDraws={};exposureDraws={};impactDraws={};centerDraws={};
     log << "session gpu_history_reset=1\n";log.FlushNow();return true;
 }
 void BeforeCompute(ID3D11DeviceContext* context,const std::string& mark) {
@@ -728,6 +749,10 @@ void AfterDraw(ID3D11DeviceContext* context) {
     if (cockpitExposure.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=cockpitExposure.Restore(context);pairHealthy&=restored;
         if(!restored) {log<<"cockpit_exposure restored=0\n";log.FlushNow();}
+    }
+    if (impactInterference.Pending() && GetCurrentThreadId()==ownerThread) {
+        const bool restored=impactInterference.Restore(context);pairHealthy&=restored;
+        if(!restored) {log<<"impact_interference restored=0\n";log.FlushNow();}
     }
     if (screenUi.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=screenUi.Restore(context);pairHealthy&=restored;
@@ -909,6 +934,23 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
                 log<<"cockpit_exposure disabled=1 native_fallback=1 cb0="<<sizes[0]<<" cb1="<<sizes[1]<<'\n';log.FlushNow();
             }
             log<<"cockpit_exposure scene="<<scene.id<<" pass="<<pass<<" applied="<<applied<<'\n';
+        }
+    }
+    if (removeImpactInterference && kind[0]!='C') {
+        ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
+        if (ShaderHash(shader.Get())==ImpactInterference::shaderHash) {
+            // Apply refuses before changing any binding; this optional removal
+            // falls back to the native effect without stopping VR.
+            const bool applied=impactDraws[pass]==0 && impactInterference.Apply(context,nativeDispatch);
+            if (applied) ++impactDraws[pass];
+            else {
+                removeImpactInterference=false;
+                log << "impact_interference disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+            }
+            if (applied && !impactInterferenceLogged) {
+                impactInterferenceLogged=true;
+                log << "impact_interference applied=1 first_scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+            }
         }
     }
     if (disableMotionBlur && kind[0]!='C') {

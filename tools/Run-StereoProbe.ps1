@@ -27,6 +27,7 @@ param(
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
+    [switch]$NativeImpactEffect,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [string]$CareerProfile='current',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
@@ -223,6 +224,7 @@ $preflight.cockpitModeRequested=$cockpitModeRequested
 $preflight.cockpitApplied=($cockpitAssets.Count -gt 0 -or $dlcCockpit.cars.Count -gt 0)
 $preflight.dlcCockpit=$dlcCockpit
 $preflight.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
+$preflight.hideImpactGlitch=($Mode -eq 'Headset' -and !$NativeImpactEffect)
 $preflight.exposureAudit=[bool]$ExposureAudit
 $preflight.cockpitAssets=$cockpitAssets
 $preflight.skipIntro=[bool]$SkipIntro
@@ -362,7 +364,7 @@ try {
         CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;PythonPath=$PythonPath
         WaitForStereoStart=[bool]$WaitForStereoStart
         SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch
-        NativeCockpitExposure=[bool]$NativeCockpitExposure
+        NativeCockpitExposure=[bool]$NativeCockpitExposure;NativeImpactEffect=[bool]$NativeImpactEffect
         RuntimeSession=[bool]$RuntimeSession
         SkipIntro=[bool]$SkipIntro;RemoveCinemaMatte=[bool]$RemoveCinemaMatte;DiagnosticLogging=[bool]$DiagnosticLogging;MsaaAudit=[bool]$MsaaAudit;ExposureAudit=[bool]$ExposureAudit;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000;CockpitMode=$CockpitMode
         HudDistance=$HudDistance;HudFollowView=$HudFollowView;HudHiddenElements=$HudHiddenElements;PerformanceDisplay=[bool]$PerformanceDisplay;PerformanceFollowView=$PerformanceFollowView
