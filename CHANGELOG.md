@@ -1,14 +1,21 @@
-# Unreleased
+# GRID2VR 0.2.12 — Experimental
 
-- VR no longer runs at 60 FPS on a 60 Hz monitor. Launch VR used to keep the game's VSync on, so the game waited for the desktop monitor every frame. VR launches now turn VSync off and the headset sets the frame rate. Desktop launches keep the VSync choice.
-- **Live inputs** now has a **Test rumble** (Xbox controller) or **Test force feedback** (wheel) button on each device. It plays a one-second effect so you can check the device before racing. Close GRID 2 first when testing a wheel.
-- Help / About links to the Patreon page.
-- Fix missing rumble/force feedback in Practice and Race. These launches skip the game's Press Start screen, which is where GRID 2 claims your controller or wheel, so the game stayed on its keyboard preset and sent no rumble or force feedback. GRID2VR now makes the same claim once the race loads, using the game's own routine (no game files, saves or code bytes are changed). Driving controls has a new **Practice/Race device** choice: Auto (your steering-binding device, then an Xbox controller), Keyboard only (off), Xbox controller, or a bound wheel. Normal launch is unchanged. Each run writes `device-claim.json`.
-- Wheels newer than GRID 2 (for example the Logitech G920) have no built-in preset, so the claim had nothing to bind. For Practice/Race sessions with such a wheel, GRID2VR now adds a temporary preset built only from your launcher bindings for it (without clutch/H-pattern, which GRID2VR already handles), listed in `input/paths.xml`. Both game files are hash-checked and restored when the game exits, or by session recovery. Wheels the game already knows keep their own preset.
-- Add an observe-only force-feedback diagnostic (`ffb-observer.json` in each run's logs). It counts the game's own XInput rumble calls and DirectInput cooperative-level, acquire, force-feedback command and effect calls, with their results. Calls are passed through unchanged. This is for diagnosing missing rumble/force feedback in direct Race/Practice; it is not a fix.
-- Build the nearby-opponent detail fix into every main renderer. `GRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION` now defaults to ON; the diagnostic build must turn it off explicitly.
-- The renderer embeds its LOD build mode, and release packaging refuses a renderer built without the fix. The local launcher's development pins now accept the rebuilt main renderer in place of the old frozen 0.2.0/0.2.1 build.
-- Release packaging now builds the renderer, XR runtime probe and controller-input DLL from the source being released, instead of copying an existing renderer. The renderer embeds its source commit (also logged at startup), and packaging refuses a mismatch. Public releases require committed source. A hand-picked renderer can still be packaged for local tests, but publishing one needs `-AllowPinnedNative` and is recorded in the manifest.
+- **Rumble and force feedback now work in Practice and Race.** These launches skip the game's Press Start screen, where GRID 2 normally picks your controller or wheel, so the game stayed on its keyboard setup and sent no rumble or force feedback. GRID2VR now makes that choice for you once the race loads. Pick the device under **Driving controls → Practice/Race device**: **Auto** (your steering device, then an Xbox controller), **Keyboard only**, **Xbox controller**, or a bound wheel. Normal launches are unchanged.
+- **Wheels newer than GRID 2** (for example the Logitech G920) now get force feedback in Practice and Race too. GRID2VR adds a temporary preset for the wheel, made only from your launcher bindings, and restores the game's files when the session ends.
+- **VR is no longer capped at 60 FPS on a 60 Hz monitor.** VR launches now turn the game's VSync off, so the headset sets the frame rate. The desktop VSync choice is unchanged.
+- **Test rumble / Test force feedback** buttons in **Live inputs** play a one-second effect on each controller or wheel. Close GRID 2 before testing a wheel.
+- **Nearby opponents keep their full detail** beside and behind you in VR, instead of dropping to low-detail models.
+- **The race HUD** is no longer out of view or doubled in the headset at some render resolutions.
+- **Graphics presets in the launcher:** the game's five quality presets and its individual advanced quality settings, plus a one-click **Potato / Low-End** preset (Ultra Low quality, VR MSAA off, 70% VR render scale) with Undo.
+- **Simple / Advanced views** of the launcher. Scrolling the page with the mouse wheel no longer changes sliders or dropdowns by accident.
+- Session and error messages in the launcher can be selected and copied.
+- **Help / About** links to the Patreon page.
+
+This is an Experimental pre-release. Practice/Race rumble and force feedback were tested with an Xbox controller and a Logitech G920; other wheels need testing. Higher-detail nearby cars can cost some performance, including with Potato selected. A reported fault when quitting some VR Practice sessions remains under investigation.
+
+For experimental updates, enable **Include experimental releases** under **Help / About**.
+
+Under the hood: each run's logs add `device-claim.json` and `ffb-observer.json` for diagnosing controller and force-feedback issues. Release packages now build the renderer, XR runtime probe and controller-input helper from the released source, and the renderer reports its source commit at startup.
 
 # GRID2VR 0.2.10 — Experimental VR HUD camera local candidate
 
