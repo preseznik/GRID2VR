@@ -77,5 +77,19 @@ int main() {
     ReplaySequence bounded;
     if (grid2vr::CanSuspendWithoutVisibility(transition,views,6001,6000,false,true) ||
         grid2vr::CanSuspendWithoutVisibility(bounded,views,6001,6000,false,true)) return 21;
-    puts("Explicit session epochs, clean suspension, monotonic frames, fatal restoration failure and user stop pass.");
+    // A flashback camera transition refused before either eye: cancel without
+    // failing or counting the pair, then suspend into a fresh epoch.
+    ReplaySequence flashback;flashback.ConfigureSession();flashback.Resume();
+    if (flashback.Cancel() || !flashback.Begin(17026)) return 22;
+    flashback.Finish(true);
+    if (!flashback.Begin(17027) || !flashback.Cancel() || flashback.Cancel() || flashback.Attempts()!=1 ||
+        flashback.Completed()!=1 || flashback.Status()!=ReplaySequence::State::Rendering || flashback.LastFrame()!=17027 ||
+        !flashback.Suspend() || flashback.Begin(17028) || !flashback.Resume() || flashback.Epoch()!=2 ||
+        flashback.EpochCompleted()!=0 || !flashback.Begin(17058)) return 23;
+    flashback.Finish(true);
+    if (flashback.Attempts()!=flashback.Completed() || flashback.Status()!=ReplaySequence::State::Rendering) return 24;
+    ReplaySequence bounded2;bounded2.Configure(10);bounded2.Begin(1);
+    ReplaySequence poisonedCancel;poisonedCancel.ConfigureSession();poisonedCancel.Resume();poisonedCancel.Begin(5);poisonedCancel.Fail();
+    if (bounded2.Cancel() || poisonedCancel.Cancel() || poisonedCancel.Resume()) return 25;
+    puts("Explicit session epochs, clean suspension, monotonic frames, fatal restoration failure, transient cancellation and user stop pass.");
 }

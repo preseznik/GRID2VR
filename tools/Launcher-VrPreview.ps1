@@ -7,10 +7,12 @@ function Get-LauncherVrPreviewProxy {
     if($HeadsetResolution) {
         # Current main renderer: nearby-opponent LOD (controlled activation, user-
         # accepted in 0.2.9) and HUD camera rounding (user-accepted in 0.2.10),
-        # plus the earlier GPU headlight correction. Qualification:
-        # docs/evidence/opponent-lod-default-on-20261029/verification.json.
+        # plus the earlier GPU headlight correction, and flashback transient-refusal
+        # suspension (user-tested without regression on 2026-10-29). Qualification:
+        # docs/evidence/opponent-lod-default-on-20261029/verification.json and
+        # docs/evidence/flashback-transient-20261029/verification.json.
         $current=Get-Grid2Proxy $Root
-        if((Get-FileHash -LiteralPath $current -ErrorAction Stop).Hash -ne '24d16049521f4e3708aab2b7adca32eb01fb18ddcb98d913300fe9cd558e27f7') {
+        if((Get-FileHash -LiteralPath $current -ErrorAction Stop).Hash -ne '72b092e7203fe605f78e951740046e36f2a8730d89fd10e696f5d8e79c25a835') {
             throw 'The headset-resolution preview renderer changed. Rebuild and verify the current candidate before launching.'
         }
         return $current

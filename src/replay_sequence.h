@@ -27,6 +27,13 @@ public:
         if (pending_ && success && state_==State::Rendering) { ++completed_; ++epochCompleted_; }
         pending_=false;
     }
+    // Abandon a continuous pair refused before any eye or game write. Not a
+    // success: the owner must then suspend and start a fresh epoch. It is not an
+    // attempted pair; its frame remains the monotonic floor.
+    bool Cancel() {
+        if (!continuous_ || !pending_ || state_!=State::Rendering || !attempts_) return false;
+        pending_=false; --attempts_; return true;
+    }
     // Refuse suspension/stop mid-pair: the owner must finish restoration first.
     bool Suspend() {
         if (!continuous_ || pending_ || state_!=State::Rendering) return false;

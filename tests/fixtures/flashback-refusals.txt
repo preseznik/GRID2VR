@@ -1,0 +1,23 @@
+Exact refusal inputs from a player's two Normal VR sessions on the published
+GRID2VR 0.2.12 renderer (proxy 3c21a60f...a9c9), 2026-10-29, ProJict ba311920.
+In both sessions using flashback stopped VR for the rest of the session.
+
+Run 20261029-095744-252, frame 17027, eye pass 1: replay_camera_transition.
+flashback-17027-entry-camera.bin / flashback-17027-complete-camera.bin: the
+512-byte CameraContext at scene entry and at completion, from
+replay-input-rejection.json. Entry near 0.0196 (0x3ca0a0a1, the mod's cockpit
+camera) and far 2500 (0x451c4000); the native near-object pass completed at
+.2/100 (0x3e4ccccd). Headset projection accepts stable clips only, and the
+changed-clip path admits only .1/.2 entry near planes at far 15000, so the
+guard correctly refuses either way.
+
+Run 20261029-100504-919, frame 20918: eye_frustum_construction, then
+visibility_not_ready. flashback-20918-volume/source/render/eyes.bin are the
+saved visibility-failure-*.bin inputs (224/144/144/88 bytes, same layout as
+brands-hatch-5834). The native render basis has Gram row 2 diagonal
+.998305788 with off-diagonal radius .000333594, so its Gershgorin lower bound
+.997972 is just below the .998 contraction limit; the basis guard correctly
+refuses. Source and render views are byte-identical here.
+
+Both refusals precede every game write. The fix keeps these guards unchanged
+and cancels the pair into a suspended epoch instead of failing the session.

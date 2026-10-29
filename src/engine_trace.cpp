@@ -28,6 +28,7 @@
 #include "instance_capacity.h"
 #include "instance_observation_policy.h"
 #include "headset_visibility_candidate.h"
+#include "transient_refusal.h"
 #include <intrin.h>
 #include <MinHook.h>
 #include <array>
@@ -252,6 +253,11 @@ std::atomic<uint64_t> visibilityReadyFrame{};
 std::atomic<uint64_t> visibilityConsumerFrame{};
 std::atomic<uint64_t> opponentVisibilityFrame{};
 uint64_t visibilityGapSuspensions{};
+// Pre-write camera/visibility refusals that suspended instead of failing.
+const char* transientRefusal{};
+const char* lastTransientRefusal="none";
+const char* visibilityRefusedReason{};
+uint64_t visibilityRefusedFrame{},transientRefusalFrame{},transientSuspensions{};
 uintptr_t visibilityConsumer{};
 DWORD renderThread{};
 void** visibilityShadow{};
@@ -729,7 +735,11 @@ bool PrepareVisibility(bool valid,uintptr_t view,uintptr_t caller) {
                     DumpStage(id,"visibility-expanded","matrix",reinterpret_cast<uintptr_t>(visibilityMatrix.data()),64);
             }
             if (!applied) {
-                visibilityHealthy=false;
+                // A geometric refusal before the write leaves the native volume
+                // untouched: cancel this scene and wait for readiness instead.
+                if (!prepared && runtimeSession && trackedVisibility && TransientVisibilityRefusal(failure)) {
+                    visibilityRefusedFrame=frame.load();visibilityRefusedReason=failure;
+                } else visibilityHealthy=false;
                 opponentlod::host::RevokeWorld();
                 if(trackedVisibility && !visibilityFailureSaved) {
                     // One tiny failure record, not a rolling image capture. The
@@ -930,7 +940,11 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
     profile::Scope measure(profile::Replay);
     gpuRestoredOutput=false;
     replayedEmptyBuilder=false;
-    auto refuse=[&](const char* reason) { Log("replay refused id=%llu reason=%s",scene.id,reason); return false; };
+    // Every refusal below precedes ApplyReplayHistorySeed, the first game write.
+    auto refuse=[&](const char* reason) {
+        if (runtimeSession && TransientReplayRefusal(reason,replayPass)) transientRefusal=reason;
+        Log("replay refused id=%llu reason=%s",scene.id,reason); return false;
+    };
     auto& renderedEyeHistory=renderedEyeHistories[dualEyes && replayPass==2?1:0];
     const auto& pose=CurrentPose();
     if (dynamicViews && !frozenViews.Get(scene.frame)) return refuse("views_not_frozen");
@@ -1182,8 +1196,9 @@ bool ReplayOnce(const PendingScene& scene,bool nativeStereo,bool firstImageSaved
     if (!replayEnabled || !replaySequence.Available()) return false;
     if (!replaySequence.Begin(scene.frame)) { opponentlod::host::RevokeWorld();Log("replay refused id=%llu reason=nonconsecutive_frame",scene.id); return false; }
     bool allGpuRestored=true,allEmptyBuilder=true;
+    transientRefusal=nullptr;
     const bool accepted=InvokeReplayPair(scene,nativeStereo,firstImageSaved,allGpuRestored,allEmptyBuilder);
-    replaySequence.Finish(accepted);
+    if (accepted || !transientRefusal || !replaySequence.Cancel()) { transientRefusal=nullptr;replaySequence.Finish(accepted); }
     if(!accepted || !allGpuRestored) opponentlod::host::RevokeWorld();
     if (accepted && allGpuRestored && Read<uint8_t>(mainObject+0x9d)==1) ++alternateVisibilityPairs;
     if (accepted && allGpuRestored && scene.history[0x90]==0) {
@@ -1214,6 +1229,20 @@ bool ReplayOnce(const PendingScene& scene,bool nativeStereo,bool firstImageSaved
     if (replaySequence.Limit()>1) Log("sequence pair id=%llu index=%llu target=%u accepted=%u gpu_restored=%u",
         scene.id,replaySequence.Attempts(),replaySequence.Limit(),accepted,allGpuRestored);
     return accepted && allGpuRestored;
+}
+// The centre frame is complete and neither eye began. Cancel this pair like a
+// menu transition; stereo resumes only through the existing readiness gate.
+void CancelTransientScene(const char* reason,bool restored) {
+    const auto sceneFrame=pendingScene.frame;
+    const bool cancelled=restored && cancelHistory && cancelHistory() &&
+        (!dynamicViews || frozenViews.CancelBeforeReplay(sceneFrame));
+    if (observePair) observePair(sceneFrame,0,false);
+    pendingScene.valid=false;transientRefusal=nullptr;
+    const bool suspended=cancelled && SuspendSession();
+    if (!suspended) FailSession();
+    else { ++transientSuspensions;transientRefusalFrame=sceneFrame;lastTransientRefusal=reason; }
+    Log("session transient frame=%llu reason=%s cancelled_before_replay=%u suspended=%u count=%llu",
+        sceneFrame,reason,cancelled,suspended,transientSuspensions);
 }
 void AuditFrontendScene(const CameraContext& complete,bool stable,bool menu,RecordedReplayState playback) {
     if(!frontendSceneAudit)return;
@@ -1383,10 +1412,18 @@ bool __fastcall Predicate(void* renderer,void*) {
                 sceneFrame,cancelled && !SessionFailed(),sourceFar,menuFar,mainFar,sourceNear,replaySceneBlocked,garageSceneBlocked);
             return result;
         }
+        if (runtimeSession && visibilityRefusedFrame==pendingScene.frame && visibilityRefusedFrame==frame.load()) {
+            CancelTransientScene(visibilityRefusedReason,RestoreVisibility("visibility_refused"));
+            return result;
+        }
         ObserveCompletedEmptyLists();
         const bool captured=SceneSnapshot(pendingScene,"scene-complete");
         const bool accepted=ReplayOnce(pendingScene,result,captured);
         const bool restored=RestoreVisibility("scene_complete");
+        if (!accepted && transientRefusal) {
+            CancelTransientScene(transientRefusal,restored);
+            return result;
+        }
         if (dynamicViews && frozenViews.Pending()) {
             const bool finished=frozenViews.Finish(pendingScene.frame,accepted && restored);
             if (!finished) {visibilityHealthy=false;opponentlod::host::RevokeWorld();}
@@ -1692,6 +1729,7 @@ void WriteSessionStatus() {
         << ",\"acceptedPairs\":" << replaySequence.Completed() << ",\"failed\":" << (SessionFailed()?"true":"false")
         << ",\"emptyBuilderPairs\":" << emptyBuilderPairs << ",\"lastEmptyBuilderFrame\":" << lastEmptyBuilderFrame
         << ",\"visibilityGapSuspensions\":" << visibilityGapSuspensions
+        << ",\"transientSuspensions\":" << transientSuspensions << ",\"lastTransientRefusal\":\"" << lastTransientRefusal << '"'
         << ",\"alternateVisibilityCalls\":" << alternateVisibilityCalls
         << ",\"alternateVisibilityPairs\":" << alternateVisibilityPairs
         << ",\"visibilityDispatchCodeUnchanged\":" << (VisibilityDispatchCode(gameBase,ReadLazyMemory)?"true":"false")
@@ -1802,6 +1840,7 @@ const char* CaptureWaitReason() {
         if (replaySceneBlocked) return "replay_3d_disabled";
         if (garageSceneBlocked) return "garage_3d_disabled";
         if (menuPresentation && (menuScene || menuSceneFrame+1!=frame.load())) return "menu_or_incomplete_scene";
+        if (TransientRefusalHold(transientRefusalFrame,frame.load())) return "transient_refusal";
     }
     if (waitForClipTransition && !clipObserved) return "clip_transition";
     if (eyeOffsetEnabled && !eyeHistoryPrimed) return "camera_history";
