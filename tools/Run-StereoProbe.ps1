@@ -23,6 +23,7 @@ param(
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
+    [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
     [switch]$NativeCockpitExposure,
@@ -363,7 +364,7 @@ try {
         SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch
         NativeCockpitExposure=[bool]$NativeCockpitExposure
         RuntimeSession=[bool]$RuntimeSession
-        SkipIntro=[bool]$SkipIntro;RemoveCinemaMatte=[bool]$RemoveCinemaMatte;DiagnosticLogging=[bool]$DiagnosticLogging;MsaaAudit=[bool]$MsaaAudit;ExposureAudit=[bool]$ExposureAudit;DrivingControls=$DrivingControls;CockpitS2000=$CockpitS2000;CockpitMode=$CockpitMode
+        SkipIntro=[bool]$SkipIntro;RemoveCinemaMatte=[bool]$RemoveCinemaMatte;DiagnosticLogging=[bool]$DiagnosticLogging;MsaaAudit=[bool]$MsaaAudit;ExposureAudit=[bool]$ExposureAudit;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000;CockpitMode=$CockpitMode
         HudDistance=$HudDistance;HudFollowView=$HudFollowView;HudHiddenElements=$HudHiddenElements;PerformanceDisplay=[bool]$PerformanceDisplay;PerformanceFollowView=$PerformanceFollowView
         VrReplayCameras=$VrReplayCameras;VrGarageMenus=$VrGarageMenus;FrontendSceneAudit=[bool]$FrontendSceneAudit
         SceneWidth=$sceneWidth;SceneHeight=$sceneHeight
@@ -387,7 +388,7 @@ try {
     if($PlayerControlOnly) {
         $parameters=@{
             RuntimeSession=$true;PlayerControlProbe=$PlayerControlProbe;PlayerControlOnly=$true
-            SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls;CockpitS2000=$CockpitS2000
+            SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000
             RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers
             UntilExit=[bool]$UntilExit
             SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;PythonPath=$PythonPath;DeferCaptureFinalization=$true

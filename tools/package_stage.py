@@ -15,6 +15,7 @@ SCRIPTS += ['Dlc-Cockpit']
 SCRIPTS += ['Launch-Backend']
 SCRIPTS += ['Chase-Camera']
 SCRIPTS += ['Headset-Resolution', 'Get-VrResolution']
+SCRIPTS += ['Device-Preset']
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def copy(source,target):
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)

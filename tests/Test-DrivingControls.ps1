@@ -122,8 +122,19 @@ try {
         $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $root ('tools/'+$script)),[ref]$tokens,[ref]$errors)
         Check (!$errors) "Invalid syntax in $script"
         Check (@($ast.ParamBlock.Parameters.Name.VariablePath.UserPath) -contains 'DrivingControls') "Missing argument in $script"
+        Check (@($ast.ParamBlock.Parameters.Name.VariablePath.UserPath) -contains 'DeviceClaim') "Missing device claim argument in $script"
     }
-    'Driving controls v1/v2/v3/v4 validation, clutch threshold, unchanged analogue calibration, transmission options, immutable snapshot, physical identity, native protocol and worker parameters passed.'
+    # Direct-launch device claim: exact native protocol, never for an invalid spec.
+    Check ($null -eq (ConvertTo-DeviceClaimRequest '')) 'An empty claim spec produced a request.'
+    Check ((ConvertTo-DeviceClaimRequest 'auto') -ceq "GRID2VR_DEVICE_CLAIM_1`nmode`tauto`n") 'Auto claim protocol is not canonical.'
+    Check ((ConvertTo-DeviceClaimRequest "auto;$family;xinput_pad") -ceq "GRID2VR_DEVICE_CLAIM_1`nmode`tauto`nfamily`t$family`nfamily`txinput_pad`n") 'Steering families lost their order.'
+    Check ((ConvertTo-DeviceClaimRequest 'device;xinput_pad') -ceq "GRID2VR_DEVICE_CLAIM_1`nmode`tdevice`nfamily`txinput_pad`n") 'Explicit device protocol is not canonical.'
+    foreach($bad in @('off','keyboard','Auto','device','device;xinput_pad;'+$family,'auto;keyboard','auto;di_default','auto;','auto;xinput_pad;XINPUT_PAD',
+        "auto;$family;$($family.ToLowerInvariant())","auto;xinput_pad`n",('auto'+(@(1..9 | ForEach-Object { ";{00000001-0002-0003-0004-00000000000$_}" }) -join '')))) {
+        $rejected=$false;try { $null=ConvertTo-DeviceClaimRequest $bad } catch { $rejected=$true }
+        Check $rejected "Invalid device claim accepted: $bad"
+    }
+    'Driving controls v1/v2/v3/v4 validation, clutch threshold, unchanged analogue calibration, transmission options, immutable snapshot, physical identity, native protocol, device claim protocol and worker parameters passed.'
 } finally {
     $absolute=[IO.Path]::GetFullPath($temp)
     if (!$absolute.StartsWith([IO.Path]::GetFullPath((Join-Path $root 'build'))+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid test cleanup path.' }

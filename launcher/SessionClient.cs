@@ -260,6 +260,12 @@ internal sealed class SessionClient(string root)
             command.ArgumentList.Add("-DrivingControls");
             command.ArgumentList.Add(controls);
         }
+        // Normal launches pass the game's own Press Start screen, which claims the device.
+        if (value.LaunchMode != "Normal" && DrivingControls.Load(Root).DeviceClaimSpec() is { } claim)
+        {
+            command.ArgumentList.Add("-DeviceClaim");
+            command.ArgumentList.Add(claim);
+        }
         return command;
     }
 

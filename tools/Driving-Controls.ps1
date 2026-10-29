@@ -115,3 +115,18 @@ function Save-DrivingControls($Controls,[string]$Run) {
     [IO.File]::WriteAllText((Join-Path $Run 'driving-controls.request'),($lines -join "`n")+"`n",[Text.Encoding]::ASCII)
     return @{sha256=$Controls.sha256;bindings=$Controls.bindings;transmission=$Controls.transmission;steeringLinearity=$Controls.steeringLinearity;clutchShiftThreshold=$Controls.clutchShiftThreshold;clutchShiftSettings=$Controls.clutchShiftSettings;sessionOnly=$true}
 }
+# Direct Practice/Race skip GRID 2's Press Start device claim. The launcher
+# spec is 'auto[;family...]' (steering devices first; native adds xinput_pad)
+# or 'device;family'. Families are xinput_pad or a DirectInput product GUID.
+function ConvertTo-DeviceClaimRequest([string]$Spec) {
+    if (!$Spec) { return $null }
+    $parts=$Spec.Split(';');$mode=$parts[0];$families=@($parts | Select-Object -Skip 1)
+    if ($mode -cnotin @('auto','device') -or $families.Count -gt 8 -or ($mode -ceq 'device' -and $families.Count -ne 1)) { throw 'Invalid direct-launch device claim.' }
+    $seen=@{}
+    foreach($family in $families) {
+        if ($family -cnotmatch '\A(xinput_pad|\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\})\z') { throw 'Invalid direct-launch device family.' }
+        if ($seen.ContainsKey($family.ToLowerInvariant())) { throw 'Duplicate direct-launch device family.' }
+        $seen[$family.ToLowerInvariant()]=$true
+    }
+    return ((@('GRID2VR_DEVICE_CLAIM_1',"mode`t$mode")+@($families | ForEach-Object { "family`t$_" })) -join "`n")+"`n"
+}

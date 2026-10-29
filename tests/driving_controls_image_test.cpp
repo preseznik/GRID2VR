@@ -201,6 +201,9 @@ bool Field(const std::string& json,const std::string& key,const std::string& exp
 std::string Status(const std::filesystem::path& output) {
     const auto bytes=ReadFile(output/L"driving-controls-status.json",65536);return {bytes.begin(),bytes.end()};
 }
+std::string Claim(const std::filesystem::path& output) {
+    const auto bytes=ReadFile(output/L"device-claim.json",65536);return {bytes.begin(),bytes.end()};
+}
 void Write(const std::filesystem::path& path,const std::string& text) {
     std::ofstream file(path,std::ios::binary|std::ios::trunc);file<<text;file.close();Check(bool(file),"fixture output write failed");
 }
@@ -241,9 +244,15 @@ int wmain(int argc,wchar_t** argv) {
             "keyboard\tClutch\tvk_code_0x43\tuniDirPos\t0\t1\tkeyboard\n"
             "keyboard\tGear 1\tvk_code_0x31\tuniDirPos\t0\t1\tkeyboard\n");
         Write(output/L"driving-controls.xml","<driving-controls-image-test/>\n");
+        // The direct-launch claim shares the private Input2 table. Install must
+        // match every claim guard on the relocated image and only arm it.
+        Write(output/L"device-claim.request","GRID2VR_DEVICE_CLAIM_1\nmode\tauto\nfamily\t{C24F046D-0000-0000-0000-504944564944}\n");
         Fixtures fixtures;Session session;session.started=true;
         grid2vr::drivingcontrols::Install(reinterpret_cast<uintptr_t>(image.data),output);
         const auto installed=Status(output);
+        const auto claimInstalled=Claim(output);
+        const bool claimArmed=Field(claimInstalled,"pending","true") && Field(claimInstalled,"reason","\"waiting_for_input_instance\"") &&
+            Field(claimInstalled,"nativeCall","false") && Field(claimInstalled,"mode","\"auto\"");
         const auto afterInstall=Snapshot(image);
         const bool installReadOnly=image.ReadOnly();
         const bool installedReady=Field(installed,"failed","false") && Field(installed,"reason","\"waiting_for_input_instance\"") &&
@@ -288,6 +297,8 @@ int wmain(int argc,wchar_t** argv) {
             grid2vr::drivingcontrols::Stop();
         }
         const auto stopped=Status(output);
+        const auto claimStopped=Claim(output);
+        const bool claimIdle=Field(claimStopped,"nativeCall","false") && Field(claimStopped,"updates","0");
         const auto afterStop=Snapshot(image);
         const bool stoppedReady=Field(stopped,"failed","false") && Field(stopped,"stopped","true");
         bool nativeIdle=true;
@@ -304,7 +315,7 @@ int wmain(int argc,wchar_t** argv) {
         const bool readOnly=installReadOnly && image.ReadOnly();
         const bool pass=installedReady && stoppedReady && nativeIdle && installUnchanged && attachUnchanged && stopUnchanged && slotUnchanged &&
             readOnly && attached && inputShadow && driverShadow && driverRestored && driverCounters &&
-            transmissionRestored && transmissionOutput && nativeEditPreserved && stoppedNative && updateUnchanged;
+            transmissionRestored && transmissionOutput && nativeEditPreserved && stoppedNative && updateUnchanged && claimArmed && claimIdle;
         const auto flag=[](bool value){return value?"true":"false";};
         const std::string receipt=std::string("{\"schema\":2,\"pass\":")+flag(pass)+",\"productionInstallReached\":"+flag(installedReady)+
             ",\"productionStopSucceeded\":"+flag(stoppedReady)+",\"installImageUnchanged\":"+flag(installUnchanged)+
@@ -314,6 +325,7 @@ int wmain(int argc,wchar_t** argv) {
             ",\"nativeGameCalls\":0,\"transmissionConfigurationRestored\":"+flag(transmissionRestored)+
             ",\"requestedTransmissionOutput\":"+flag(transmissionOutput)+",\"nativeTransmissionEditPreserved\":"+flag(nativeEditPreserved)+
             ",\"stoppedTransmissionNative\":"+flag(stoppedNative)+",\"updateImageUnchanged\":"+flag(updateUnchanged)+
+            ",\"deviceClaimGuardsArmed\":"+flag(claimArmed)+",\"deviceClaimNotCalled\":"+flag(claimIdle)+
             ",\"attachmentImageUnchanged\":"+flag(attachUnchanged)+",\"privateInputShadow\":"+flag(inputShadow)+
             ",\"privateDriverShadow\":"+flag(driverShadow)+",\"driverHeapPointerRestored\":"+flag(driverRestored)+
             ",\"gameCodeExecuted\":false,\"imageBytes\":"+std::to_string(image.size)+",\"highLowRelocations\":"+std::to_string(image.relocations)+
