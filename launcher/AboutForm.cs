@@ -30,7 +30,7 @@ internal sealed class AboutForm : LauncherForm
         read.Click += (_, _) => tabs.SelectedTab = instructions;
         var links=new FlowLayoutPanel { AutoSize=true, Dock=DockStyle.Top, WrapContents=true };
         links.Controls.Add(read);
-        void Link(string text,string target) { var button=new Button{Text=text,AutoSize=true};button.Click+=(_,_)=>{try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target){UseShellExecute=true});}catch(Exception ex){MessageBox.Show(this,ex.Message,"GRID2VR");}};links.Controls.Add(button); }
+        Button Link(string text,string target) { var button=new Button{Text=text,AutoSize=true,Tag=target};button.Click+=(_,_)=>{try{System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target){UseShellExecute=true});}catch(Exception ex){MessageBox.Show(this,ex.Message,"GRID2VR");}};links.Controls.Add(button);return button; }
         var readme=new Button { Text="Open README",AutoSize=true };
         readme.Click+=(_,_)=>{
             try {
@@ -39,7 +39,8 @@ internal sealed class AboutForm : LauncherForm
             } catch(Exception ex){MessageBox.Show(this,ex.Message,"GRID2VR");}
         };
         links.Controls.Add(readme);
-        Link("GitHub / report an issue",Updates.Repository+"/issues"); Link("Releases",Updates.Repository+"/releases");content.Controls.Add(links);
+        Link("GitHub / report an issue",Updates.Repository+"/issues"); Link("Releases",Updates.Repository+"/releases");
+        Link("Support on Patreon",Branding.Patreon).Name="SupportPatreon";content.Controls.Add(links);
         updates=new UpdatesPanel(root,about:true,releaseCheck:releaseCheck);content.Controls.Add(updates);
         updates.UpdateAvailable += result => UpdateAvailable?.Invoke(result);
         if (knownUpdate is not null) updates.SetRelease(knownUpdate);

@@ -32,6 +32,8 @@ internal static class ResponsiveLayoutTests
                     foreach(var width in new[]{520,820}) {
                         aboutContent.Width=width;aboutContent.PerformLayout();aboutContent.Height=aboutContent.GetPreferredSize(new Size(width,0)).Height;aboutContent.PerformLayout();
                         Require(Descendants(aboutContent).OfType<Button>().Any(b=>b.Text=="Release notes"),"About release notes missing.");
+                        var patreon=Descendants(aboutContent).OfType<Button>().SingleOrDefault(b=>b.Name=="SupportPatreon");
+                        Require(patreon is {Tag:"https://www.patreon.com/cw/bohloney"} && patreon.Right<=patreon.Parent!.ClientSize.Width,"About Patreon link missing or clipped.");
                         Require(Descendants(aboutContent).OfType<CheckBox>().Any(b=>b.Text=="Include experimental releases"),"About release channel control missing.");
                         using var image=new Bitmap(width,aboutContent.Height);aboutContent.DrawToBitmap(image,aboutContent.ClientRectangle);
                         image.Save(Path.Combine(root,"build",$"launcher-about-{width}-{(modern?"modern":"classic")}.png"));

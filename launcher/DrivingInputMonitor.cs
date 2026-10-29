@@ -9,7 +9,10 @@ internal sealed class DrivingInputMonitor : LauncherForm
     private readonly TableLayoutPanel devices = new() { AutoSize = true, Dock = DockStyle.Top, ColumnCount = 1 };
     private readonly List<DeviceView> views = [];
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 50 };
+    private readonly System.Windows.Forms.Timer feedbackTimer = new() { Interval = 1000 };
+    private readonly Label feedbackNote = new() { Name = "DrivingFeedbackStatus", AutoSize = true, MaximumSize = new(560, 0), Margin = new(12, 8, 0, 0), Tag = "hint" };
     private DrivingInput? input;
+    private DrivingInput.Device? playing;
 
     public DrivingInputMonitor(IReadOnlyList<DrivingBinding>? savedBindings = null)
     {
@@ -27,13 +30,30 @@ internal sealed class DrivingInputMonitor : LauncherForm
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         var refresh = new Button { Text = "Refresh devices", AutoSize = true }; refresh.Click += (_, _) => RefreshDevices();
         var close = new Button { Text = "Close", AutoSize = true, DialogResult = DialogResult.OK }; CancelButton = close;
-        buttons.Controls.AddRange([refresh, close]); layout.Controls.Add(buttons, 0, 3); Controls.Add(layout);
+        buttons.Controls.AddRange([refresh, close, feedbackNote]); layout.Controls.Add(buttons, 0, 3); Controls.Add(layout);
         timer.Tick += (_, _) => Poll(); Shown += (_, _) => RefreshDevices();
+        feedbackTimer.Tick += (_, _) => StopFeedback();
+    }
+
+    private void TestFeedback(DrivingInput.Device device)
+    {
+        if (input is null) return;
+        StopFeedback();
+        var result = input.Feedback(device, 1000);
+        feedbackNote.Text = DrivingInput.FeedbackMessage(device, result);
+        if (result == 1) { playing = device; feedbackTimer.Start(); }
+    }
+
+    private void StopFeedback()
+    {
+        feedbackTimer.Stop();
+        if (playing is not null && input is not null) input.Feedback(playing, 0);
+        playing = null;
     }
 
     private void RefreshDevices()
     {
-        timer.Stop(); input?.Dispose(); input = null; views.Clear();
+        StopFeedback(); timer.Stop(); input?.Dispose(); input = null; views.Clear();
         devices.SuspendLayout();
         try
         {
@@ -43,6 +63,7 @@ internal sealed class DrivingInputMonitor : LauncherForm
             foreach (var device in input.Devices)
             {
                 var view = new DeviceView(device); views.Add(view); Add(view.Panel);
+                view.Test.Enabled = input.FeedbackAvailable; view.Test.Click += (_, _) => TestFeedback(view.Device);
             }
             foreach (var saved in MissingDevices(bindings, input.Devices))
                 Add(new Label { Text = $"Saved device not connected: {saved.Device}\n{saved.DeviceId}\nReconnect it and refresh. Changing a wheel's compatibility mode may change its identity.", AutoSize = true, Dock = DockStyle.Top, MaximumSize = new(800, 0), Padding = new(10), Margin = new(0, 0, 0, 12), Tag = "hint" });
@@ -94,14 +115,15 @@ internal sealed class DrivingInputMonitor : LauncherForm
         return string.Join("   ", Enumerable.Range(0, 4).Select(i => $"{i}: " + (DrivingInput.PovNeutral(sample.Pov[i]) ? "center" : (sample.Pov[i] / 100m).ToString("0.##") + "°")));
     }
 
-    protected override void OnDeactivate(EventArgs e) { timer.Stop(); status.Text = "Paused while this window is inactive."; base.OnDeactivate(e); }
+    protected override void OnDeactivate(EventArgs e) { StopFeedback(); timer.Stop(); status.Text = "Paused while this window is inactive."; base.OnDeactivate(e); }
     protected override void OnActivated(EventArgs e) { base.OnActivated(e); if (input is not null) { Poll(); timer.Start(); } }
-    protected override void Dispose(bool disposing) { if (disposing) { timer.Dispose(); input?.Dispose(); } base.Dispose(disposing); }
+    protected override void Dispose(bool disposing) { if (disposing) { StopFeedback(); timer.Dispose(); feedbackTimer.Dispose(); input?.Dispose(); } base.Dispose(disposing); }
 
     private sealed class DeviceView
     {
         public DrivingInput.Device Device { get; }
         public GroupBox Panel { get; }
+        public Button Test { get; }
         private readonly Label connection = new() { AutoSize = true };
         private readonly Label buttons = new() { AutoSize = true, MaximumSize = new(560, 0) };
         private readonly Label hats = new() { AutoSize = true };
@@ -126,6 +148,8 @@ internal sealed class DrivingInputMonitor : LauncherForm
             layout.Controls.Add(buttons, 1, 9); layout.SetColumnSpan(buttons, 2);
             layout.Controls.Add(new Label { Text = "Hats (zero based)", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 10);
             layout.Controls.Add(hats, 1, 10); layout.SetColumnSpan(hats, 2);
+            Test = new Button { Name = "DrivingFeedbackTest", Text = device.Xbox ? "Test rumble" : "Test force feedback", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new(3, 8, 3, 3) };
+            layout.Controls.Add(Test, 0, 11); layout.SetColumnSpan(Test, 3);
             Panel.Controls.Add(layout);
         }
 

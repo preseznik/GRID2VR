@@ -27,9 +27,11 @@ internal sealed class DrivingInput : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Unicode)] private delegate int NameFn(nint handle, uint index, StringBuilder id, uint idSize, StringBuilder name, uint nameSize);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Unicode)] private delegate int ProductFn(nint handle, uint index, StringBuilder product, uint size);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int ReadFn(nint handle, uint index, ref Sample sample);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int FeedbackFn(nint handle, uint index, uint milliseconds);
     private nint library, handle;
     private CloseFn? close;
     private ReadFn? read;
+    private FeedbackFn? feedback;
     public List<Device> Devices { get; } = [];
     private T Export<T>(string name) where T : Delegate => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library, name));
     public DrivingInput(nint window)
@@ -41,6 +43,8 @@ internal sealed class DrivingInput : IDisposable
         {
             library = NativeLibrary.Load(path);
             close = Export<CloseFn>("CaptureClose"); read = Export<ReadFn>("CaptureRead");
+            // An older helper without the feedback test still captures input.
+            if (NativeLibrary.TryGetExport(library, "CaptureFeedback", out var test)) feedback = Marshal.GetDelegateForFunctionPointer<FeedbackFn>(test);
             handle = Export<OpenFn>("CaptureOpen")(window);
             if (handle == 0) throw new IOException("Windows controller capture could not start.");
             var count = Export<CountFn>("CaptureCount")(handle);
@@ -60,6 +64,21 @@ internal sealed class DrivingInput : IDisposable
         ObjectDisposedException.ThrowIf(handle == 0, this);
         var sample = Sample.Empty(); read!(handle, device.Index, ref sample); return sample;
     }
+    public bool FeedbackAvailable => feedback is not null;
+    // Plays (milliseconds > 0) or stops (0) the helper's short test effect.
+    public int Feedback(Device device, uint milliseconds)
+    {
+        ObjectDisposedException.ThrowIf(handle == 0, this);
+        return feedback is null ? 0 : feedback(handle, device.Index, milliseconds);
+    }
+    internal static string FeedbackMessage(Device device, int result) => result switch
+    {
+        1 => device.Xbox ? $"Rumbling {device.Name} for one second." : $"Playing a force-feedback shake on {device.Name} for one second.",
+        -1 => $"{device.Name} reports no force feedback.",
+        -2 => $"{device.Name} is in use by another program. Close GRID 2 (or other games) and try again.",
+        -3 => $"Windows could not start force feedback on {device.Name}.",
+        _ => $"The feedback test is unavailable for {device.Name}."
+    };
     internal static int PovDirection(uint value)
     {
         // Ignore diagonals so one gesture cannot silently bind two directions.

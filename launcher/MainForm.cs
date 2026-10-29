@@ -707,7 +707,7 @@ internal sealed partial class MainForm : LauncherForm
         tips.SetToolTip(objectDetail, "Track-object draw distance and detail. Ultra matches the working profile.");
         tips.SetToolTip(crowdDetail, "Spectator detail. Ultra matches the working profile.");
         tips.SetToolTip(textureFiltering, "Texture sharpness at oblique angles. 16× matches the working profile.");
-        tips.SetToolTip(desktopVSync, "Desktop Launch only. Launch VR retains its existing VSync setting.");
+        tips.SetToolTip(desktopVSync, "Desktop Launch only. Launch VR always turns VSync off so the headset sets the frame rate.");
         tips.SetToolTip(desktopBorderless, "Fill the game window's monitor without borders on the next Desktop launch. Turn off to keep a bordered window at the requested resolution. Windows display settings and VR are unchanged.");
         tips.SetToolTip(desktopMsaa, "Desktop Launch only. Launch VR uses the separate Anti-aliasing (VR) choice.");
         tips.SetToolTip(vrMsaa, "Smooth jagged geometry edges in VR. Off preserves the working default. 2×, 4× and 8× increase GPU time and memory use. Applies to the next VR launch; desktop MSAA is independent.");

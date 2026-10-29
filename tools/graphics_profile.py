@@ -73,11 +73,13 @@ def prepare(output, mode='VR', render_scale=100, desktop_vsync=1, desktop_msaa='
                 node.set(key, value)
 
     change('graphics_card/resolution', width=str(scene_width), height=str(scene_height))
-    # Each mode owns its AA choice; VR keeps the accepted VSync policy.
+    # Each mode owns its AA choice. VR never waits for the desktop monitor: with
+    # VSync on, a 60 Hz monitor capped the headset at 60 FPS. xrWaitFrame on the
+    # render thread paces every frame to the headset instead.
     if mode == 'Desktop':
         change('graphics_card/resolution', vsync=str(desktop_vsync), multisampling=desktop_msaa)
     else:
-        change('graphics_card/resolution', multisampling=vr_msaa)
+        change('graphics_card/resolution', vsync='0', multisampling=vr_msaa)
     for category in catalog['categories']:
         choice = next((item for item in category['choices'] if item['id'] == choices[category['field']]), None)
         if choice is None:

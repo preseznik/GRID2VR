@@ -19,6 +19,10 @@ import graphics_catalog as catalog_tools
 ROOT = Path(__file__).parents[1]
 LEGACY_OPTIONS = {'TreeDetail': 'tree_detail', 'ObjectDetail': 'object_detail',
                   'CrowdDetail': 'crowd_detail', 'TextureFiltering': 'texture_filtering'}
+# VR never waits for the desktop monitor (a 60 Hz monitor capped the headset at
+# 60 FPS); it is the only mode-owned difference from the accepted baseline.
+VR_VSYNC = {('/graphics_card/resolution', 'vsync'): '0'}
+MODE_ATTRIBUTES = {'VR': VR_VSYNC, 'Desktop': {}}
 # Independently authored value tuples, not expectations generated from the catalog.
 # Attribute order here is intentional and also checks complete native option tuples.
 FIXTURES = {
@@ -112,14 +116,18 @@ class GraphicsProfileTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(payload).hexdigest(), receipt['sha256'])
         return payload, receipt
 
-    def test_defaults_preserve_exact_accepted_bytes_in_both_modes(self):
+    def test_defaults_preserve_accepted_bytes_and_vr_turns_vsync_off(self):
         for mode in ('VR', 'Desktop'):
             # A launcher sends all 17 new defaults, including unavailable Intel off.
             for options in ({}, prepare_options(DEFAULT_CHOICES)):
                 payload, receipt = self.prepare(mode=mode, **options)
-                self.assertEqual(payload, self.baseline)
-                self.assertTrue(receipt['isBaseline'])
-                self.assertEqual(receipt['changes'], [])
+                if mode == 'Desktop':
+                    self.assertEqual(payload, self.baseline)
+                else:
+                    self.assertEqual(attributes(payload), attributes(self.baseline) | VR_VSYNC)
+                self.assertEqual(receipt['isBaseline'], mode == 'Desktop')
+                self.assertEqual(receipt['changes'], [] if mode == 'Desktop' else
+                                 [dict(path='graphics_card/resolution', attribute='vsync', before='1', after='0')])
                 self.assertEqual(receipt['qualityChoices'], DEFAULT_CHOICES)
                 self.assertEqual(receipt['catalogSha256'], self.catalog_hash)
                 self.assertEqual(self.catalog_hash, hashlib.sha256(catalog_tools.CATALOG_PATH.read_bytes()).hexdigest())
@@ -144,7 +152,7 @@ class GraphicsProfileTests(unittest.TestCase):
                     else:
                         for mode in ('VR', 'Desktop'):
                             payload, receipt = self.prepare(mode=mode, **selected)
-                            self.assertEqual(attributes(payload), attributes(self.baseline) |
+                            self.assertEqual(attributes(payload), attributes(self.baseline) | MODE_ATTRIBUTES[mode] |
                                              expected_attributes({field: choice['id']}))
                             self.assertEqual(receipt['qualityChoices'], DEFAULT_CHOICES | {field: choice['id']})
 
@@ -160,9 +168,9 @@ class GraphicsProfileTests(unittest.TestCase):
                 self.assertEqual(choices, expected)
                 for mode in ('VR', 'Desktop'):
                     payload, receipt = self.prepare(mode=mode, **prepare_options(choices))
-                    self.assertEqual(attributes(payload), attributes(self.baseline) | expected_attributes(expected))
+                    self.assertEqual(attributes(payload), attributes(self.baseline) | MODE_ATTRIBUTES[mode] | expected_attributes(expected))
                     self.assertEqual(receipt['qualityChoices'], expected)
-                    allowed = set(expected_attributes(expected))
+                    allowed = set(expected_attributes(expected)) | set(MODE_ATTRIBUTES[mode])
                     self.assertTrue({('/' + item['path'], item['attribute']) for item in receipt['changes']} <= allowed)
         self.assertEqual(self.catalog, original)  # Normalization must not rewrite authored native presets.
         for value in ('auto', '', None, []):
@@ -244,7 +252,7 @@ class GraphicsProfileTests(unittest.TestCase):
         payload, receipt = self.prepare(quality_base64=encode_quality(values), tree_detail='high', crowd_detail='off')
         expected = DEFAULT_CHOICES | values | {'TreeDetail': 'high', 'CrowdDetail': 'off'}
         self.assertEqual(receipt['qualityChoices'], expected)
-        self.assertEqual(attributes(payload), attributes(self.baseline) | expected_attributes(expected))
+        self.assertEqual(attributes(payload), attributes(self.baseline) | VR_VSYNC | expected_attributes(expected))
 
     def test_quality_and_resolution_remain_separate(self):
         choices = catalog_tools.normalize_preset(self.catalog, 'low')
@@ -252,7 +260,7 @@ class GraphicsProfileTests(unittest.TestCase):
         payload, _ = self.prepare(scene_width=2400, scene_height=2600, vr_msaa='4xmsaa', **prepare_options(choices))
         expected.update({('/graphics_card/resolution', 'width'): '2400', ('/graphics_card/resolution', 'height'): '2600',
                          ('/graphics_card/resolution', 'multisampling'): '4xmsaa'})
-        self.assertEqual(attributes(payload), attributes(self.baseline) | expected)
+        self.assertEqual(attributes(payload), attributes(self.baseline) | VR_VSYNC | expected)
 
     def test_quality_transport_invalid_inputs_never_write(self):
         raw_json = [b'[]', b'null', b'1', b'"off"', b'{', b'\xff',
@@ -279,7 +287,7 @@ class GraphicsProfileTests(unittest.TestCase):
         boundary = base64.b64encode(b'{}' + b' ' * 3070).decode('ascii')
         self.assertEqual(len(boundary), 4096)
         payload, _ = self.prepare(quality_base64=boundary)
-        self.assertEqual(payload, self.baseline)
+        self.assertEqual(attributes(payload), attributes(self.baseline) | VR_VSYNC)
 
     def test_invalid_catalog_mappings_and_defaults_never_write(self):
         def target_mutation(target):
@@ -327,7 +335,7 @@ class GraphicsProfileTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(result.stdout)
         self.assertEqual(receipt['qualityChoices'], DEFAULT_CHOICES | {'Shadows': 'low', 'CrowdDetail': 'off'})
-        self.assertEqual(attributes(output.read_bytes()), attributes(self.baseline) |
+        self.assertEqual(attributes(output.read_bytes()), attributes(self.baseline) | VR_VSYNC |
                          expected_attributes({'Shadows': 'low', 'CrowdDetail': 'off'}))
         rejected = self.folder / 'cli-rejected.xml'
         result = subprocess.run([sys.executable, str(ROOT / 'tools/graphics_profile.py'), '--output', str(rejected),
@@ -343,17 +351,19 @@ class GraphicsProfileTests(unittest.TestCase):
             self.assertEqual(receipt['resolution']['width'], str(width))
             self.assertEqual(receipt['resolution']['height'], str(height))
             changed = {key for key, value in attributes(payload).items() if attributes(self.baseline).get(key) != value}
-            self.assertEqual(changed, {('/graphics_card/resolution', 'width'), ('/graphics_card/resolution', 'height')})
+            self.assertEqual(changed, {('/graphics_card/resolution', 'width'), ('/graphics_card/resolution', 'height')} | set(VR_VSYNC))
         for options in [dict(scene_width=2400), dict(scene_height=2600), dict(scene_width=8193, scene_height=2000),
                         dict(scene_width=8192, scene_height=8193), dict(mode='Desktop', scene_width=2400, scene_height=2600)]:
             with self.assertRaises(ValueError): self.prepare(**options)
 
     def test_desktop_preferences_cannot_change_vr_profile(self):
+        default, _ = self.prepare(mode='VR')
+        self.assertEqual(attributes(default)[('/graphics_card/resolution', 'vsync')], '0')
         for aa in ('off', '2xmsaa', '4xmsaa', '8xmsaa'):
             for vsync in (0, 1):
                 payload, receipt = self.prepare(mode='VR', desktop_msaa=aa, desktop_vsync=vsync)
-                self.assertEqual(payload, self.baseline)
-                self.assertTrue(receipt['isBaseline'])
+                self.assertEqual(payload, default)
+                self.assertFalse(receipt['isBaseline'])
 
     def test_custom_vr_changes_only_allowed_attributes(self):
         payload, receipt = self.prepare(render_scale=150, tree_detail='medium', object_detail='high',
@@ -361,11 +371,11 @@ class GraphicsProfileTests(unittest.TestCase):
         before, after = attributes(self.baseline), attributes(payload)
         expected = {('/graphics_card/resolution', 'width'): '1920', ('/graphics_card/resolution', 'height'): '1080',
                     ('/trees', 'lod'): '1.0', ('/objects', 'lod'): '1.25', ('/crowd', 'detail'): '0',
-                    ('/anisotropic', 'min'): '1', ('/anisotropic', 'max'): '1'}
+                    ('/anisotropic', 'min'): '1', ('/anisotropic', 'max'): '1'} | VR_VSYNC
         self.assertEqual({key: after[key] for key in after if before.get(key) != after[key]}, expected)
         self.assertEqual(after, before | expected)  # No removed attributes, AO/shadow/post/CPU/input/stereo changes.
         self.assertEqual(after[('/graphics_card/resolution', 'multisampling')], 'off')
-        self.assertEqual(after[('/graphics_card/resolution', 'vsync')], '1')
+        self.assertEqual(after[('/graphics_card/resolution', 'vsync')], '0')  # Desktop VSync never reaches VR.
         self.assertFalse(receipt['isBaseline'])
 
     def test_desktop_msaa_and_vsync_are_scoped(self):
@@ -378,7 +388,7 @@ class GraphicsProfileTests(unittest.TestCase):
         before = attributes(self.baseline)
         for aa in graphics.MSAA:
             payload, receipt = self.prepare(vr_msaa=aa, desktop_msaa='8xmsaa', desktop_vsync=0)
-            self.assertEqual(attributes(payload), before | {('/graphics_card/resolution', 'multisampling'): aa})
+            self.assertEqual(attributes(payload), before | VR_VSYNC | {('/graphics_card/resolution', 'multisampling'): aa})
             self.assertEqual(receipt['resolution']['multisampling'], aa)
 
     def test_supported_choices_and_resolution_bounds(self):
