@@ -27,6 +27,10 @@ Supported installed DLC appears in the Practice / Race car and track lists. Stab
 
 ## While playing
 
+In the current development build, **Simple / Advanced** beside **?** switches between quick setup and the full options without changing your choices. **Quality preset** mirrors the game's five DX11 quality presets; Advanced exposes individual quality controls. **Potato / Low-End** selects Ultra Low quality, VR MSAA Off and 70% VR render scale. Save settings or launch to keep it. These additions are not yet in the published downloads above and still need game/headset acceptance.
+
+Launcher graphics preferences are applied on every launch. Changes made in the game's graphics menu last only for that session; the original live game settings are restored afterward. Use the launcher to keep your desired quality. Intel-only graphics extensions remain Off pending capability detection; native Automatic hardware detection is not mirrored as a fixed preset.
+
 - **F10** recenters your view. Change it or bind a controller/wheel button under **Controls → VR**.
 - With **VR cockpit** enabled, supported calibrated cars (including the 25 supported DLC cars) start VR Practice / Race in cockpit view. Adjust their seating position under **Controls → Seat**.
 - Adjust resolution, MSAA and the HUD under **Graphics**. The FPS/GPU display is under **Advanced**.

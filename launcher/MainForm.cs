@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace GRID2VR;
 
 // Keep the native tab/field/footer vocabulary aligned with DiRT2VR's MainForm.
-internal sealed class MainForm : LauncherForm
+internal sealed partial class MainForm : LauncherForm
 {
     private readonly SessionClient client;
     private readonly ProfilePanel profiles;
@@ -77,9 +77,11 @@ internal sealed class MainForm : LauncherForm
     private LauncherWindow window = new();
     private bool windowLoaded;
 
-    public MainForm(SessionClient value, ProfileStore? profileStore = null, Func<bool, CancellationToken, Task<AppRelease?>>? releaseCheck = null)
+    public MainForm(SessionClient value, ProfileStore? profileStore = null, Func<bool, CancellationToken, Task<AppRelease?>>? releaseCheck = null,
+        Func<bool>? approveAdvancedView = null)
     {
         client = value;
+        confirmAdvancedView = approveAdvancedView ?? ConfirmAdvancedView;
         updates = new UpdatesPanel(client.Root, releaseCheck: releaseCheck);
         updates.UpdateAvailable += ShowUpdateNotice;
         profiles = new ProfilePanel(profileStore ?? ProfileService.Open(client.Root));
@@ -92,13 +94,11 @@ internal sealed class MainForm : LauncherForm
         layout.ColumnStyles.Add(new(SizeType.Percent, 100));
         foreach (var size in new[] { SizeType.AutoSize, SizeType.AutoSize, SizeType.Percent, SizeType.AutoSize, SizeType.AutoSize })
             layout.RowStyles.Add(new(size, size == SizeType.Percent ? 100 : 0));
-        var header = new TableLayoutPanel { ColumnCount = 4, Dock = DockStyle.Fill, AutoSize = true };
-        header.ColumnStyles.Add(new(SizeType.AutoSize)); header.ColumnStyles.Add(new(SizeType.Percent, 100)); header.ColumnStyles.Add(new(SizeType.AutoSize)); header.ColumnStyles.Add(new(SizeType.AutoSize));
         var title = TextLabel("GRID 2 VR"); title.Font = new Font(Font.FontFamily, 20, FontStyle.Bold);
         var help = new Button { Text = "?", Name = "HelpAbout", AccessibleName = "Help / About", Size = new Size(36, 36), Anchor = AnchorStyles.Right };
         help.Click += (_, _) => ShowAbout();
         updateNotice.Click += (_, _) => ShowAbout();
-        header.Controls.Add(Branding.Logo(64)); header.Controls.Add(title); header.Controls.Add(updateNotice); header.Controls.Add(help);
+        var header = new LauncherHeader(Branding.Logo(64), title, updateNotice, viewPicker, help);
         HelpRequested += (_, e) => { e.Handled = true; ShowAbout(); };
         layout.Controls.Add(header); state.Margin = new Padding(0, 8, 0, 16); layout.Controls.Add(state);
         var tabs = new ModernTabs { Name = "LauncherTabs", Dock = DockStyle.Fill };
@@ -129,6 +129,7 @@ internal sealed class MainForm : LauncherForm
         profiles.Controls.Add(HelpLink("Profile"));
         tabs.SelectedIndexChanged += (_, _) => { if (tabs.SelectedTab?.Text == "Profile") profiles.Reload(); };
         var graphicsColumns = Columns(Page(tabs, "Graphics")); var graphics = graphicsColumns.First;
+        InitializeGraphicsPresets(graphics);
         Section(graphics, "VR rendering");
         Field(graphics, "VR render scale", renderScale);
         graphics.Controls.Add(refreshHeadset);
@@ -139,17 +140,16 @@ internal sealed class MainForm : LauncherForm
         Field(graphics, "Anti-aliasing (VR)", vrMsaa);
         measuredScene.Tag = vrResolutionSummary.Tag = desktopResolution.Tag = "hint";
         graphics.Controls.Add(TextLabel("100% renders at the connected headset’s recommended resolution. Lower values trade detail for performance; higher values can improve sharpness and use more GPU time and memory. Headset output stays at 100%. Changes apply on the next VR launch."));
-        graphics.Controls.Add(TextLabel("VR anti-aliasing is independent of desktop MSAA and defaults to Off. Higher MSAA uses more GPU time and memory. VR keeps motion blur off with the current shadow, ambient-occlusion and post-processing profile."));
+        graphics.Controls.Add(TextLabel("VR anti-aliasing is independent of desktop MSAA and defaults to Off. Higher MSAA uses more GPU time and memory. VR keeps motion blur off; quality follows your launcher choices."));
         Section(graphics, "VR mirror");
         graphics.Controls.Add(vrMirrorBorderless);
         graphics.Controls.Add(TextLabel("Fill the mirror's monitor without borders on the next VR launch. VR resolution stays independent of window size."));
         graphics = graphicsColumns.Second;
         Section(graphics, "Detail");
-        AddQualityChoices(treeDetail, "medium", "high", "ultra"); AddQualityChoices(objectDetail, "medium", "high", "ultra");
-        AddQualityChoices(crowdDetail, "low", "medium", "high", "ultra");
-        textureFiltering.Items.AddRange(new ContentItem[] { new("off", "Off"), new("low", "2×"), new("high", "8×"), new("ultra", "16×") });
         Field(graphics, "Tree detail", treeDetail); Field(graphics, "Object detail", objectDetail);
         Field(graphics, "Crowd detail", crowdDetail); Field(graphics, "Texture filtering", textureFiltering);
+        InitializeQualityEditors(graphics);
+        graphics = graphicsColumns.First;
         Section(graphics, "VR cockpit");
         Field(graphics, "Cockpit view", vrCockpit);
         cockpitDriver.Items.AddRange(new ContentItem[] { new("HeadOnly", "Hide head (default)"), new("HideDriver", "Hide entire driver") });
@@ -173,6 +173,7 @@ internal sealed class MainForm : LauncherForm
                 : "Original cockpit textures selected. Save settings or launch to use them.";
             return Task.CompletedTask;
         });
+        graphics = graphicsColumns.Second;
         Section(graphics, "VR HUD");
         Field(graphics, "Distance", hudDistance); Field(graphics, "Follow view", hudFollow);
         graphics.Controls.Add(TextLabel("Distance and Follow view apply to the HUD and results text in stereo VR. Individual HUD elements cannot be hidden yet."));
@@ -188,8 +189,9 @@ internal sealed class MainForm : LauncherForm
         renderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
         refreshHeadset.Click += async (_, _) => await RefreshHeadsetResolution();
         desktopRenderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
-        graphicsDefaults.Click += (_, _) => { ApplyGraphics(GraphicsOptions.Defaults); vrCockpit.Checked = true; cockpitExposure.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
+        graphicsDefaults.Click += (_, _) => { ClearGraphicsPresetUndo(); ApplyGraphics(GraphicsOptions.Defaults); vrCockpit.Checked = true; cockpitExposure.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
         ApplyGraphics(GraphicsOptions.Defaults);
+        InitializeGraphicsEditTracking();
         graphics.Controls.Add(HelpLink("VR rendering"));
         var controlPage = new TabPage("Controls") { Padding = new Padding(8) };
         var controlTabs = new ModernTabs { Name = "ControlTabs", Dock = DockStyle.Fill };
@@ -272,6 +274,7 @@ internal sealed class MainForm : LauncherForm
         // Same footer order and labels as DiRT2VR; wraps on smaller windows.
         var logs = Button("Open logs", "OpenLogs");
         layout.Controls.Add(new LauncherFooter(desktop, vr, save, recover, logs)); Controls.Add(layout);
+        InitializeViews(tabs);
         void FitStatusLabels()
         {
             var width = Math.Max(1, layout.ClientSize.Width - layout.Padding.Horizontal);
@@ -326,7 +329,7 @@ internal sealed class MainForm : LauncherForm
         {
             if (!windowLoaded || WindowState == FormWindowState.Minimized) return;
             window = WindowState == FormWindowState.Maximized ? window with { Maximized = true }
-                : LauncherWindow.FromClientSize(ClientSize, DeviceDpi);
+                : LauncherWindow.FromClientSize(ClientSize, DeviceDpi) with { AdvancedView = window.AdvancedView };
         };
         FormClosing += (_, _) =>
         {
@@ -368,13 +371,16 @@ internal sealed class MainForm : LauncherForm
         var available = new Size(work.Width - (Width - ClientSize.Width), work.Height - (Height - ClientSize.Height));
         ClientSize = window.ClientSizeAtDpi(DeviceDpi, available);
         Location = new Point(work.Left + (work.Width - Width) / 2, work.Top + (work.Height - Height) / 2);
-        window = LauncherWindow.FromClientSize(ClientSize, DeviceDpi) with { Maximized = window.Maximized };
+        var advanced = client.UseAdvancedView(window);
+        window = LauncherWindow.FromClientSize(ClientSize, DeviceDpi) with { Maximized = window.Maximized, AdvancedView = advanced };
+        viewPicker.Advanced = advanced;
         if (window.Maximized) WindowState = FormWindowState.Maximized;
         windowLoaded = true;
     }
 
     private void ApplyChoices(Choices choices)
     {
+        ClearGraphicsPresetUndo();
         carSearch.Clear();
         car.SelectedItem = car.Items.Cast<ContentItem>().FirstOrDefault(c => c.Id == choices.Car) ?? car.Items.Cast<ContentItem>().FirstOrDefault();
         eventChoice.SelectedItem = eventChoice.Items.Cast<ContentItem>().FirstOrDefault(e => choices.Track.StartsWith(e.Id + "/", StringComparison.Ordinal)) ?? eventChoice.Items.Cast<ContentItem>().FirstOrDefault();
@@ -436,9 +442,7 @@ internal sealed class MainForm : LauncherForm
     });
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
     private static void SelectChoice(ComboBox box, string id) => box.SelectedItem = box.Items.Cast<ContentItem>().Single(x => x.Id == id);
-    private static void AddQualityChoices(ComboBox box, params string[] choices) => box.Items.AddRange(choices
-        .Select(id => new ContentItem(id, System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(id))).ToArray());
-    private GraphicsOptions CurrentGraphics() => retainedGraphics with
+    private GraphicsOptions CurrentGraphics() => CurrentQuality(retainedGraphics with
     {
         VrRenderScale = renderScale.Value, DesktopVSync = desktopVSync.Checked, DesktopMsaa = ChoiceId(desktopMsaa), VrMsaa = ChoiceId(vrMsaa),
         DesktopRenderScale = desktopRenderScale.Value == retainedGraphics.RenderScale && retainedGraphics.DesktopRenderScale is null ? null : desktopRenderScale.Value,
@@ -446,7 +450,7 @@ internal sealed class MainForm : LauncherForm
         DesktopBorderless = desktopBorderless.Checked,
         TreeDetail = ChoiceId(treeDetail), ObjectDetail = ChoiceId(objectDetail), CrowdDetail = ChoiceId(crowdDetail), TextureFiltering = ChoiceId(textureFiltering),
         HudDistance = hudDistance.Value, HudFollowView = hudFollow.Checked
-    };
+    });
     private void ApplyGraphics(GraphicsOptions value)
     {
         updatingResolution = true;
@@ -461,6 +465,8 @@ internal sealed class MainForm : LauncherForm
             SelectChoice(vrMsaa, value.VrMsaa);
             SelectChoice(treeDetail, value.TreeDetail); SelectChoice(objectDetail, value.ObjectDetail);
             SelectChoice(crowdDetail, value.CrowdDetail); SelectChoice(textureFiltering, value.TextureFiltering);
+            foreach (var category in GraphicsCatalog.Categories)
+                SelectChoice(qualityEditors[category.Field], GraphicsCatalog.Get(value, category.Field));
             hudDistance.Value = value.HudDistance; hudFollow.Checked = value.HudFollowView;
         }
         finally { updatingResolution = false; }
@@ -469,6 +475,7 @@ internal sealed class MainForm : LauncherForm
     private void UpdateResolutionLabels()
     {
         if (updatingResolution) return;
+        UpdateGraphicsPreset();
         desktopResolution.Text = new GraphicsOptions(RenderScale: desktopRenderScale.Value).SceneLabel;
         vrResolutionSummary.Text = headsetResolution is not null && headsetResolution.Runtime == runtime.SelectedItem as string
             ? headsetResolution.Summary(renderScale.Value) : headsetResolutionStatus;
@@ -624,6 +631,7 @@ internal sealed class MainForm : LauncherForm
         save.Enabled = selected && !busy && !capturingRecenter;
         launchMode.Enabled = runtime.Enabled = !busy && !active && !pending;
         var normal = ChoiceId(launchMode) == "Normal";
+        UpdateSimpleContext(normal, ChoiceId(launchMode) == "Race");
         carSearch.Enabled = car.Enabled = track.Enabled = eventChoice.Enabled = !normal && !busy && !active && !pending;
         var pointToPoint = track.SelectedItem is ContentItem route && SessionClient.IsPointToPoint(route.Id);
         laps.Enabled = loaded && idle && !normal && !pointToPoint && !capturingRecenter;
@@ -636,6 +644,7 @@ internal sealed class MainForm : LauncherForm
         foreach (var control in new Control[] { renderScale, desktopRenderScale, modernInterface, previewVrFixes, skipIntro, diagnosticLogging, performanceDisplay, replay3d, garage3d, vrCockpit, keepHorizonLevel,
             cockpitTextures, hudDistance, hudFollow, desktopVSync, desktopMsaa, desktopBorderless, vrMsaa, vrMirrorBorderless, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
             control.Enabled = loaded && idle && !capturingRecenter;
+        EnableGraphicsEditors(loaded && idle && !capturingRecenter);
         performanceFollowView.Enabled = performanceDisplay.Enabled && performanceDisplay.Checked;
         cockpitDriver.Enabled = vrCockpit.Enabled && vrCockpit.Checked;
         cockpitExposure.Enabled = cockpitDriver.Enabled;

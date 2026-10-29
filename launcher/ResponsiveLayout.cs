@@ -3,6 +3,16 @@ namespace GRID2VR;
 // Match DiRT2VR's responsive layout without rebuilding controls during resize.
 internal class VerticalStack : Panel
 {
+    private readonly HashSet<Control> excluded = [];
+    internal static void SetShown(Control control, bool shown)
+    {
+        if (control.Parent is VerticalStack parent)
+        {
+            if (shown) parent.excluded.Remove(control); else parent.excluded.Add(control);
+            control.Visible = shown; parent.PerformLayout();
+        }
+        else control.Visible = shown;
+    }
     private bool arranging;
     public VerticalStack() { Dock = DockStyle.Top; Margin = Padding.Empty; TabStop = false; }
     protected override void OnControlAdded(ControlEventArgs e)
@@ -12,6 +22,7 @@ internal class VerticalStack : Panel
     }
     protected override void OnControlRemoved(ControlEventArgs e)
     {
+        excluded.Remove(e.Control!);
         e.Control!.SizeChanged -= ChildSizeChanged; base.OnControlRemoved(e);
     }
     private void ChildSizeChanged(object? sender, EventArgs e) => PerformLayout();
@@ -25,6 +36,7 @@ internal class VerticalStack : Panel
             var y = Padding.Top;
             foreach (Control child in Controls)
             {
+                if (excluded.Contains(child)) { child.Bounds = Rectangle.Empty; continue; }
                 var width = Math.Max(1, ClientSize.Width - Padding.Horizontal - child.Margin.Horizontal);
                 if (child is Label label) label.MaximumSize = new Size(width, 0);
                 var fixedWidth = child is Button or LinkLabel;
@@ -92,6 +104,7 @@ internal class SettingRow : Panel
 internal class ResponsiveColumns : Panel
 {
     internal const int WideAt = 1060;
+    protected virtual int WideBreakpoint => WideAt;
     public VerticalStack First { get; } = new();
     public VerticalStack Second { get; } = new();
     private bool arranging;
@@ -109,7 +122,7 @@ internal class ResponsiveColumns : Panel
         arranging = true;
         try
         {
-            var wide = Width >= (int)Math.Round(WideAt * LayoutDpi / 96.0);
+            var wide = Width >= (int)Math.Round(WideBreakpoint * LayoutDpi / 96.0);
             var gap = (int)Math.Round(30 * LayoutDpi / 96.0);
             var firstWidth = wide ? (int)Math.Round((Width - gap) * 0.54) : Width;
             First.SetBounds(0, 0, firstWidth, First.Height); First.PerformLayout();

@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "sourceOptionsSha256": "78d988326f55f5a398bfea021762c9a24bc861683b6114399c93025acfde1ebd",
+  "policy": "DX11 quality only. First-boot display and physics changes are excluded. Intel extensions remain off until capability detection is qualified. Automatic hardware detection is not a fixed preset.",
+  "categories": [
+    { "field": "NightLighting", "label": "Night lighting", "default": "high", "choices": [
+      { "id": "low", "label": "Low", "attributes": { "night_lighting@volumes": "false", "night_lighting@lights": "150", "night_lighting@shadows": "false" } },
+      { "id": "medium", "label": "Medium", "attributes": { "night_lighting@volumes": "true", "night_lighting@lights": "0", "night_lighting@shadows": "false" } },
+      { "id": "high", "label": "High", "attributes": { "night_lighting@volumes": "true", "night_lighting@lights": "0", "night_lighting@shadows": "true" } }
+    ] },
+    { "field": "Shadows", "label": "Shadows", "default": "ultra", "choices": [
+      { "id": "ultralow", "label": "Ultra Low", "attributes": { "shadows@enabled": "false", "shadows@size": "512", "shadows@maskQuality": "0", "shadows@particles": "false" } },
+      { "id": "low", "label": "Low", "attributes": { "shadows@enabled": "true", "shadows@size": "768", "shadows@maskQuality": "0", "shadows@particles": "false" } },
+      { "id": "medium", "label": "Medium", "attributes": { "shadows@enabled": "true", "shadows@size": "1024", "shadows@maskQuality": "0", "shadows@particles": "false" } },
+      { "id": "high", "label": "High", "attributes": { "shadows@enabled": "true", "shadows@size": "2048", "shadows@maskQuality": "1", "shadows@particles": "true" } },
+      { "id": "ultra", "label": "Ultra", "attributes": { "shadows@enabled": "true", "shadows@size": "2048", "shadows@maskQuality": "2", "shadows@particles": "true" } }
+    ] },
+    { "field": "AdvancedFog", "label": "Advanced fog", "default": "on", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "advanced_fog@enabled": "false" } },
+      { "id": "on", "label": "On", "attributes": { "advanced_fog@enabled": "true" } }
+    ] },
+    { "field": "Particles", "label": "Particles", "default": "ultra", "choices": [
+      { "id": "low", "label": "Low", "attributes": { "particles@enabled": "true", "particles@wind": "false", "particles@dynamicRes": "true", "particles@lowResScalar": "4" } },
+      { "id": "medium", "label": "Medium", "attributes": { "particles@enabled": "true", "particles@wind": "true", "particles@dynamicRes": "true", "particles@lowResScalar": "4" } },
+      { "id": "high", "label": "High", "attributes": { "particles@enabled": "true", "particles@wind": "true", "particles@dynamicRes": "false", "particles@lowResScalar": "4" } },
+      { "id": "ultra", "label": "Ultra", "attributes": { "particles@enabled": "true", "particles@wind": "true", "particles@dynamicRes": "false", "particles@lowResScalar": "2" } }
+    ] },
+    { "field": "CrowdDetail", "label": "Crowd detail", "default": "ultra", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "crowd@enabled": "false", "crowd@detail": "0" } },
+      { "id": "low", "label": "Low", "attributes": { "crowd@enabled": "true", "crowd@detail": "0" } },
+      { "id": "medium", "label": "Medium", "attributes": { "crowd@enabled": "true", "crowd@detail": "1" } },
+      { "id": "high", "label": "High", "attributes": { "crowd@enabled": "true", "crowd@detail": "2" } },
+      { "id": "ultra", "label": "Ultra", "attributes": { "crowd@enabled": "true", "crowd@detail": "3" } }
+    ] },
+    { "field": "Cloth", "label": "Cloth", "default": "high", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "cloth@enabled": "false", "cloth@tessellation": "false" } },
+      { "id": "low", "label": "Low", "attributes": { "cloth@enabled": "true", "cloth@tessellation": "false" } },
+      { "id": "high", "label": "High", "attributes": { "cloth@enabled": "true", "cloth@tessellation": "true" } }
+    ] },
+    { "field": "AmbientOcclusion", "label": "Ambient occlusion", "default": "ultra", "choices": [
+      { "id": "low", "label": "Low", "attributes": { "dynamic_ambient_occ@enabled": "true", "dynamic_ambient_occ@quality": "0" } },
+      { "id": "high", "label": "High", "attributes": { "dynamic_ambient_occ@enabled": "true", "dynamic_ambient_occ@quality": "1" } },
+      { "id": "ultra", "label": "Ultra", "attributes": { "dynamic_ambient_occ@enabled": "true", "dynamic_ambient_occ@quality": "2" } }
+    ] },
+    { "field": "SoftAmbientOcclusion", "label": "Soft ambient occlusion", "default": "on", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "dynamic_ambient_occ_soft@enabled": "false" } },
+      { "id": "on", "label": "On", "attributes": { "dynamic_ambient_occ_soft@enabled": "true" } }
+    ] },
+    { "field": "GroundCover", "label": "Ground cover", "default": "high", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "groundcover@mode": "off", "groundcover@clutter": "false" } },
+      { "id": "low", "label": "Low", "attributes": { "groundcover@mode": "atoc", "groundcover@clutter": "false" } },
+      { "id": "high", "label": "High", "attributes": { "groundcover@mode": "blended", "groundcover@clutter": "true" } }
+    ] },
+    { "field": "VehicleDetail", "label": "Vehicle detail", "default": "high", "choices": [
+      { "id": "low", "label": "Low", "attributes": { "vehicles@lodQuality": "0", "vehicles@characterQuality": "0", "vehicles@hires_ai_livery": "0" } },
+      { "id": "medium", "label": "Medium", "attributes": { "vehicles@lodQuality": "1", "vehicles@characterQuality": "1", "vehicles@hires_ai_livery": "1" } },
+      { "id": "high", "label": "High", "attributes": { "vehicles@lodQuality": "2", "vehicles@characterQuality": "2", "vehicles@hires_ai_livery": "1" } }
+    ] },
+    { "field": "TreeDetail", "label": "Tree detail", "default": "ultra", "choices": [
+      { "id": "medium", "label": "Medium", "attributes": { "trees@lod": "1.0", "trees@maxlod": "0" } },
+      { "id": "high", "label": "High", "attributes": { "trees@lod": "1.25", "trees@maxlod": "0" } },
+      { "id": "ultra", "label": "Ultra", "attributes": { "trees@lod": "1.5", "trees@maxlod": "0" } }
+    ] },
+    { "field": "ObjectDetail", "label": "Object detail", "default": "ultra", "choices": [
+      { "id": "medium", "label": "Medium", "attributes": { "objects@lod": "1.0", "objects@maxlod": "0" } },
+      { "id": "high", "label": "High", "attributes": { "objects@lod": "1.25", "objects@maxlod": "0" } },
+      { "id": "ultra", "label": "Ultra", "attributes": { "objects@lod": "1.5", "objects@maxlod": "0" } }
+    ] },
+    { "field": "CarReflections", "label": "Car reflections", "default": "ultra", "choices": [
+      { "id": "low", "label": "Low", "attributes": { "envmap@faces": "0", "envmap@size": "256", "envmap@drawallobjects": "false", "envmap@scaleminsize": "1.0", "envmap@mindistance": "0.0" } },
+      { "id": "medium", "label": "Medium", "attributes": { "envmap@faces": "6", "envmap@size": "256", "envmap@drawallobjects": "false", "envmap@scaleminsize": "1.5", "envmap@mindistance": "0.0" } },
+      { "id": "high", "label": "High", "attributes": { "envmap@faces": "6", "envmap@size": "256", "envmap@drawallobjects": "false", "envmap@scaleminsize": "1.0", "envmap@mindistance": "0.0" } },
+      { "id": "ultra", "label": "Ultra", "attributes": { "envmap@faces": "6", "envmap@size": "1024", "envmap@drawallobjects": "true", "envmap@scaleminsize": "1.0", "envmap@mindistance": "200.0" } }
+    ] },
+    { "field": "Water", "label": "Water", "default": "high", "choices": [
+      { "id": "low", "label": "Low", "attributes": { "water@update": "false", "water@detail": "0", "water@scale": "8", "water@tessellation": "false" } },
+      { "id": "medium", "label": "Medium", "attributes": { "water@update": "true", "water@detail": "1", "water@scale": "8", "water@tessellation": "true" } },
+      { "id": "high", "label": "High", "attributes": { "water@update": "true", "water@detail": "2", "water@scale": "2", "water@tessellation": "true" } }
+    ] },
+    { "field": "PostProcessing", "label": "Post-processing", "default": "high", "choices": [
+      { "id": "low", "label": "Low", "attributes": { "postprocess@quality": "0" } },
+      { "id": "medium", "label": "Medium", "attributes": { "postprocess@quality": "1" } },
+      { "id": "high", "label": "High", "attributes": { "postprocess@quality": "2" } }
+    ] },
+    { "field": "Skidmarks", "label": "Skidmarks", "default": "on", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "skidmarks@enabled": "false" } },
+      { "id": "on", "label": "On", "attributes": { "skidmarks@enabled": "true" } }
+    ] },
+    { "field": "AdvancedLighting", "label": "Advanced lighting", "default": "on", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "graphics_card/advanced@forward": "false" } },
+      { "id": "on", "label": "On", "attributes": { "graphics_card/advanced@forward": "true" } }
+    ] },
+    { "field": "GlobalIllumination", "label": "Global illumination", "default": "on", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "graphics_card/advanced@global_illumination": "false" } },
+      { "id": "on", "label": "On", "attributes": { "graphics_card/advanced@global_illumination": "true" } }
+    ] },
+    { "field": "TextureFiltering", "label": "Texture filtering", "default": "ultra", "choices": [
+      { "id": "off", "label": "Off", "attributes": { "anisotropic@min": "1", "anisotropic@max": "1" } },
+      { "id": "low", "label": "2×", "attributes": { "anisotropic@min": "1", "anisotropic@max": "2" } },
+      { "id": "high", "label": "8×", "attributes": { "anisotropic@min": "1", "anisotropic@max": "8" } },
+      { "id": "ultra", "label": "16×", "attributes": { "anisotropic@min": "4", "anisotropic@max": "16" } }
+    ] },
+    { "field": "IntelAOIT", "label": "Intel AOIT (trees)", "default": "off", "available": false, "choices": [
+      { "id": "off", "label": "Off (unavailable)", "attributes": { "graphics_card/intel@tree_aoit": "false" } },
+      { "id": "on", "label": "On", "attributes": { "graphics_card/intel@tree_aoit": "true" } }
+    ] },
+    { "field": "IntelAVSM", "label": "Intel AVSM (particles)", "default": "off", "available": false, "choices": [
+      { "id": "off", "label": "Off (unavailable)", "attributes": { "graphics_card/intel@particle_avsm": "false" } },
+      { "id": "on", "label": "On", "attributes": { "graphics_card/intel@particle_avsm": "true" } }
+    ] }
+  ],
+  "presets": [
+    { "id": "ultralow", "label": "Ultra Low", "values": { "NightLighting": "low", "Shadows": "ultralow", "AdvancedFog": "off", "Particles": "low", "CrowdDetail": "off", "Cloth": "off", "AmbientOcclusion": "low", "SoftAmbientOcclusion": "off", "GroundCover": "off", "VehicleDetail": "low", "TreeDetail": "medium", "ObjectDetail": "medium", "CarReflections": "low", "Water": "low", "PostProcessing": "low", "Skidmarks": "off", "AdvancedLighting": "off", "GlobalIllumination": "off", "TextureFiltering": "off", "IntelAOIT": "off", "IntelAVSM": "off" } },
+    { "id": "low", "label": "Low", "values": { "NightLighting": "low", "Shadows": "low", "AdvancedFog": "off", "Particles": "low", "CrowdDetail": "low", "Cloth": "low", "AmbientOcclusion": "low", "SoftAmbientOcclusion": "off", "GroundCover": "low", "VehicleDetail": "low", "TreeDetail": "medium", "ObjectDetail": "medium", "CarReflections": "low", "Water": "low", "PostProcessing": "low", "Skidmarks": "off", "AdvancedLighting": "off", "GlobalIllumination": "off", "TextureFiltering": "off", "IntelAOIT": "off", "IntelAVSM": "off" } },
+    { "id": "medium", "label": "Medium", "values": { "NightLighting": "medium", "Shadows": "medium", "AdvancedFog": "off", "Particles": "medium", "CrowdDetail": "medium", "Cloth": "high", "AmbientOcclusion": "high", "SoftAmbientOcclusion": "off", "GroundCover": "high", "VehicleDetail": "medium", "TreeDetail": "medium", "ObjectDetail": "medium", "CarReflections": "medium", "Water": "medium", "PostProcessing": "medium", "Skidmarks": "on", "AdvancedLighting": "off", "GlobalIllumination": "off", "TextureFiltering": "low", "IntelAOIT": "on", "IntelAVSM": "off" } },
+    { "id": "high", "label": "High", "values": { "NightLighting": "high", "Shadows": "high", "AdvancedFog": "on", "Particles": "high", "CrowdDetail": "high", "Cloth": "high", "AmbientOcclusion": "high", "SoftAmbientOcclusion": "off", "GroundCover": "high", "VehicleDetail": "high", "TreeDetail": "high", "ObjectDetail": "high", "CarReflections": "high", "Water": "medium", "PostProcessing": "high", "Skidmarks": "on", "AdvancedLighting": "off", "GlobalIllumination": "off", "TextureFiltering": "high", "IntelAOIT": "on", "IntelAVSM": "on" } },
+    { "id": "ultra", "label": "Ultra", "values": { "NightLighting": "high", "Shadows": "ultra", "AdvancedFog": "on", "Particles": "ultra", "CrowdDetail": "ultra", "Cloth": "high", "AmbientOcclusion": "ultra", "SoftAmbientOcclusion": "off", "GroundCover": "high", "VehicleDetail": "high", "TreeDetail": "ultra", "ObjectDetail": "ultra", "CarReflections": "ultra", "Water": "high", "PostProcessing": "high", "Skidmarks": "on", "AdvancedLighting": "on", "GlobalIllumination": "on", "TextureFiltering": "ultra", "IntelAOIT": "on", "IntelAVSM": "on" } }
+  ]
+}

@@ -35,13 +35,15 @@ internal static class UpdateNotificationTests
                 Complete(panel.Start());
                 Check(calls.SequenceEqual(new[] { false }) && notice.Visible && notice.AccessibleDescription!.Contains(offer.Tag));
                 header.PerformLayout();
-                Check(header.GetPositionFromControl(notice).Column + 1 == header.GetPositionFromControl(help).Column);
+                var view = header.Controls.OfType<LauncherViewPicker>().Single();
+                Check(header.GetPositionFromControl(view).Column + 1 == header.GetPositionFromControl(help).Column);
                 header.Scale(new SizeF(scale, scale));
                 foreach (var width in new[] { 520, 860 })
                 {
                     header.Width = (int)(width * scale); header.PerformLayout();
                     header.Height = header.GetPreferredSize(new Size(header.Width, 0)).Height; header.PerformLayout();
                     var controls = header.Controls.Cast<Control>().ToArray();
+                    Check(header.GetPositionFromControl(notice).Row == 1 || header.GetPositionFromControl(notice).Column + 1 == header.GetPositionFromControl(view).Column);
                     foreach (var control in controls) Check(header.ClientRectangle.Contains(control.Bounds));
                     for (var a = 0; a < controls.Length; ++a)
                     for (var b = a + 1; b < controls.Length; ++b) Check(!controls[a].Bounds.IntersectsWith(controls[b].Bounds));

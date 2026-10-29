@@ -73,7 +73,8 @@ internal static class LauncherAppearance
 
 internal class LauncherForm : Form
 {
-    public LauncherForm() { Icon = Branding.LoadIcon(); }
+    private readonly SettingsWheelGuard wheelGuard;
+    public LauncherForm() { Icon = Branding.LoadIcon(); wheelGuard = new SettingsWheelGuard(this); }
     protected override void OnLoad(EventArgs e)
     {
         LauncherAppearance.Apply(this);
@@ -88,7 +89,7 @@ internal class LauncherForm : Form
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { SystemEvents.UserPreferenceChanged -= PreferencesChanged; Icon?.Dispose(); }
+        if (disposing) { wheelGuard.Dispose(); SystemEvents.UserPreferenceChanged -= PreferencesChanged; Icon?.Dispose(); }
         base.Dispose(disposing);
     }
 }

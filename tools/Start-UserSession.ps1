@@ -17,8 +17,9 @@ param(
     [ValidateSet('off','2xmsaa','4xmsaa','8xmsaa')][string]$VrMsaa='off',
     [ValidateSet('medium','high','ultra')][string]$TreeDetail='ultra',
     [ValidateSet('medium','high','ultra')][string]$ObjectDetail='ultra',
-    [ValidateSet('low','medium','high','ultra')][string]$CrowdDetail='ultra',
+    [ValidateSet('off','low','medium','high','ultra')][string]$CrowdDetail='ultra',
     [ValidateSet('off','low','high','ultra')][string]$TextureFiltering='ultra',
+    [ValidateLength(0,4096)][string]$GraphicsQualityBase64='',
     [int]$RecenterKey=121,
     [int]$RecenterModifiers=0,
     [switch]$RecenterTilt,
@@ -52,6 +53,7 @@ param(
     [switch]$Preflight
 )
 $ErrorActionPreference='Stop'
+if($GraphicsQualityBase64.Length -gt 4096) { throw 'Graphics quality transport is too large.' }
 if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
 . (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
 $chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
@@ -161,7 +163,9 @@ try {
     $hardware=Join-Path $selection 'hardware-settings.xml'
     $receipt.message='Preparing graphics settings...'
     Write-UserSessionStatus $root $receipt
-    $graphics=& $python (Join-Path $PSScriptRoot 'graphics_profile.py') --output $hardware --game-root (Get-Grid2GameRoot $root) --mode $Mode --render-scale $RenderScale --desktop-vsync $DesktopVSync --desktop-msaa $DesktopMsaa --vr-msaa $VrMsaa --tree-detail $TreeDetail --object-detail $ObjectDetail --crowd-detail $CrowdDetail --texture-filtering $TextureFiltering @sceneArguments
+    $qualityArguments=@()
+    if($GraphicsQualityBase64) { $qualityArguments=@('--quality-base64',$GraphicsQualityBase64) }
+    $graphics=& $python (Join-Path $PSScriptRoot 'graphics_profile.py') --output $hardware --game-root (Get-Grid2GameRoot $root) --mode $Mode --render-scale $RenderScale --desktop-vsync $DesktopVSync --desktop-msaa $DesktopMsaa --vr-msaa $VrMsaa --tree-detail $TreeDetail --object-detail $ObjectDetail --crowd-detail $CrowdDetail --texture-filtering $TextureFiltering @sceneArguments @qualityArguments
     if($LASTEXITCODE) { throw 'Graphics profile could not be prepared; nothing deployed.' }
     $receipt.graphics=$graphics | ConvertFrom-Json
     $graphics | Set-Content -LiteralPath (Join-Path $selection 'graphics-profile.json') -Encoding utf8

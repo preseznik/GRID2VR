@@ -74,7 +74,7 @@ internal static class SelfTests
                 defaults with { Graphics = graphics with { VrMsaa = "16xmsaa" } }, defaults with { Graphics = graphics with { VrMsaa = "4x" } },
                 defaults with { Graphics = graphics with { HudDistance = 0.5m } }, defaults with { Graphics = graphics with { HudDistance = 20.5m } }, defaults with { Graphics = graphics with { HudDistance = 1.25m } },
                 defaults with { Graphics = graphics with { TreeDetail = "low" } }, defaults with { Graphics = graphics with { ObjectDetail = "off" } },
-                defaults with { Graphics = graphics with { CrowdDetail = "off" } }, defaults with { Graphics = graphics with { TextureFiltering = "custom" } } })
+                defaults with { Graphics = graphics with { CrowdDetail = "unknown" } }, defaults with { Graphics = graphics with { TextureFiltering = "custom" } } })
             {
                 var rejected = false;
                 try { client.Save(value); } catch (ArgumentException) { rejected = true; }
@@ -337,6 +337,9 @@ internal static class SelfTests
             using var invalidSize = JsonDocument.Parse("{\"scene\":{\"width\":\"3840\",\"height\":2160},\"sceneObserved\":true}");
             Check(LauncherPresentation.MeasuredScene(invalidSize.RootElement, true) == "Current session: scene not yet measured.");
             LaunchModeTests.Run(client);
+            GraphicsPresetTests.Run(root, client);
+            SimpleViewFollowupTests.Run(root, client);
+            SettingsWheelGuardTests.Run(root, client);
             LaunchProgressTests.Run(root);
             DesktopWindowTests.Run(fixture);
             CockpitTests.Run(client);

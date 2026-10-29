@@ -129,6 +129,8 @@ internal sealed class SessionClient(string root)
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
     }
 
+    internal bool UseAdvancedView(LauncherWindow window) => window.AdvancedView ?? File.Exists(SettingsPath);
+
     public void SaveWindow(LauncherWindow value)
     {
         if (!value.Valid) return;
@@ -207,7 +209,8 @@ internal sealed class SessionClient(string root)
             "-DesktopVSync", value.Graphics.DesktopVSync ? "1" : "0", "-DesktopMsaa", value.Graphics.DesktopMsaa,
             "-VrMsaa", value.Graphics.VrMsaa,
             "-TreeDetail", value.Graphics.TreeDetail, "-ObjectDetail", value.Graphics.ObjectDetail,
-            "-CrowdDetail", value.Graphics.CrowdDetail, "-TextureFiltering", value.Graphics.TextureFiltering);
+            "-CrowdDetail", value.Graphics.CrowdDetail, "-TextureFiltering", value.Graphics.TextureFiltering,
+            "-GraphicsQualityBase64", GraphicsCatalog.EncodeExpanded(value.Graphics));
         foreach (var arg in new[] { "-ChaseFreeLook", value.ChaseFreeLook ? "1" : "0", "-ChaseKeepAngle", value.ChaseKeepAngle ? "1" : "0",
             "-ChaseMouseMode", value.ChaseMouseMode, "-ChaseMaxZoomOut", value.ChaseMaxZoomOut.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-ChaseMouseSensitivity", value.ChaseMouseSensitivity.ToString(System.Globalization.CultureInfo.InvariantCulture),

@@ -13,6 +13,23 @@ internal sealed record GraphicsOptions(int RenderScale = 100, bool DesktopVSync 
     public int EffectiveDesktopRenderScale => DesktopRenderScale ?? RenderScale;
     public bool VrMirrorBorderless { get; init; }
     public bool DesktopBorderless { get; init; } = true;
+    public string NightLighting { get; init; } = "high";
+    public string Shadows { get; init; } = "ultra";
+    public string AdvancedFog { get; init; } = "on";
+    public string Particles { get; init; } = "ultra";
+    public string Cloth { get; init; } = "high";
+    public string AmbientOcclusion { get; init; } = "ultra";
+    public string SoftAmbientOcclusion { get; init; } = "on";
+    public string GroundCover { get; init; } = "high";
+    public string VehicleDetail { get; init; } = "high";
+    public string CarReflections { get; init; } = "ultra";
+    public string Water { get; init; } = "high";
+    public string PostProcessing { get; init; } = "high";
+    public string Skidmarks { get; init; } = "on";
+    public string AdvancedLighting { get; init; } = "on";
+    public string GlobalIllumination { get; init; } = "on";
+    public string IntelAOIT { get; init; } = "off";
+    public string IntelAVSM { get; init; } = "off";
     public decimal HudDistance { get; init; } = 1m;
     public bool HudFollowView { get; init; }
     public bool HudGauges { get; init; }
@@ -28,10 +45,11 @@ internal sealed record GraphicsOptions(int RenderScale = 100, bool DesktopVSync 
         if (VrRenderScale is < 50 or > 300) throw new ArgumentException("VR render scale must be 50–300%.");
         if (RenderScale is < 50 or > 300 || DesktopRenderScale is < 50 or > 300 || HeadsetScale is < 25 or > 200 || HeadsetScale % 25 != 0 || DesktopMsaa is not ("off" or "2xmsaa" or "4xmsaa" or "8xmsaa") || VrMsaa is not ("off" or "2xmsaa" or "4xmsaa" or "8xmsaa") ||
             TreeDetail is not ("medium" or "high" or "ultra") || ObjectDetail is not ("medium" or "high" or "ultra") ||
-            CrowdDetail is not ("low" or "medium" or "high" or "ultra") || TextureFiltering is not ("off" or "low" or "high" or "ultra"))
+            CrowdDetail is not ("off" or "low" or "medium" or "high" or "ultra") || TextureFiltering is not ("off" or "low" or "high" or "ultra"))
             throw new ArgumentException("Invalid graphics settings. Restore graphics defaults or choose a listed option.");
         if (HudDistance is < 1m or > 20m || HudDistance * 2m != decimal.Truncate(HudDistance * 2m))
             throw new ArgumentException("HUD distance must be 1–20 metres in 0.5 m steps.");
+        GraphicsCatalog.Validate(this);
     }
 
     public string SceneLabel => $"{1280 * RenderScale / 100} × {720 * RenderScale / 100}";

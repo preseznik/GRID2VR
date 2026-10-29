@@ -2,7 +2,7 @@ namespace GRID2VR;
 
 // Window preferences have their own file: closing the UI must not save pending
 // car/track/graphics edits. Dimensions are client-area pixels at 96 DPI.
-internal sealed record LauncherWindow(int Width = 900, int Height = 720, bool Maximized = false)
+internal sealed record LauncherWindow(int Width = 900, int Height = 720, bool Maximized = false, bool? AdvancedView = null)
 {
     internal bool Valid => Width is >= 320 and <= 8192 && Height is >= 240 and <= 8192;
     public Size ClientSizeAtDpi(int dpi, Size available) => new(
