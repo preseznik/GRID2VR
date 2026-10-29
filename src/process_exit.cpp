@@ -12,6 +12,7 @@ using Exit = void (WINAPI*)(UINT);
 Exit original{};
 BeforeExit beforeExit{};
 BeforeExit observerCleanup{};
+LiveRuntime liveRuntime{};
 DWORD owner{};
 uintptr_t host{};
 std::filesystem::path receipt;
@@ -142,8 +143,15 @@ void WINAPI ExitGame(UINT code) {
             Sleep(1);
         }
     }
-    log << "exit cleanup=" << (result?result:"unknown") << " forwarding=1\n";
+    // In-game Quit reaches here on the game thread while the render owner waits
+    // for it, so the owner cannot clean up. Native teardown with live XR objects
+    // then faults in the runtime/driver (eip DEDEDEDE, 0xc0000409). If any XR
+    // object remains, end the process with the same code instead; nothing is
+    // destroyed or called from this thread. A clean shutdown still forwards.
+    const bool terminate=first && liveRuntime && liveRuntime();
+    log << "exit cleanup=" << (result?result:"unknown") << (terminate?" terminate=1\n":" forwarding=1\n");
     log.flush();
+    if(terminate) {log.close();TerminateProcess(GetCurrentProcess(),code);}
     original(code);
 }
 }
@@ -203,7 +211,7 @@ void Service() {
     handoff=Handoff::Complete;
 }
 
-bool Install(uintptr_t base,const std::filesystem::path& output,BeforeExit callback,BeforeExit observerCallback) {
+bool Install(uintptr_t base,const std::filesystem::path& output,BeforeExit callback,BeforeExit observerCallback,LiveRuntime liveCallback) {
     if(original || !base || !callback) return false;
     // Supported AVX finish routine, including its relocated ExitProcess IAT
     // operand. The hashed executable and both runtime guards must agree.
@@ -218,7 +226,7 @@ bool Install(uintptr_t base,const std::filesystem::path& output,BeforeExit callb
     auto target=GetProcAddress(GetModuleHandleW(L"kernel32.dll"),"ExitProcess");
     if(!target) return false;
     receipt=output/L"process-exit.txt";
-    beforeExit=callback;observerCleanup=observerCallback;owner=GetCurrentThreadId();host=base;
+    beforeExit=callback;observerCleanup=observerCallback;liveRuntime=liveCallback;owner=GetCurrentThreadId();host=base;
     original=reinterpret_cast<Exit>(target);
     if(!SwapGuardedPointer(reinterpret_cast<void**>(slot),reinterpret_cast<void*>(target),reinterpret_cast<void*>(ExitGame))) {
         original=nullptr;return false;

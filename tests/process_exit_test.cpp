@@ -4,6 +4,7 @@
 #include "chase_observer_guard.h"
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <fstream>
 #include <string_view>
@@ -16,11 +17,37 @@ uintptr_t observerBase{};
 std::wstring childMode;
 bool observerCallbackEnabled{};
 grid2vr::StopReceipt stopReceipt;
+std::atomic<bool> xrLive{};
+// Native process teardown (DLL_PROCESS_DETACH) runs on ExitProcess, never on
+// TerminateProcess. A plain buffer survives until this TLS callback runs.
+wchar_t detachMarker[32768]{};
+void NTAPI DetachProbe(PVOID,DWORD reason,PVOID) {
+    if(reason!=DLL_PROCESS_DETACH || !detachMarker[0])return;
+    const auto file=CreateFileW(detachMarker,GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,0,nullptr);
+    if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);
+}
+bool LiveXr() { return xrLive.load(); }
+}
+#ifdef _WIN64
+#pragma comment(linker,"/INCLUDE:_tls_used")
+#pragma comment(linker,"/INCLUDE:detachProbeEntry")
+#pragma const_seg(".CRT$XLB")
+extern "C" const PIMAGE_TLS_CALLBACK detachProbeEntry=DetachProbe;
+#pragma const_seg()
+#else
+#pragma comment(linker,"/INCLUDE:__tls_used")
+#pragma comment(linker,"/INCLUDE:_detachProbeEntry")
+#pragma data_seg(".CRT$XLB")
+extern "C" PIMAGE_TLS_CALLBACK detachProbeEntry=DetachProbe;
+#pragma data_seg()
+#endif
+namespace {
 const char* Cleanup() {
     std::ofstream(folder/L"callback.txt",std::ios::app) << GetCurrentThreadId() << '\n';
     if(GetCurrentThreadId()!=cleanupOwner)return "wrong_callback_thread";
     if(observerCallbackEnabled && !std::filesystem::exists(folder/L"observer-callback.txt"))return "observer_callback_order";
     if(childMode==L"slow-handoff")Sleep(5200);
+    xrLive=false; // The owner closed the XR session.
     return stopReceipt.GameExit(folder/L"runtime-stopped")?"complete":"stop_receipt_failed";
 }
 const char* ObserverCleanup() {
@@ -44,6 +71,8 @@ using Exit=void (WINAPI*)(UINT);
 int Child(const wchar_t* mode) {
     cleanupOwner=GetCurrentThreadId();
     childMode=mode;observerCallbackEnabled=childMode.starts_with(L"observer-");
+    const bool live=childMode.ends_with(L"-live");xrLive=live;
+    wcsncpy_s(detachMarker,(folder/L"detach.txt").c_str(),_TRUNCATE);
     auto* image=static_cast<uint8_t*>(VirtualAlloc(nullptr,0xe70000,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));
     if(!image)return 2;
     const auto base=reinterpret_cast<uintptr_t>(image);
@@ -65,7 +94,7 @@ int Child(const wchar_t* mode) {
     *slot=reinterpret_cast<void*>(original);
     DWORD old{};
     if(!VirtualProtect(slot,sizeof(void*),PAGE_READONLY,&old))return 6;
-    if(!grid2vr::processexit::Install(base,folder,Cleanup,observerCallbackEnabled?ObserverCleanup:nullptr))return 7;
+    if(!grid2vr::processexit::Install(base,folder,Cleanup,observerCallbackEnabled?ObserverCleanup:nullptr,live?LiveXr:nullptr))return 7;
     MEMORY_BASIC_INFORMATION region{};
     if(!VirtualQuery(slot,&region,sizeof(region)) || region.Protect!=PAGE_READONLY)return 8;
     if(childMode==L"observer-timeout") {
@@ -95,7 +124,7 @@ int Child(const wchar_t* mode) {
     if(childMode==L"owner" || childMode==L"observer-throw" || childMode==L"observer-refusal")exitGame(37);
     else {
         std::thread other([=]{grid2vr::processexit::Service();exitGame(37);});
-        if(childMode==L"handoff" || childMode==L"slow-handoff") {
+        if(childMode==L"handoff" || childMode==L"slow-handoff" || childMode==L"handoff-live") {
             for(;;) {
                 grid2vr::processexit::Service();
                 if(stopReceipt.Reported())stopReceipt.Stop(folder/L"runtime-stopped",false);
@@ -119,7 +148,8 @@ int wmain(int argc,wchar_t** argv) {
     // previous process must not look like duplicate callbacks in this run.
     const auto root=std::filesystem::path(argv[1])/
         (std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
-    for(const auto* mode:{L"owner",L"handoff",L"slow-handoff",L"timeout",L"observer-timeout",L"observer-throw",L"observer-refusal"}) {
+    for(const auto* mode:{L"owner",L"handoff",L"slow-handoff",L"timeout",L"observer-timeout",L"observer-throw",L"observer-refusal",
+                          L"timeout-live",L"handoff-live"}) {
         const auto target=root/mode;
         std::filesystem::create_directories(target);
         std::wstring command=L"\""+std::wstring(executable)+L"\" \""+target.wstring()+L"\" "+mode;
@@ -131,7 +161,10 @@ int wmain(int argc,wchar_t** argv) {
         if(wait!=WAIT_OBJECT_0 || code!=37)return 12;
         const bool observer=std::wstring_view(mode).starts_with(L"observer-");
         const bool observerTimeout=wcscmp(mode,L"observer-timeout")==0;
-        const bool cleaned=wcscmp(mode,L"timeout")!=0 && !observerTimeout;
+        // Live XR with no owner cleanup must skip native teardown, keeping the code.
+        const bool terminated=wcscmp(mode,L"timeout-live")==0;
+        const bool cleaned=wcscmp(mode,L"timeout")!=0 && !observerTimeout && !terminated;
+        if(std::filesystem::exists(target/L"detach.txt")==terminated)return 29;
         if(std::filesystem::exists(target/L"callback.txt")!=cleaned)return 13;
         if(std::filesystem::exists(target/L"runtime-stopped")!=cleaned)return 15;
         if(cleaned && Read(target/L"runtime-stopped")!="{\"failed\":false,\"source\":\"game_exit\"}\n")return 16;
@@ -141,7 +174,8 @@ int wmain(int argc,wchar_t** argv) {
         }
         const auto log=Read(target/L"process-exit.txt");
         if(log.find(cleaned?"exit cleanup=complete":"exit cleanup=owner_unavailable")==std::string::npos ||
-           log.find("forwarding=1")==std::string::npos)return 14;
+           (log.find("forwarding=1")==std::string::npos)!=terminated ||
+           (log.find("exit cleanup=owner_unavailable terminate=1\n")!=std::string::npos)!=terminated)return 14;
         const std::string running="exit cleanup=still_running forwarding=0\n";
         const auto runningAt=log.find(running);
         if(wcscmp(mode,L"slow-handoff")==0) {

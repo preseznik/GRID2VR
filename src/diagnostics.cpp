@@ -108,6 +108,8 @@ bool unattendedStereo{};
 #ifdef GRID2VR_ENABLE_XR_SESSION
 XrSessionProbe xrSession;
 bool xrRequested{},xrStopped{};
+// Read by a foreign ExitProcess caller: XR objects may remain until a closed shutdown.
+std::atomic<bool> xrLive{};
 bool xrProjection{},xrRecentered{};
 bool recenterKeepHorizonLevel{true};
 XrPosef xrReference{};
@@ -124,7 +126,7 @@ void PollOpponentXr() {
 }
 void ShutdownOpponentXr() {
     opponentlod::host::RevokeWorld();
-    xrSession.Shutdown();xrStopped=true;
+    xrSession.Shutdown();xrStopped=true;xrLive=!xrSession.Closed();
 }
 #endif
 void PublishOpponentWorld() noexcept {
@@ -387,10 +389,17 @@ const char* StopCameraHooksForExit() {
     const auto controls=chasecamera::StopForExit();
     return std::strcmp(controls,"controls_not_installed")?controls:observer;
 }
+bool ExitLeavesLiveXr() {
+#ifdef GRID2VR_ENABLE_XR_SESSION
+    return xrLive.load();
+#else
+    return false;
+#endif
+}
 bool EnsureExitHandler() {
     if (!runtimeSession) return true;
     static bool attempted=false,ready=false;
-    if (!attempted) { attempted=true;ready=processexit::Install(gameBase,output,BeforeGameExit,StopCameraHooksForExit);Log("session exit handler installed=%u",ready); }
+    if (!attempted) { attempted=true;ready=processexit::Install(gameBase,output,BeforeGameExit,StopCameraHooksForExit,ExitLeavesLiveXr);Log("session exit handler installed=%u",ready); }
     return ready;
 }
 #ifdef GRID2VR_ENABLE_XR_SESSION
@@ -401,6 +410,7 @@ void InitializeXr(ID3D11Device* device) {
     xrRequested=std::filesystem::exists(output/L"xr-session.request");
     xrProjection=std::filesystem::exists(output/L"xr-projection.request");
     if (!xrRequested) return;
+    xrLive=true;
     std::wifstream request(output/L"xr-session.request");std::wstring runtime;std::getline(request,runtime);
     // Early menu-state hooks regressed native loading before stereo starts.
     // Keep the established window/ExitProcess cleanup path; the menu gate is

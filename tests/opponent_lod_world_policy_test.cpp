@@ -1,3 +1,4 @@
+#include <atomic>
 #include "opponent_lod_world_policy.h"
 #include "replay_sequence.h"
 #pragma warning(push)
@@ -108,6 +109,7 @@ void AcceptedCenter(uint64_t sourceFrame) {
 
 namespace grid2vr::hostfixture {
 bool runtimeSession=true,runtimeStopped{},recordedRequested{},xrRequested=true,xrProjection=true,xrStopped{};
+std::atomic<bool> xrLive{true};
 struct XrBoundary {
     bool running=true,failed{},focused=true,views=true,stopOnPoll{},failOnPoll{},unfocusOnPoll{};
     unsigned calls{};
@@ -116,6 +118,7 @@ struct XrBoundary {
     bool ReadyForViews(bool requireFocus) {++calls;return running && !failed && views && (!requireFocus || focused);}
     void Poll() {++calls;if(stopOnPoll)running=false;if(failOnPoll)failed=true;if(unfocusOnPoll)focused=false;}
     void Shutdown() {++calls;running=false;}
+    bool Closed() const {return !running;}
 } xrSession;
 #define GRID2VR_HOST_GATE_DIAGNOSTICS
 #include "opponent_lod_host_gate.inc"
