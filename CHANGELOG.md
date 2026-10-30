@@ -1,3 +1,18 @@
+# GRID2VR 0.2.14 — Experimental
+
+Changes since 0.2.13:
+
+- **Flashback now works in Practice / Race launches**, with pause/resume, in-game Quit and race completion preserved.
+- **Fix wheel steering and force feedback in Normal launches.** Launcher wheel bindings now work with larger grids, and force feedback works when the game is using its Keyboard preset. **Driving controls → Driving device** now applies to every launch mode; an existing in-game wheel or controller preset is kept.
+- **Improve Test force feedback compatibility.** The launcher now tries alternative effects when a wheel rejects the first test. Confirmed working with the Logitech G920 and Fanatec CS DD+.
+- **Remove the stray grey bar beneath VR menus**, including the intro and replay screens.
+- **Show clear errors when the VR renderer cannot load.** The launcher checks for Windows or Steam settings that block it and explains the recovery steps, instead of silently running unmodified GRID 2.
+- Improve compatibility with older Visual C++ runtimes when loading the VR renderer.
+
+This is an Experimental pre-release. Wheel controls and force feedback were tested with a Logitech G920 and Fanatec CS DD+; other hardware and SteamVR setups still need testing. A reported Desktop Alt+F4 shutdown fault remains under investigation.
+
+For experimental updates, enable **Include experimental releases** under **Help / About**.
+
 # GRID2VR 0.2.13 — Experimental
 
 Changes since 0.2.12:
