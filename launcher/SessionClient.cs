@@ -262,8 +262,9 @@ internal sealed class SessionClient(string root)
             command.ArgumentList.Add("-DrivingControls");
             command.ArgumentList.Add(controls);
         }
-        // Normal launches pass the game's own Press Start screen, which claims the device.
-        if (value.LaunchMode != "Normal" && DrivingControls.Load(Root).DeviceClaimSpec() is { } claim)
+        // Every mode: the claim only fills a keyboard-only profile map, so a device the
+        // game's Press Start screen or the player's own Controls preset bound is kept.
+        if (DrivingControls.Load(Root).DeviceClaimSpec() is { } claim)
         {
             command.ArgumentList.Add("-DeviceClaim");
             command.ArgumentList.Add(claim);

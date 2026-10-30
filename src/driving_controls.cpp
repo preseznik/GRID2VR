@@ -55,6 +55,13 @@ uint32_t keyboardFamily{};
 std::array<uint32_t,7> menuActions{};
 uint64_t updates{},refused{},stateWrites{},restored{},staleRestores{},scanBytes{},scanMilliseconds{},scanPasses{},attachments{};
 const char* reason="not_requested";
+// Diagnostic: why the local driving route was last refused, and how often per step.
+RouteProbe routeProbe;
+std::vector<std::pair<std::string,uint64_t>> routeRefusals;
+void CountRouteRefusal(const char* step) {
+    for(auto& entry:routeRefusals)if(entry.first==step){++entry.second;return;}
+    if(routeRefusals.size()<32)routeRefusals.emplace_back(step,1);
+}
 constexpr uintptr_t inputTable=0xd0bc84;
 constexpr uintptr_t methods[]{0x333530,0x3b5dd0,0x4a920,0x4d950,0x4d950,0x99bc30,0x58ddf0,0x15bd40,0x623c20,0x1090f0,0x693370,0xc7130,0x158410};
 constexpr uintptr_t driverTable=0xd0ba08;
@@ -146,6 +153,12 @@ void Status() {
          << ",\"suppressedPedalMenuStates\":" << pedalMenuStates
          << ",\"diagnosticMode\":\"state_overlay\",\"stateWrites\":" << stateWrites << ",\"restoredStates\":" << restored
          << ",\"staleRestoresSkipped\":" << staleRestores << ",\"attachments\":" << attachments
+         << ",\"routeProbe\":{\"step\":\"" << (route.valid?"valid":routeProbe.step) << "\",\"parentTableRva\":" << routeProbe.parentTable
+         << ",\"nodes\":" << routeProbe.nodes << ",\"roles\":[";
+    for(uint32_t i=0;i<std::min<uint32_t>(routeProbe.roles,8);++i){if(i)file<<',';file<<routeProbe.roleValues[i];}
+    file << "],\"controllerBytes\":" << routeProbe.controllerBytes << ",\"controllerTableRva\":" << routeProbe.controllerTable << ",\"refusals\":{";
+    for(size_t i=0;i<routeRefusals.size();++i){if(i)file<<',';file<<'"'<<routeRefusals[i].first<<"\":"<<routeRefusals[i].second;}
+    file << "}}"
          << ",\"discovery\":{\"passes\":" << scanPasses << ",\"bytes\":" << scanBytes << ",\"milliseconds\":" << scanMilliseconds << "},\"bindingStatus\":[";
     for(size_t i=0;i<bindings.size();++i) { if(i)file<<',';const auto& c=coverage[i];const auto& a=activity[i];
         const bool physicalConnected=physicalInput.Samples().size()>i && physicalInput.Samples()[i].connected;
@@ -296,8 +309,11 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
     coverage.assign(bindings.size(),{});
     nativeOtherSteering={};
     route=ReadInputRoute(base,[](uintptr_t address,void* output,size_t bytes){
-        return ReadMemory(reinterpret_cast<void*>(address),output,bytes);});
+        return ReadMemory(reinterpret_cast<void*>(address),output,bytes);},&routeProbe);
+    if(route.valid && route.input!=owner)routeProbe.step="foreign_input";
+    else if(route.valid && std::none_of(live.begin(),live.end(),[](const auto& item){return item.id==route.map;}))routeProbe.step="map_not_live";
     route.valid=route.valid && route.input==owner && std::any_of(live.begin(),live.end(),[](const auto& item){return item.id==route.map;});
+    if(!route.valid)CountRouteRefusal(routeProbe.step);
     std::vector<StatePatch> next;
     for(const auto& item:live) {
         Advance(reinterpret_cast<void*>(item.address));if(failed)return false;

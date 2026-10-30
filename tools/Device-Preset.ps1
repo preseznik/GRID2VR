@@ -1,4 +1,4 @@
-# Practice/Race claim the driving device the way GRID 2's Press Start would.
+# A session claims the driving device the way GRID 2's Press Start would.
 # A DirectInput wheel newer than the game (e.g. Logitech G920) has no shipped
 # preset, so the native bind finds nothing and FFB stays off. For the session
 # only, add one preset built from the launcher's own bindings for that wheel

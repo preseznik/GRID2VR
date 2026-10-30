@@ -100,6 +100,14 @@ internal static class DrivingCaptureTests
               DrivingInput.FeedbackMessage(wheel, -2).Contains("Close GRID 2", StringComparison.Ordinal) &&
               DrivingInput.FeedbackMessage(wheel, -3).Contains("could not start", StringComparison.Ordinal) &&
               DrivingInput.FeedbackMessage(wheel, 0).Contains("unavailable", StringComparison.Ordinal), "feedback test explains every refusal");
+        Check(DrivingInput.FeedbackMessage(wheel, -3, (6u, unchecked((int)0x80070057))).EndsWith("(CreateEffect returned 0x80070057)", StringComparison.Ordinal) &&
+              DrivingInput.FeedbackMessage(wheel, -3).EndsWith("on " + wheel.Name + ".", StringComparison.Ordinal) &&
+              DrivingInput.FeedbackMessage(wheel, 1, (6u, 1)).EndsWith("for one second.", StringComparison.Ordinal), "feedback refusal names the Windows call and HRESULT");
+        var refused = unchecked((int)0x80070057);
+        Check(DrivingInput.FeedbackMessage(wheel, -3, (6u, refused), [refused, refused, refused])
+                  .EndsWith("(CreateEffect: sine 0x80070057, sine on X 0x80070057, constant force 0x80070057)", StringComparison.Ordinal) &&
+              DrivingInput.FeedbackMessage(wheel, 1, null, [refused, 0]).EndsWith("(using sine on X)", StringComparison.Ordinal) &&
+              DrivingInput.FeedbackMessage(wheel, 1, null, [0]).EndsWith("for one second.", StringComparison.Ordinal), "feedback test reports every effect shape it tried");
         Check(DrivingInput.InputDescription(saved) == "button 2", "binding label separates input from device");
     }
 }

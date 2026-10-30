@@ -179,7 +179,8 @@ try {
         HardwareSettingsFile=$hardware;HeadsetScale=$HeadsetScale;CaptureAfterSeconds=1;TimeoutSeconds=150;PythonPath=$python;
         FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy;ChaseCameraObserver=[bool]$ChaseCameraObserver;
         ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;DesktopBorderless=$DesktopBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
-    if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection; $parameters.DeviceClaim=$DeviceClaim }
+    if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection }
+    $parameters.DeviceClaim=$DeviceClaim
     if($headsetResolution) {
         $parameters.HeadsetWidth=$headsetResolution.width; $parameters.HeadsetHeight=$headsetResolution.height; $parameters.VrRenderScale=$VrRenderScale
     }

@@ -124,6 +124,14 @@ try {
         Check (@($ast.ParamBlock.Parameters.Name.VariablePath.UserPath) -contains 'DrivingControls') "Missing argument in $script"
         Check (@($ast.ParamBlock.Parameters.Name.VariablePath.UserPath) -contains 'DeviceClaim') "Missing device claim argument in $script"
     }
+    # Normal launches get the claim too: the native claim only fills a keyboard-only
+    # profile map, so a device bound by Press Start or the Controls preset is kept.
+    $start=[Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'tools/Start-UserSession.ps1'),[ref]$null,[ref]$null)
+    $forward=@($start.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -ceq '$parameters.DeviceClaim'},$true))
+    Check ($forward.Count -eq 1 -and !($forward[0].Parent.Parent -is [Management.Automation.Language.IfStatementAst])) 'The device claim is not forwarded in every launch mode.'
+    $diagnostic=Get-Content -LiteralPath (Join-Path $root 'tools/Run-Diagnostic.ps1') -Raw
+    Check ($diagnostic.Contains('$deviceClaimWritten=[bool]($deviceClaimRequest -and ($SessionDirectory -or $NormalLaunch))')) 'Normal launches do not write the device claim request.'
     # Direct-launch device claim: exact native protocol, never for an invalid spec.
     Check ($null -eq (ConvertTo-DeviceClaimRequest '')) 'An empty claim spec produced a request.'
     Check ((ConvertTo-DeviceClaimRequest 'auto') -ceq "GRID2VR_DEVICE_CLAIM_1`nmode`tauto`n") 'Auto claim protocol is not canonical.'

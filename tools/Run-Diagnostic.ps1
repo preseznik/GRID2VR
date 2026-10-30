@@ -298,8 +298,9 @@ if($headsetResolution) { Assert-HeadsetResolutionProxy $proxy }
 if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy }
 if(Test-Path -LiteralPath (Join-Path $run 'session.json')) { throw 'Diagnostic run already exists; retained its logs.' }
 $drivingControlsReceipt=Save-DrivingControls $validatedDrivingControls $run
-# Practice/Race only; Normal keeps the game's own Press Start claim.
-$deviceClaimWritten=[bool]($deviceClaimRequest -and $SessionDirectory -and !$NormalLaunch)
+# Practice/Race skip Press Start; in Normal it finds no preset for many wheels.
+# The native claim only fills a keyboard-only profile map in either case.
+$deviceClaimWritten=[bool]($deviceClaimRequest -and ($SessionDirectory -or $NormalLaunch))
 if($deviceClaimWritten) { [IO.File]::WriteAllText((Join-Path $run 'device-claim.request'),$deviceClaimRequest,[Text.Encoding]::ASCII) }
 if ($selectedSession) {
     # Freeze a private XML copy for this run. The backend rejects changed inputs,

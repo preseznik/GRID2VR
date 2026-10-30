@@ -61,7 +61,7 @@ internal static class DrivingControlsTests
         {
             var arguments = client.PrepareLaunchCommand(new Choices { LaunchMode = mode }, false).ArgumentList;
             var index = arguments.IndexOf("-DeviceClaim");
-            Check(mode == "Normal" ? index < 0 : index >= 0 && arguments[index + 1] == "auto;xinput_pad");
+            Check(index >= 0 && arguments[index + 1] == "auto;xinput_pad");
         }
         new DrivingControls { Enabled = true, Bindings = preset.Bindings, DirectLaunchDevice = "keyboard" }.Save(root);
         Check(!client.PrepareLaunchCommand(new Choices { LaunchMode = "Race" }, true).ArgumentList.Contains("-DeviceClaim"));

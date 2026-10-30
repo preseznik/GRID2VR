@@ -32,10 +32,11 @@ internal sealed class DrivingControls
     public string Transmission { get; set; } = "game";
     public int SteeringLinearity { get; set; }
     public int ClutchShiftThreshold { get; set; } = 50;
-    // Practice/Race skip GRID 2's Press Start screen, which normally claims the
-    // driving device (and with it rumble/force feedback). "auto" claims the
-    // steering-binding device, then an Xbox pad; "keyboard" claims nothing;
-    // "xinput_pad" or a DirectInput product GUID names one device family.
+    // The device claimed for driving (and with it rumble/force feedback) when the
+    // game's Controls preset leaves the player on the keyboard: Practice/Race skip
+    // Press Start, and Normal's Press Start finds no preset for many wheels.
+    // "auto" claims the steering-binding device, then an Xbox pad; "keyboard"
+    // claims nothing; "xinput_pad" or a DirectInput product GUID names one family.
     public string DirectLaunchDevice { get; set; } = "auto";
     public List<DrivingBinding> Bindings { get; set; } = [];
     internal static readonly string[] Transmissions = ["game", "automatic", "sequential", "hpattern", "hpattern_clutch"];
@@ -147,7 +148,7 @@ internal sealed class DrivingControls
         Bindings.Add(binding);
     }
     public void ApplyXboxPreset() { foreach (var binding in XboxPreset()) Assign(binding); }
-    // Session worker spec for Practice/Race (tools/Driving-Controls.ps1). Wheels
+    // Session worker spec for every launch mode (tools/Driving-Controls.ps1). Wheels
     // precede an Xbox pad, as in the game's own input/paths.xml priorities.
     internal string? DeviceClaimSpec()
     {

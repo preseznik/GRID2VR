@@ -39,6 +39,12 @@ struct Device {
 struct Capture {
     IDirectInput8W* input{};
     HWND window{};
+    // The last failed feedback-test call (FeedbackStep) and its HRESULT, for the launcher message.
+    unsigned feedbackStep{};
+    long feedbackResult{};
+    // CreateEffect results of the shapes tried by the last test, in FeedbackShapes order.
+    std::array<long,3> feedbackShapes{};
+    unsigned feedbackShapeCount{};
     std::vector<std::unique_ptr<Device>> devices;
     ~Capture() { devices.clear(); if(input) input->Release(); }
 };
@@ -98,6 +104,8 @@ extern "C" __declspec(dllexport) int __cdecl CaptureProduct(void* capture,unsign
 // shake on a wheel's first force-feedback axis. milliseconds==0 stops it. The
 // wheel is acquired exclusively only for the test; the game must not be running.
 enum FeedbackResult { FeedbackStarted=1, FeedbackInvalid=0, FeedbackUnsupported=-1, FeedbackBusy=-2, FeedbackFailed=-3 };
+enum FeedbackStep : unsigned { StepNone, StepCapabilities, StepCreateDevice, StepDataFormat, StepCooperativeLevel,
+    StepAcquire, StepCreateEffect, StepStart, StepXInput };
 BOOL CALLBACK FirstActuator(const DIDEVICEOBJECTINSTANCEW* object, void* user) {
     *static_cast<DWORD*>(user)=object->dwOfs; return DIENUM_STOP;
 }
@@ -105,33 +113,69 @@ extern "C" __declspec(dllexport) int __cdecl CaptureFeedback(void* capture,unsig
     if(!capture || index>=CaptureCount(capture) || milliseconds>5000) return FeedbackInvalid;
     auto& owner=*static_cast<Capture*>(capture);
     auto& device=*owner.devices[index];
+    owner.feedbackStep=StepNone;owner.feedbackResult=S_OK;owner.feedbackShapes={};owner.feedbackShapeCount=0;
+    const auto fail=[&](FeedbackStep step,HRESULT result,int code){owner.feedbackStep=step;owner.feedbackResult=result;return code;};
     if(device.xbox>=0) {
         XINPUT_VIBRATION motors{};
         if(milliseconds) motors.wLeftMotorSpeed=motors.wRightMotorSpeed=32768;
-        return XInputSetState(device.xbox,&motors)==ERROR_SUCCESS ? FeedbackStarted : FeedbackFailed;
+        const auto result=XInputSetState(device.xbox,&motors);
+        return result==ERROR_SUCCESS ? FeedbackStarted : fail(StepXInput,HRESULT_FROM_WIN32(result),FeedbackFailed);
     }
     device.feedback.reset();
     if(!milliseconds) return FeedbackStarted;
     DIDEVCAPS caps{sizeof(caps)};
-    if(FAILED(device.input->GetCapabilities(&caps)) || !(caps.dwFlags&DIDC_FORCEFEEDBACK)) return FeedbackUnsupported;
+    HRESULT result=device.input->GetCapabilities(&caps);
+    if(FAILED(result)) return fail(StepCapabilities,result,FeedbackUnsupported);
+    if(!(caps.dwFlags&DIDC_FORCEFEEDBACK)) return fail(StepCapabilities,S_FALSE,FeedbackUnsupported);
     auto feedback=std::make_unique<Feedback>();
-    if(FAILED(owner.input->CreateDevice(device.instance,&feedback->device,nullptr)) ||
-       FAILED(feedback->device->SetDataFormat(&c_dfDIJoystick2)) ||
-       FAILED(feedback->device->SetCooperativeLevel(owner.window,DISCL_EXCLUSIVE|DISCL_FOREGROUND))) return FeedbackFailed;
-    if(FAILED(feedback->device->Acquire())) return FeedbackBusy;
-    DWORD axis=DIJOFS_X;
-    feedback->device->EnumObjects(FirstActuator,&axis,DIDFT_AXIS|DIDFT_FFACTUATOR);
-    LONG direction=0;
+    if(FAILED(result=owner.input->CreateDevice(device.instance,&feedback->device,nullptr))) return fail(StepCreateDevice,result,FeedbackFailed);
+    if(FAILED(result=feedback->device->SetDataFormat(&c_dfDIJoystick2))) return fail(StepDataFormat,result,FeedbackFailed);
+    if(FAILED(result=feedback->device->SetCooperativeLevel(owner.window,DISCL_EXCLUSIVE|DISCL_FOREGROUND))) return fail(StepCooperativeLevel,result,FeedbackFailed);
+    if(FAILED(result=feedback->device->Acquire())) return fail(StepAcquire,result,FeedbackBusy);
+    DWORD actuator=DIJOFS_X;
+    feedback->device->EnumObjects(FirstActuator,&actuator,DIDFT_AXIS|DIDFT_FFACTUATOR);
+    // Wheel drivers differ in which test effects they accept (two refused the
+    // first shape with E_INVALIDARG). Try conventional shapes in order: a sine on
+    // the reported actuator, a sine on X with a nonzero direction, a constant force.
+    struct Shape { const GUID* type; bool reported; LONG direction; };
+    constexpr Shape shapes[]{{&GUID_Sine,true,0},{&GUID_Sine,false,1},{&GUID_ConstantForce,false,1}};
+    static_assert(std::size(shapes)==std::tuple_size_v<decltype(owner.feedbackShapes)>);
     DIPERIODIC shake{5000,0,0,100000};
-    DIEFFECT effect{sizeof(effect)};
-    effect.dwFlags=DIEFF_CARTESIAN|DIEFF_OBJECTOFFSETS;
-    effect.dwDuration=milliseconds*1000;effect.dwGain=DI_FFNOMINALMAX;effect.dwTriggerButton=DIEB_NOTRIGGER;
-    effect.cAxes=1;effect.rgdwAxes=&axis;effect.rglDirection=&direction;
-    effect.cbTypeSpecificParams=sizeof(shake);effect.lpvTypeSpecificParams=&shake;
-    if(FAILED(feedback->device->CreateEffect(GUID_Sine,&effect,&feedback->effect,nullptr)) ||
-       FAILED(feedback->effect->Start(1,0))) return FeedbackFailed;
+    DICONSTANTFORCE push{3000};
+    for(const auto& shape:shapes) {
+        DWORD axis=shape.reported?actuator:DIJOFS_X;
+        LONG direction=shape.direction;
+        DIEFFECT effect{sizeof(effect)};
+        effect.dwFlags=DIEFF_CARTESIAN|DIEFF_OBJECTOFFSETS;
+        effect.dwDuration=milliseconds*1000;effect.dwGain=DI_FFNOMINALMAX;effect.dwTriggerButton=DIEB_NOTRIGGER;
+        effect.cAxes=1;effect.rgdwAxes=&axis;effect.rglDirection=&direction;
+        const bool constant=shape.type==&GUID_ConstantForce;
+        effect.cbTypeSpecificParams=constant?sizeof(push):sizeof(shake);
+        effect.lpvTypeSpecificParams=constant?static_cast<void*>(&push):static_cast<void*>(&shake);
+        result=feedback->device->CreateEffect(*shape.type,&effect,&feedback->effect,nullptr);
+        owner.feedbackShapes[owner.feedbackShapeCount++]=result;
+        if(SUCCEEDED(result))break;
+        feedback->effect=nullptr;
+    }
+    if(FAILED(result)) return fail(StepCreateEffect,result,FeedbackFailed);
+    if(FAILED(result=feedback->effect->Start(1,0))) return fail(StepStart,result,FeedbackFailed);
     device.feedback=std::move(feedback);
     return FeedbackStarted;
+}
+// CreateEffect results of the last test's shapes (sine, sine on X, constant force);
+// returns how many were tried. The last entry is the shape that started, if any.
+extern "C" __declspec(dllexport) unsigned __cdecl CaptureFeedbackShapes(void* capture,long* results,unsigned capacity) {
+    if(!capture) return 0;
+    const auto& owner=*static_cast<Capture*>(capture);
+    for(unsigned i=0;i<owner.feedbackShapeCount && i<capacity && results;++i) results[i]=owner.feedbackShapes[i];
+    return owner.feedbackShapeCount;
+}
+// The step (FeedbackStep) and HRESULT of the last refused feedback test; 0 when it started.
+extern "C" __declspec(dllexport) unsigned __cdecl CaptureFeedbackError(void* capture,long* result) {
+    if(!capture) return StepNone;
+    const auto& owner=*static_cast<Capture*>(capture);
+    if(result) *result=owner.feedbackResult;
+    return owner.feedbackStep;
 }
 extern "C" __declspec(dllexport) int __cdecl CaptureRead(void* capture,unsigned index,Sample* result) {
     if(!result) return 0;

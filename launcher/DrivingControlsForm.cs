@@ -42,7 +42,7 @@ internal sealed class DrivingControlsForm : LauncherForm
         options.Controls.Add(enabled);
         options.Controls.Add(new Label { Text = "Transmission", AutoSize = true, Margin = new(14, 6, 6, 0) });
         options.Controls.Add(transmission);
-        options.Controls.Add(new Label { Text = "Practice/Race device", AutoSize = true, Margin = new(14, 6, 6, 0) });
+        options.Controls.Add(new Label { Text = "Driving device", AutoSize = true, Margin = new(14, 6, 6, 0) });
         options.Controls.Add(directDevice);
         var linearity = new TableLayoutPanel { Dock = DockStyle.Fill, Height = 42, MinimumSize = new(0, 42), ColumnCount = 3, RowCount = 1, Margin = Padding.Empty };
         linearity.ColumnStyles.Add(new(SizeType.AutoSize)); linearity.ColumnStyles.Add(new(SizeType.Percent, 100)); linearity.ColumnStyles.Add(new(SizeType.AutoSize));
@@ -58,7 +58,7 @@ internal sealed class DrivingControlsForm : LauncherForm
         header.ColumnStyles.Add(new(SizeType.Percent, 100));
         for (var i = 0; i < 6; ++i) header.RowStyles.Add(new(SizeType.AutoSize));
         header.Controls.Add(options);
-        header.Controls.Add(new Label { Text = "Practice/Race skip the game's Press Start screen. This device is claimed instead, so its rumble/force feedback works. Normal is unchanged.",
+        header.Controls.Add(new Label { Text = "When the game's Controls preset is Keyboard, this device is claimed for driving so its rumble/force feedback works, in every launch mode. A wheel or controller preset you chose in the game is kept.",
             AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
         header.Controls.Add(linearity);
         header.Controls.Add(new Label { Text = "Assigned wheel steering only. 0 is linear; negative values respond faster near the centre.", AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
@@ -135,8 +135,8 @@ internal sealed class DrivingControlsForm : LauncherForm
         UpdateSelection();
         RefreshDirectDevices((directDevice.SelectedItem as DeviceChoice)?.Value ?? settings.DirectLaunchDevice);
     }
-    // Only bound devices are useful: in Practice/Race any other device has no
-    // game binding until it is claimed. A removed device stays selectable.
+    // Only bound devices are useful: on a keyboard-only Controls preset any other
+    // device has no game binding until it is claimed. A removed device stays selectable.
     private void RefreshDirectDevices(string selected)
     {
         var choices = new List<DeviceChoice> { new("auto", "Auto (steering device, then Xbox)"), new("keyboard", "Keyboard only"), new("xinput_pad", "Xbox controller") };

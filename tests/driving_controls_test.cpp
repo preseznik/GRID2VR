@@ -69,6 +69,39 @@ int main() {
     Check(!ReadInputRoute(image,[&](uintptr_t at,void* out,size_t bytes){
         if(at==controller+0x5c && ++mapReads==2)memory[at]=1;return read(at,out,bytes);
     }).valid,"map changes during route lookup are refused");
+    // A full Normal-launch grid: fifteen AI cars before the local car in the tree.
+    {
+        std::map<uintptr_t,uint32_t> grid=memory;
+        const auto gridRead=[&](uintptr_t at,void* output,size_t bytes) {
+            for(size_t i=0;i<bytes;i+=4) {const auto found=grid.find(at+i);if(found==grid.end())return false;
+                std::memcpy(static_cast<uint8_t*>(output)+i,&found->second,4);}
+            return true;
+        };
+        constexpr uintptr_t chain=0x200000,cars=0x300000;
+        const auto build=[&](unsigned count) {
+            grid[head+4]=chain;
+            for(unsigned i=0;i<count;++i) {
+                const auto at=chain+i*0x40;const bool local=i+1==count;
+                grid[at]=head;grid[at+4]=i?at-0x40:head;grid[at+8]=local?head:at+0x40;
+                grid[at+12]=local?car:cars+i*0x100;grid[at+16]=group;
+                if(!local)grid[cars+i*0x100+0xb0]=1;
+            }
+        };
+        build(16);RouteProbe probe;
+        const auto full=ReadInputRoute(image,gridRead,&probe);
+        Check(full.valid && full.controller==controller && !std::strcmp(probe.step,"none") && probe.nodes==16 && probe.roles==16,"local car after fifteen AI cars is found");
+        build(40);
+        Check(!ReadInputRoute(image,gridRead,&probe).valid && !std::strcmp(probe.step,"node_limit") && probe.nodes==32,"an oversized tree fails closed at the bound");
+        grid[parent]=image+0xd12670;
+        Check(!ReadInputRoute(image,gridRead,&probe).valid && !std::strcmp(probe.step,"parent_table") && probe.parentTable==0xd12670,"probe names a foreign parent table");
+    }
+    {
+        RouteProbe probe;memory[car+0xb0]=1;
+        Check(!ReadInputRoute(image,read,&probe).valid && !std::strcmp(probe.step,"no_local_car") && probe.roles==1 && probe.roleValues[0]==1,"probe reports only AI roles");
+        memory[car+0xb0]=0;memory[controller]=0;
+        Check(!ReadInputRoute(image,read,&probe).valid && !std::strcmp(probe.step,"controller_identity") && probe.controllerBytes==8,"probe reports a foreign controller");
+        memory[controller]=image+0xd0ba08;
+    }
     Check(RelativeCall(0x400cd5,0x791ba0)==std::array<uint8_t,5>{0xe8,0xc6,0x0e,0x39,0x00},"native update call displacement");
     Check(RelativeCall(0x183bd8,0x28e7e0)==std::array<uint8_t,5>{0xe8,0x03,0xac,0x10,0x00},"native key-repeat pressed call");
     Check(RelativeCall(0xfffffffc,0x100)==std::array<uint8_t,5>{0xe8,0xff,0x00,0x00,0x00},"Win32 call wrapping");

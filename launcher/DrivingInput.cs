@@ -28,10 +28,14 @@ internal sealed class DrivingInput : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Unicode)] private delegate int ProductFn(nint handle, uint index, StringBuilder product, uint size);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int ReadFn(nint handle, uint index, ref Sample sample);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int FeedbackFn(nint handle, uint index, uint milliseconds);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate uint FeedbackErrorFn(nint handle, out int result);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate uint FeedbackShapesFn(nint handle, [Out] int[] results, uint capacity);
     private nint library, handle;
     private CloseFn? close;
     private ReadFn? read;
     private FeedbackFn? feedback;
+    private FeedbackErrorFn? feedbackError;
+    private FeedbackShapesFn? feedbackShapes;
     public List<Device> Devices { get; } = [];
     private T Export<T>(string name) where T : Delegate => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library, name));
     public DrivingInput(nint window)
@@ -45,6 +49,8 @@ internal sealed class DrivingInput : IDisposable
             close = Export<CloseFn>("CaptureClose"); read = Export<ReadFn>("CaptureRead");
             // An older helper without the feedback test still captures input.
             if (NativeLibrary.TryGetExport(library, "CaptureFeedback", out var test)) feedback = Marshal.GetDelegateForFunctionPointer<FeedbackFn>(test);
+            if (NativeLibrary.TryGetExport(library, "CaptureFeedbackError", out var error)) feedbackError = Marshal.GetDelegateForFunctionPointer<FeedbackErrorFn>(error);
+            if (NativeLibrary.TryGetExport(library, "CaptureFeedbackShapes", out var shapes)) feedbackShapes = Marshal.GetDelegateForFunctionPointer<FeedbackShapesFn>(shapes);
             handle = Export<OpenFn>("CaptureOpen")(window);
             if (handle == 0) throw new IOException("Windows controller capture could not start.");
             var count = Export<CountFn>("CaptureCount")(handle);
@@ -71,14 +77,43 @@ internal sealed class DrivingInput : IDisposable
         ObjectDisposedException.ThrowIf(handle == 0, this);
         return feedback is null ? 0 : feedback(handle, device.Index, milliseconds);
     }
-    internal static string FeedbackMessage(Device device, int result) => result switch
+    // The Windows call that refused the last test and its HRESULT; null with an older helper.
+    public (uint Step, int Result)? FeedbackError()
     {
-        1 => device.Xbox ? $"Rumbling {device.Name} for one second." : $"Playing a force-feedback shake on {device.Name} for one second.",
-        -1 => $"{device.Name} reports no force feedback.",
-        -2 => $"{device.Name} is in use by another program. Close GRID 2 (or other games) and try again.",
-        -3 => $"Windows could not start force feedback on {device.Name}.",
-        _ => $"The feedback test is unavailable for {device.Name}."
-    };
+        if (handle == 0 || feedbackError is null) return null;
+        var step = feedbackError(handle, out var result);
+        return step == 0 ? null : (step, result);
+    }
+    // CreateEffect results of the last test's shapes, in FeedbackShapes order; empty with an older helper.
+    public int[] FeedbackShapeResults()
+    {
+        if (handle == 0 || feedbackShapes is null) return [];
+        var results = new int[FeedbackShapes.Length];
+        var count = feedbackShapes(handle, results, (uint)results.Length);
+        return results[..(int)Math.Min(count, (uint)results.Length)];
+    }
+    internal static readonly string[] FeedbackSteps = ["", "GetCapabilities", "CreateDevice", "SetDataFormat", "SetCooperativeLevel", "Acquire", "CreateEffect", "Start", "XInputSetState"];
+    internal static readonly string[] FeedbackShapes = ["sine", "sine on X", "constant force"];
+    internal static string FeedbackMessage(Device device, int result, (uint Step, int Result)? error = null, int[]? shapes = null)
+    {
+        var message = result switch
+        {
+            1 => device.Xbox ? $"Rumbling {device.Name} for one second." : $"Playing a force-feedback shake on {device.Name} for one second.",
+            -1 => $"{device.Name} reports no force feedback.",
+            -2 => $"{device.Name} is in use by another program. Close GRID 2 (or other games) and try again.",
+            -3 => $"Windows could not start force feedback on {device.Name}.",
+            _ => $"The feedback test is unavailable for {device.Name}."
+        };
+        // Name the refusing Windows call (and every refused effect shape) so a report identifies it.
+        shapes ??= [];
+        if (result < 0 && error is { } detail && detail.Step < FeedbackSteps.Length)
+            message += detail.Step == 6 && shapes.Length > 1
+                ? $" (CreateEffect: {string.Join(", ", shapes.Select((code, i) => $"{FeedbackShapes[i]} 0x{code:X8}"))})"
+                : $" ({FeedbackSteps[detail.Step]} returned 0x{detail.Result:X8})";
+        else if (result == 1 && shapes.Length > 1)
+            message += $" (using {FeedbackShapes[shapes.Length - 1]})";
+        return message;
+    }
     internal static int PovDirection(uint value)
     {
         // Ignore diagonals so one gesture cannot silently bind two directions.

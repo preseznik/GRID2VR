@@ -40,7 +40,7 @@ internal sealed class DrivingInputMonitor : LauncherForm
         if (input is null) return;
         StopFeedback();
         var result = input.Feedback(device, 1000);
-        feedbackNote.Text = DrivingInput.FeedbackMessage(device, result);
+        feedbackNote.Text = DrivingInput.FeedbackMessage(device, result, result < 0 ? input.FeedbackError() : null, input.FeedbackShapeResults());
         if (result == 1) { playing = device; feedbackTimer.Start(); }
     }
 

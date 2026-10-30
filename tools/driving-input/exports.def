@@ -7,3 +7,5 @@ EXPORTS
     CaptureProduct=_CaptureProduct
     CaptureRead=_CaptureRead
     CaptureFeedback=_CaptureFeedback
+    CaptureFeedbackError=_CaptureFeedbackError
+    CaptureFeedbackShapes=_CaptureFeedbackShapes
