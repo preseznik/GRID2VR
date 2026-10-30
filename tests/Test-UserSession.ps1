@@ -2,6 +2,7 @@ $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $root 'tools/User-Session.ps1')
 . (Join-Path $root 'tools/Recenter-Key.ps1')
+. (Join-Path $root 'tools/Game-Executable.ps1')
 $fixture=Join-Path $root ('artifacts/user-session-test-'+[guid]::NewGuid().ToString('N'))
 function Check($Condition,[string]$Message) { if(!$Condition) { throw $Message } }
 function Reject([scriptblock]$Action) {
@@ -90,6 +91,86 @@ try {
     Check ((Read-SessionJson $status).message -ceq 'three') 'Persistently locked status changed.'
     Check (!(Get-ChildItem -LiteralPath $artifacts -Filter '*.tmp')) 'Status temporary file left behind.'
     Remove-Item -LiteralPath $status
+    # Renderer load: which d3d11.dll the game process actually uses. This test's own
+    # process stands in for the game; its folder copy is loaded only in the last case.
+    $gameFolder=Join-Path $fixture 'game';New-Item -ItemType Directory -Path $gameFolder | Out-Null
+    $proxy=Join-Path $gameFolder 'd3d11.dll';$systemD3d11=Join-Path ([Environment]::SystemDirectory) 'd3d11.dll'
+    Check ((Write-RendererLoad $gameFolder $artifacts $PID 'ABC').reason -ceq 'proxy_missing') 'A removed renderer was not reported.'
+    Copy-Item -LiteralPath $systemD3d11 -Destination $proxy
+    $proxyHash=(Get-FileHash -LiteralPath $proxy).Hash
+    $load=Write-RendererLoad $gameFolder $artifacts $PID $proxyHash
+    Check ($load.reason -ceq 'windows_d3d11_loaded' -and !$load.rendererLoaded -and $load.proxyPresent -and $load.proxyUnchanged) 'An unloaded renderer was not reported.'
+    # This test process has no "prefer system32 images" policy; a process that has
+    # it is reported as prefer_system32_policy instead (verified with a policy-started child).
+    Check ($load.preferSystem32Images -eq $false -and ![GRID2VR.GameProcessModules]::PrefersSystem32Images($PID)) 'A prefer-system32 policy was invented.'
+    Check ((Write-RendererLoad $gameFolder $artifacts $PID 'ABC').reason -ceq 'proxy_changed') 'A replaced renderer was not reported.'
+    $module=[Runtime.InteropServices.NativeLibrary]::Load($proxy)
+    try {
+        $load=Write-RendererLoad $gameFolder $artifacts $PID $proxyHash
+        Check ($load.rendererLoaded -and $load.reason -ceq 'loaded' -and @($load.loadedD3d11) -contains $proxy) 'The loaded renderer was not recognised.'
+        $receipt=Get-Content -LiteralPath (Join-Path $artifacts 'renderer-load.json') -Raw | ConvertFrom-Json
+        Check ($receipt.rendererLoaded -and $receipt.reason -ceq 'loaded') 'Renderer load receipt is wrong.'
+    } finally { [Runtime.InteropServices.NativeLibrary]::Free($module) }
+    foreach($reason in 'proxy_missing','proxy_changed','prefer_system32_policy','windows_d3d11_loaded') {
+        Check ((Get-RendererLoadMessage $reason) -like 'GRID 2 ran without GRID2VR:*') "No player message for $reason."
+    }
+    Check ((Get-RendererLoadMessage 'proxy_missing') -like '*Protection history*' -and (Get-RendererLoadMessage 'windows_d3d11_loaded') -like '*Visual C++*') 'Renderer messages do not name the likely fix.'
+    foreach($reason in 'loaded','not_inspected','') { Check ($null -eq (Get-RendererLoadMessage $reason)) "A renderer message was produced for $reason." }
+    Check ($load.ancestry.Count -ge 1 -and $load.ancestry[0].id -eq $PID -and $load.ancestry[0].preferSystem32Images -eq $false -and $null -eq $load.ruleOrigin) 'Renderer receipt ancestry is wrong.'
+    Remove-Item -LiteralPath (Join-Path $artifacts 'renderer-load.json')
+    # "Prefer system32 images": a per-program setting forces it with value 1 in bits
+    # 60-61 of the first MitigationOptions qword (2 forces it off).
+    $on=[byte[]](0,0,0,0,0,0,0,0x10);$off=[byte[]](0,0,0,0,0,0,0,0x20)
+    Check ((Test-PreferSystem32Option $on) -and (Test-PreferSystem32Option ([byte[]]($on+(0,0,0,0,0,0,0,0))))) 'A forced PreferSystem32 setting was missed.'
+    foreach($options in $off,([byte[]](0,0,0,0,0,0,0,0x30)),([byte[]](0,0,0,0x10)),$null) { Check (!(Test-PreferSystem32Option $options)) 'A PreferSystem32 setting was invented.' }
+    Check (!(Test-PreferSystem32Setting '') -and !(Test-PreferSystem32Setting (Join-Path $fixture ('absent-'+[guid]::NewGuid().ToString('N')+'.exe')))) 'An absent program setting was reported.'
+    # Origin: the farthest process of the unbroken run that carries the rule.
+    $chain=@([ordered]@{name='grid2_avx.exe';preferSystem32Images=$true},[ordered]@{name='grid2.exe';preferSystem32Images=$true},
+        [ordered]@{name='steam.exe';preferSystem32Images=$true;exploitProtectionSetting=$false},[ordered]@{name='explorer.exe';preferSystem32Images=$false})
+    $origin=Get-PreferSystem32Origin $chain
+    Check ($origin.name -ceq 'steam.exe' -and $origin.startedBy -ceq 'explorer.exe') 'The rule origin was not Steam.'
+    Check ((Get-PreferSystem32Origin $chain[0..1]).startedBy -eq $null -and $null -eq (Get-PreferSystem32Origin $chain[3..3]) -and $null -eq (Get-PreferSystem32Origin @())) 'Rule origin edges are wrong.'
+    Check ($null -eq (Get-PreferSystem32Origin @([ordered]@{name='grid2_avx.exe';preferSystem32Images=$null},$chain[1]))) 'An unreadable game rule produced an origin.'
+    Check ((Get-RendererLoadMessage 'prefer_system32_policy' $origin) -like '*Steam passed*Exit Steam completely*') 'The Steam rule message does not say to restart Steam.'
+    $origin.exploitProtectionSetting=$true
+    Check ((Get-RendererLoadMessage 'prefer_system32_policy' $origin) -like '*Remove the PreferSystem32 exploit-protection setting for steam.exe*') 'The program-setting message does not name the setting.'
+    Check ((Get-RendererLoadMessage 'prefer_system32_policy' ([ordered]@{name='helper.exe';exploitProtectionSetting=$false})) -like '*helper.exe passed*Close helper.exe*') 'A non-Steam origin was not named.'
+    Check ((Get-PreferSystem32LaunchMessage ([ordered]@{name='steam.exe';exploitProtectionSetting=$false;running=$true})) -like 'GRID2VR did not start GRID 2: Steam is running*Exit Steam completely*') 'The running-Steam refusal is wrong.'
+    Check ((Get-PreferSystem32LaunchMessage ([ordered]@{name='pwsh.exe';exploitProtectionSetting=$false;running=$false})) -like '*GRID2VR was started with*Start menu shortcut*') 'The launcher refusal is wrong.'
+    # This process has no rule and the fixture has no running Steam: nothing is refused.
+    Check ($null -eq (Get-PreferSystem32LaunchBlock Direct $gameFolder $fixture) -and $null -eq (Get-PreferSystem32LaunchBlock Steam $gameFolder $fixture)) 'A launch was refused without the rule.'
+    # A real rule: a child turns it on for itself, refuses a launch, and passes it to
+    # its own child, which reports the first child as the origin.
+    $marker=Join-Path $fixture 'policy-hold';Set-Content -LiteralPath $marker -Value hold
+    $policyOut=Join-Path $fixture 'policy-child.json'
+    $shell=[Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    $policyChild=Join-Path $fixture 'policy-child.ps1'
+    Set-Content -LiteralPath $policyChild -Value @'
+param($Tools,$Game,$Out,$Marker)
+Add-Type -Namespace Probe -Name Policy -MemberDefinition '[DllImport("kernel32.dll")] public static extern bool SetProcessMitigationPolicy(int policy, ref uint value, UIntPtr size);'
+$flags=[uint32]4
+if(![Probe.Policy]::SetProcessMitigationPolicy(10,[ref]$flags,[UIntPtr]4)) { exit 2 }
+. (Join-Path $Tools 'Game-Executable.ps1')
+$block=Get-PreferSystem32LaunchBlock Direct $Game $Game
+$hold="while((Test-Path -LiteralPath '$Marker') -and `$i++ -lt 300){Start-Sleep -Milliseconds 100}"
+$grandchild=Start-Process -FilePath ([Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) -ArgumentList '-NoProfile','-Command',$hold -PassThru -WindowStyle Hidden
+[IO.File]::WriteAllText($Out,(@{grandchild=$grandchild.Id;block=$block} | ConvertTo-Json -Depth 3))
+$grandchild.WaitForExit(40000) | Out-Null
+'@
+    $child=Start-Process -FilePath $shell -ArgumentList '-NoProfile','-File',$policyChild,(Join-Path $root 'tools'),$gameFolder,$policyOut,$marker -PassThru -WindowStyle Hidden
+    try {
+        for($i=0;$i -lt 300 -and !(Test-Path -LiteralPath $policyOut) -and !$child.HasExited;$i++) { Start-Sleep -Milliseconds 100 }
+        Check (Test-Path -LiteralPath $policyOut) "The policy child did not report (exit $(if($child.HasExited){$child.ExitCode}))."
+        $policy=Get-Content -LiteralPath $policyOut -Raw | ConvertFrom-Json
+        Check ($policy.block.running -eq $false -and $policy.block.exploitProtectionSetting -eq $false -and $policy.block.name -like 'pwsh*') 'A launcher carrying the rule was not refused.'
+        $ancestry=@(Get-PreferSystem32Ancestry $policy.grandchild)
+        Check ($ancestry.Count -ge 3 -and $ancestry[0].preferSystem32Images -and $ancestry[1].id -eq $child.Id -and $ancestry[1].preferSystem32Images -and $ancestry[2].id -eq $PID -and !$ancestry[2].preferSystem32Images) 'The inherited rule was not traced.'
+        $origin=Get-PreferSystem32Origin $ancestry
+        Check ($origin.path -ieq $shell -and $origin.startedBy -like 'pwsh*' -and !$origin.exploitProtectionSetting) 'The rule origin was not the first child.'
+    } finally {
+        Remove-Item -LiteralPath $marker -ErrorAction SilentlyContinue
+        $child.WaitForExit(30000) | Out-Null
+    }
     Reject {Get-SessionChild $artifacts (Join-Path $fixture 'stereo-probe-1') '^stereo-probe-[0-9-]+$'}
     Reject {Get-SessionChild $artifacts 'relative/path' '.*'}
     # Validate both backups before touching either current settings file.

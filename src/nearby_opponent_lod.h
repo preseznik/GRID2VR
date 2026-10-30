@@ -171,8 +171,11 @@ inline Plan Evaluate(const Frame& frame,const State& previous) {
 
             // hypot avoids overflow from squaring finite distances. Subtraction
             // or a genuinely unrepresentable norm can still overflow: refuse it.
-            const double distance=std::hypot(car.position.x-context.camera.x,
-                car.position.y-context.camera.y,car.position.z-context.camera.z);
+            // Two-argument hypot only: the three-argument overload lives in
+            // MSVCP140_2.dll, which older Visual C++ runtimes lack, and the game
+            // then silently loads Windows' d3d11.dll instead of this renderer.
+            const double distance=std::hypot(std::hypot(car.position.x-context.camera.x,
+                car.position.y-context.camera.y),car.position.z-context.camera.z);
             if(!std::isfinite(distance))return Result::InvalidDistance;
             const auto& old=previous.slots_[i];
             const bool wasNear=sameManager && old.car==car.identity && old.epoch==car.epoch &&

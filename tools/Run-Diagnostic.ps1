@@ -311,6 +311,14 @@ if ($selectedSession) {
     $selectedSession | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $run 'selected-session.json') -Encoding utf8
 }
 $launchPlan=Get-Grid2LaunchPlan -Game $game -Backend $launchBackend -NormalLaunch:$NormalLaunch -SelectedSession $selectedSession -CareerProfile $career.id
+if($ProxyMode -eq 'Active') {
+    # Windows' "prefer system32 images" rule passes from Steam (or this process) to
+    # GRID 2, which would then run on Windows' d3d11.dll. Refuse before deploying.
+    $imageLoadBlock=$null
+    try { $imageLoadBlock=Get-PreferSystem32LaunchBlock $launchBackend $game (Get-Grid2SteamRoot) } catch { Write-Warning "Image-load rule check unavailable: $_" }
+    [IO.File]::WriteAllText((Join-Path $run 'image-load-preflight.json'),([ordered]@{schema=1;blocked=$null -ne $imageLoadBlock;block=$imageLoadBlock} | ConvertTo-Json -Depth 3),[Text.UTF8Encoding]::new($false))
+    if($imageLoadBlock) { throw "$(Get-PreferSystem32LaunchMessage $imageLoadBlock) Evidence: $run" }
+}
 if ($RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'runtime-session.request'),'Sustained same-frame stereo with explicit suspension and bounded logs; guarded experimental runtime.') }
 if($dlcCockpit.cars.Count) { [IO.File]::WriteAllText((Join-Path $run 'dlc-cockpit.request'),$dlcCockpit.text,[Text.Encoding]::ASCII) }
 if($CockpitTextures -ne 'Off') { [IO.File]::WriteAllText((Join-Path $run 'cockpit-textures.request'),$CockpitTextures,[Text.Encoding]::ASCII) }
@@ -582,6 +590,13 @@ try {
                     $owned.Refresh()
                     if(!$owned.HasExited -and $owned.MainWindowHandle -ne [IntPtr]::Zero) {
                         $gameWindowReported=$true
+                        if($ProxyMode -eq 'Active') {
+                            # Diagnostic only: an inspection failure must not end the session.
+                            try {
+                                $receipt.rendererLoad=Write-RendererLoad $game $run $owned.Id $entries[0].sha256
+                                if(!$receipt.rendererLoad.rendererLoaded) { Write-Warning "GRID 2 did not load GRID2VR's renderer ($($receipt.rendererLoad.reason)); see renderer-load.json." }
+                            } catch { Write-Warning "Renderer load check unavailable: $_" }
+                        }
                         Write-Output 'GRID2VR_GAME_WINDOW_READY'
                         break
                     }

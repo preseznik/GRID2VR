@@ -20,6 +20,14 @@ STANDALONE = {
 }
 
 
+# Mutation name -> first failed admission step. Normalized-away regions (DOS stub,
+# Steam data/instance) still change the signed file, so they fail the signature.
+REFUSAL_STEPS = {'code': 'normalized_hash', 'data': 'normalized_hash', 'imports': 'normalized_hash',
+                 'layout': 'normalized_hash', 'dos_stub': 'signature', 'steam_data': 'signature',
+                 'steam_instance': 'signature', 'signature': 'signature', 'truncated': 'size',
+                 'oversized': 'size', 'overlay': 'security_directory', 'truncated-byte': 'security_directory'}
+
+
 def run(args):
     results = []
     sources = list(args.game_root.glob('grid2*.exe'))
@@ -125,6 +133,10 @@ ConvertTo-Json -InputObject @{files=$rows;installations=$installations;identitie
                 native = subprocess.run([str(args.native), 'avx' if case['avx'] else 'regular', case['path']],
                                         capture_output=True, text=True, timeout=30)
                 assert (native.returncode == 0) == case['accepted'], (case, native.stderr)
+                # The renderer's refusal receipt names the first failed step.
+                step = next((step for suffix, step in REFUSAL_STEPS.items() if case['name'].endswith(' '+suffix)), None)
+                if step and not case['accepted']:
+                    assert 'refused step='+step+' ' in native.stderr, (case, native.stderr)
                 if case['accepted']:
                     assert native.stdout.strip() == originals[case['path']]
                 results.append(dict(language='native', name=case['name'], accepted=native.returncode == 0))

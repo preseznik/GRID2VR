@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -137,6 +138,136 @@ namespace GRID2VR
                 Marshal.DestroyStructure(memory, typeof(TrustFile));
                 Marshal.FreeHGlobal(memory);
             }
+        }
+    }
+    // Read-only: the files a running game process loaded under one module name.
+    // GRID 2 is 32-bit and the tools may be 64-bit, so all module views are listed.
+    // The renderer proxy is effective only if this names the game folder's copy.
+    public static class GameProcessModules
+    {
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint access, bool inherit, int id);
+        [DllImport("kernel32.dll")]
+        private static extern bool CloseHandle(IntPtr handle);
+        [DllImport("psapi.dll", SetLastError = true)]
+        private static extern bool EnumProcessModulesEx(IntPtr process, [Out] IntPtr[] modules, uint size, out uint needed, uint filter);
+        [DllImport("psapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint GetModuleFileNameExW(IntPtr process, IntPtr module, StringBuilder name, uint size);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetProcessMitigationPolicy(IntPtr process, int policy, out uint value, UIntPtr size);
+
+        // "Prefer system32 images" (PROCESS_MITIGATION_IMAGE_LOAD_POLICY bit 2): the
+        // loader then takes Windows' d3d11.dll over the game folder's. A parent such
+        // as Steam can apply it when it creates the game process.
+        public static bool PrefersSystem32Images(int processId)
+        {
+            const uint QueryInformation = 0x0400;
+            const int ImageLoadPolicy = 10;
+            IntPtr process = OpenProcess(QueryInformation, false, processId);
+            if (process == IntPtr.Zero) throw new IOException("The game process cannot be inspected.");
+            try
+            {
+                uint flags;
+                if (!GetProcessMitigationPolicy(process, ImageLoadPolicy, out flags, (UIntPtr)4))
+                    throw new IOException("The game process image-load policy cannot be read.");
+                return (flags & 4) != 0;
+            }
+            finally { CloseHandle(process); }
+        }
+
+        public sealed class ProcessLink
+        {
+            public int Id { get; set; }
+            public string Name { get; set; } = "";
+            public string Path { get; set; } = ""; // empty when Windows does not report it
+            public bool? PreferSystem32Images { get; set; }
+        }
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct ProcessEntry
+        {
+            public uint Size, Usage, ProcessId;
+            public IntPtr DefaultHeap;
+            public uint Module, Threads, ParentProcessId;
+            public int BasePriority;
+            public uint Flags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string ExeFile;
+        }
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool Process32FirstW(IntPtr snapshot, ref ProcessEntry entry);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool Process32NextW(IntPtr snapshot, ref ProcessEntry entry);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetProcessTimes(IntPtr process, out long creation, out long exit, out long kernel, out long user);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool QueryFullProcessImageNameW(IntPtr process, uint flags, StringBuilder name, ref uint size);
+
+        // Read-only: a process and its live ancestors, nearest first. The image-load
+        // rule passes from parent to child, so the farthest ancestor that has it is
+        // where it came from. A parent must have started before its child; an exited
+        // parent (or a reused id) ends the walk, as does one that cannot be opened.
+        public static ProcessLink[] Ancestry(int processId, int limit)
+        {
+            var known = new Dictionary<int, ProcessEntry>();
+            IntPtr snapshot = CreateToolhelp32Snapshot(2, 0);
+            if (snapshot == new IntPtr(-1)) throw new IOException("Processes cannot be listed.");
+            try
+            {
+                var entry = new ProcessEntry { Size = (uint)Marshal.SizeOf<ProcessEntry>() };
+                for (bool more = Process32FirstW(snapshot, ref entry); more; more = Process32NextW(snapshot, ref entry))
+                    known[(int)entry.ProcessId] = entry;
+            }
+            finally { CloseHandle(snapshot); }
+            var result = new List<ProcessLink>();
+            long childStarted = long.MaxValue;
+            for (int id = processId; id > 4 && result.Count < limit && known.TryGetValue(id, out var entry);)
+            {
+                const uint QueryLimited = 0x1000;
+                IntPtr process = OpenProcess(QueryLimited, false, id);
+                if (process == IntPtr.Zero) break;
+                long started;
+                string path = "";
+                try
+                {
+                    if (!GetProcessTimes(process, out started, out _, out _, out _) || started > childStarted) break;
+                    var name = new StringBuilder(1024);
+                    uint size = (uint)name.Capacity;
+                    if (QueryFullProcessImageNameW(process, 0, name, ref size)) path = name.ToString();
+                }
+                finally { CloseHandle(process); }
+                bool? prefer = null;
+                try { prefer = PrefersSystem32Images(id); } catch (IOException) { }
+                result.Add(new ProcessLink { Id = id, Name = entry.ExeFile, Path = path, PreferSystem32Images = prefer });
+                childStarted = started;
+                id = (int)entry.ParentProcessId;
+            }
+            return result.ToArray();
+        }
+
+        public static string[] Paths(int processId, string moduleName)
+        {
+            const uint QueryInformation = 0x0400, VmRead = 0x0010, AllModules = 0x03;
+            IntPtr process = OpenProcess(QueryInformation | VmRead, false, processId);
+            if (process == IntPtr.Zero) throw new IOException("The game process cannot be inspected.");
+            try
+            {
+                var modules = new IntPtr[2048];
+                uint needed;
+                if (!EnumProcessModulesEx(process, modules, (uint)(modules.Length * IntPtr.Size), out needed, AllModules))
+                    throw new IOException("The game process modules cannot be listed.");
+                var result = new List<string>();
+                int count = Math.Min(modules.Length, (int)(needed / (uint)IntPtr.Size));
+                for (int i = 0; i < count; ++i)
+                {
+                    var name = new StringBuilder(1024);
+                    if (GetModuleFileNameExW(process, modules[i], name, (uint)name.Capacity) == 0) continue;
+                    string path = name.ToString();
+                    if (string.Equals(Path.GetFileName(path), moduleName, StringComparison.OrdinalIgnoreCase)) result.Add(path);
+                }
+                return result.ToArray();
+            }
+            finally { CloseHandle(process); }
         }
     }
 }

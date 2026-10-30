@@ -1778,6 +1778,18 @@ HRESULT STDMETHODCALLTYPE QueryData(ID3D11DeviceContext* c,ID3D11Asynchronous* q
 }
 }
 
+// Admission failed, so no trace exists yet: leave one bounded receipt naming
+// the failed step for the run folder the launcher already created.
+void WriteHostRefusal(const std::filesystem::path& folder,const gameexe::Refusal& refusal) {
+    std::string signer;
+    for(const auto c:refusal.signer)signer+=c>=0x20 && c<0x7f && c!='"' && c!='\\'?static_cast<char>(c):'?';
+    char trust[16]{};sprintf_s(trust,"0x%08lx",static_cast<unsigned long>(refusal.trust));
+    std::ofstream file(folder/L"host-admission.json",std::ios::trunc);
+    file<<"{\"schema\":1,\"admitted\":false,\"step\":\""<<refusal.step<<"\",\"error\":"<<refusal.error<<",\"size\":"<<refusal.size
+        <<",\"sha256\":\""<<refusal.sha256<<"\",\"normalizedSha256\":\""<<refusal.normalized
+        <<"\",\"winVerifyTrust\":\""<<trust<<"\",\"signer\":\""<<signer<<"\"}\n";
+}
+
 bool Active() {
     static const bool enabled=[] {
         try {
@@ -1796,7 +1808,9 @@ bool Active() {
                 if (!std::getline(marker,header) || header!="GRID2VR_DIAGNOSTIC_V1" || !std::getline(marker,folder)) return false;
                 output=std::filesystem::path(std::u8string(folder.begin(),folder.end()));
             }
-            if (!output.is_absolute() || gameexe::Validate(host.c_str(),true).empty()) return false;
+            if (!output.is_absolute()) return false;
+            gameexe::Refusal refusal;
+            if (gameexe::Validate(host.c_str(),true,&refusal).empty()) {WriteHostRefusal(output,refusal);return false;}
             std::filesystem::create_directories(output);
             runtimeSession=std::filesystem::exists(output/L"runtime-session.request");
             focusCockpit.Configure(host.parent_path(),output);

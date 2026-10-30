@@ -92,6 +92,37 @@ function Write-SessionJson([string]$Path,$Value) {
         else { [IO.File]::Move($temporary,$target) }
     } finally { if(Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary } }
 }
+# How to clear Windows' "prefer system32 images" rule from the program that passes
+# it to GRID 2 ($Origin: name, exploitProtectionSetting; see Game-Executable.ps1).
+function Get-PreferSystem32Fix($Origin) {
+    $name=if($Origin -and $Origin.name){$Origin.name}else{'steam.exe'}
+    if($Origin -and $Origin.exploitProtectionSetting) { return "Remove the PreferSystem32 exploit-protection setting for $name (it forces this rule), close $name, then launch again." }
+    if($name -ieq 'steam.exe') { return 'Exit Steam completely (Steam > Exit), start it again from the Start menu, then launch again.' }
+    return "Close $name and start it again normally, then launch again."
+}
+# Player-facing reason when GRID 2 did not load GRID2VR's d3d11.dll
+# (renderer-load.json from Run-Diagnostic); $null when no failure is proven.
+function Get-RendererLoadMessage([string]$Reason,$Origin=$null) {
+    switch($Reason) {
+        'proxy_missing' { return "GRID 2 ran without GRID2VR: GRID2VR's d3d11.dll was removed from the game folder before the game started. This is usually antivirus; check Windows Security > Protection history, allow the file or exclude the game folder, then launch again." }
+        'prefer_system32_policy' {
+            $source=if($Origin -and $Origin.name -and $Origin.name -ine 'steam.exe'){$Origin.name}else{'Steam'}
+            return "GRID 2 ran without GRID2VR: $source passed the Windows rule 'prefer system32 images' to GRID 2, so the game used Windows' own d3d11.dll instead of GRID2VR's. $(Get-PreferSystem32Fix $Origin)"
+        }
+        'proxy_changed' { return "GRID 2 ran without GRID2VR: GRID2VR's d3d11.dll in the game folder was replaced before the game started. Check for another mod or tool that installs a d3d11.dll, then launch again." }
+        'windows_d3d11_loaded' { return "GRID 2 ran without GRID2VR: Windows could not load GRID2VR's d3d11.dll and used its own. Install the latest Microsoft Visual C++ 2015-2022 Redistributable (x86), and check Windows Security > Protection history for a blocked file, then launch again." }
+        default { return $null }
+    }
+}
+# Refusal before launch when the program that would start GRID 2 carries the rule
+# ($Block from Get-PreferSystem32LaunchBlock).
+function Get-PreferSystem32LaunchMessage($Block) {
+    $source=if($Block.exploitProtectionSetting){"Windows exploit protection forces the rule 'prefer system32 images' for $($Block.name)"}
+        elseif($Block.running){"Steam is running with the Windows rule 'prefer system32 images'"}
+        else{"GRID2VR was started with the Windows rule 'prefer system32 images'"}
+    $fix=if($Block.exploitProtectionSetting -or $Block.running){Get-PreferSystem32Fix $Block}else{'Close GRID2VR, start it again from its Start menu shortcut, then launch again.'}
+    return "GRID2VR did not start GRID 2: $source, so the game would use Windows' own d3d11.dll instead of GRID2VR's. $fix"
+}
 function Write-UserSessionStatus([string]$Root,$Value) {
     $run=Get-Grid2LogDirectory $Root $Value.logDirectory
     Write-SessionJson (Join-Path $run 'user-session.json') $Value

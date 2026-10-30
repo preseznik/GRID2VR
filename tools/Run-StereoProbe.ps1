@@ -484,6 +484,14 @@ if($RuntimeSession) {
     Assert-CareerProfileSession -Profile $career -Run $run -Root $root
     if($AutoCaptureFlicker -and $receipt.automaticFlicker.outcome -ne 'complete') { throw "Automatic flicker capture did not complete: $($receipt.automaticFlicker.outcome); evidence: $run" }
     $summary=Get-Content -LiteralPath (Join-Path $run 'runtime-summary.json') -Raw | ConvertFrom-Json
+    # Without its renderer the game ran unmodified; every later check would only
+    # report the consequences, so name the primary failure first.
+    $rendererLoadPath=Join-Path $run 'renderer-load.json'
+    if(Test-Path -LiteralPath $rendererLoadPath) {
+        $rendererLoad=Get-Content -LiteralPath $rendererLoadPath -Raw | ConvertFrom-Json
+        $message=if($rendererLoad.rendererLoaded -eq $false){Get-RendererLoadMessage $rendererLoad.reason $rendererLoad.ruleOrigin}else{$null}
+        if($message) { throw "$message Evidence: $run" }
+    }
     $cleanNonRenderingExit=$PlayerControlOnly -and $PlayerControlProbe -eq 'Off' -and $summary.nonRenderingCleanExit -and $summary.backgroundPlayObservedHealthy
     if ($UntilExit -and $summary.normalUserProcessExit -and $summary.backgroundPlayObservedHealthy -and
         ($PlayerControlOnly -or $summary.lastRenderingHealthy)) {
