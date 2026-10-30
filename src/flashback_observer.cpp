@@ -22,7 +22,7 @@ uint64_t samples{},readySamples{},monitorChanges{},usedIncrements{};
 uintptr_t lastMonitor{};
 int32_t lastUsed=unread;
 ULONGLONG lastWrite{};
-size_t writtenEntries{};
+uint64_t writtenEntries{};
 Timeline<256> timeline;
 BenchmarkFlagPolicy flag;
 

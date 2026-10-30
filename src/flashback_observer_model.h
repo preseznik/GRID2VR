@@ -53,8 +53,8 @@ template<class Reader> Sample ReadSample(uintptr_t base,uintptr_t car,Reader rea
     if(word(monitor+ownerOffset,owner)) sample.ownerIsCar=owner==car;
     uint32_t state{};
     if(word(monitor+raceStateOffset,state)) sample.raceState=state?field(state+raceStateField):-1;
-    uint32_t vehicle{};uint8_t flag{};
-    if(word(monitor+vehicleOffset,vehicle)) sample.vehicleFlag=!vehicle?-1:(vehicle>=0x10000 && read(vehicle+vehicleFlagOffset,&flag,1))?flag:unread;
+    uint32_t vehicle{};uint8_t vehicleByte{};
+    if(word(monitor+vehicleOffset,vehicle)) sample.vehicleFlag=!vehicle?-1:(vehicle>=0x10000 && read(vehicle+vehicleFlagOffset,&vehicleByte,1))?vehicleByte:unread;
     uint32_t context{},contextTable{};
     if(!word(monitor+contextOffset,context) || !word(context+4,contextTable)) return sample;
     uint32_t modeIndex{},modeComponent{};
