@@ -21,6 +21,8 @@ struct Sample {
     int8_t ownerIsCar=-1,resetRegistered=-1;
     // World not paused (guarded chase-camera reader) and replay playback active (image+0xe61010).
     int8_t worldRunning=-1,replayActive=-1;
+    // Diagnostic only: local race readiness and the local controller's enable byte (+0x40).
+    int8_t raceReady=-1,inputEnabled=-1;
     bool operator==(const Sample&) const=default;
 };
 inline constexpr uintptr_t replayRva=0xe61010;
@@ -96,40 +98,36 @@ private:
 
 // Direct Practice/Race launch with -benchmarkAttract, and the gate refuses every
 // flashback while the benchmark mode is set. Clear it only inside the gate's own
-// racing window (monitor on the local car, race state 0 or 9, a nonzero
-// allowance) and restore it as soon as that window closes, so the benchmark-end
-// exit and every non-racing reader keep the launch value. Race state stays 0
-// in the pause menu, so a paused world without replay playback also closes the
-// window: in-game Quit enters the benchmark exit (mode 2) before teardown. The
-// first clear of a race also needs the local race ready, so loading never sees
-// 0; later clears on the same monitor do not (replay screens fail the readiness
-// graph). Normal launches (mode 0) and plain -benchmark (mode 1) are never touched.
+// racing window and restore it as soon as that window closes, so the
+// benchmark-end exit and every non-racing reader keep the launch value:
+// - monitor on the local car, race state 0 or 9, a nonzero allowance;
+// - the local race ready: never during loading, and it ends at the finish line
+//   (race state does not), while it holds through the flashback rewind;
+// - world running or a replay playing: race state stays 0 in the pause menu, and
+//   in-game Quit enters the benchmark exit (mode 2) before teardown.
+// Normal launches (mode 0) and plain -benchmark (mode 1) are never touched.
 enum class FlagAction : uint8_t {None,Clear,Restore};
 class BenchmarkFlagPolicy {
 public:
-    static bool Racing(const Sample& s) {
-        return s.found==Found::Monitor && s.ownerIsCar==1 && (s.raceState==0 || s.raceState==9) && s.maximum>0 &&
+    static bool Racing(const Sample& s,bool raceReady) {
+        return raceReady && s.found==Found::Monitor && s.ownerIsCar==1 && (s.raceState==0 || s.raceState==9) && s.maximum>0 &&
             (s.worldRunning==1 || s.replayActive==1);
     }
-    // monitor: the sample's FlashbackMonitor address, 0 when none.
-    FlagAction Next(const Sample& s,bool raceReady,uintptr_t monitor) {
-        candidate_=monitor;
-        const bool racing=Racing(s);
+    FlagAction Next(const Sample& s,bool raceReady) const {
+        const bool racing=Racing(s,raceReady);
         if(cleared_) return racing?FlagAction::None:FlagAction::Restore;
-        const bool allowed=raceReady || (monitor && monitor==armed_);
-        return racing && allowed && s.blocked==static_cast<int32_t>(benchmarkAttract)?FlagAction::Clear:FlagAction::None;
+        return racing && s.blocked==static_cast<int32_t>(benchmarkAttract)?FlagAction::Clear:FlagAction::None;
     }
     // Exchange: bool(uint32_t expected,uint32_t value), a compare-exchange on the
     // flag, so a value the game changed meanwhile is never overwritten.
     template<class Exchange> void Apply(FlagAction action,Exchange exchange) {
-        if(action==FlagAction::Clear) {if(exchange(benchmarkAttract,0u)) {cleared_=true;armed_=candidate_;++clears;} else ++refused;}
+        if(action==FlagAction::Clear) {if(exchange(benchmarkAttract,0u)) {cleared_=true;++clears;} else ++refused;}
         else if(action==FlagAction::Restore) {if(exchange(0u,benchmarkAttract)) ++restores; else ++foreign;cleared_=false;}
     }
     bool Cleared() const {return cleared_;}
     uint64_t clears{},restores{},refused{},foreign{};
 private:
     bool cleared_{};
-    uintptr_t candidate_{},armed_{};
 };
 static_assert(benchmarkModeWordRva==blockFlagRva);
 // The one game write. Readiness checks accept 0 only for the registered image, so

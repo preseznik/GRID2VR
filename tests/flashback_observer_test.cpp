@@ -99,43 +99,40 @@ int main() {
     const auto exchange=[&](uint32_t expected,uint32_t value){return ExchangeBenchmarkMode(&mode,base,expected,value);};
     Sample racing{};racing.found=Found::Monitor;racing.ownerIsCar=1;racing.raceState=0;racing.maximum=5;racing.blocked=2;
     racing.worldRunning=1;racing.replayActive=0;
-    constexpr uintptr_t raceMonitor=0x20000,nextRaceMonitor=0x30000;
     BenchmarkFlagPolicy policy;
-    if(policy.Next(racing,false,raceMonitor)!=FlagAction::None) return 15;
+    if(policy.Next(racing,false)!=FlagAction::None) return 15;
     using Change=void(*)(Sample&);
     const Change changes[]{[](Sample& s){s.found=Found::NoMonitor;},[](Sample& s){s.ownerIsCar=0;},[](Sample& s){s.raceState=3;},
                            [](Sample& s){s.maximum=0;},[](Sample& s){s.blocked=0;},[](Sample& s){s.blocked=1;},
                            [](Sample& s){s.worldRunning=0;},[](Sample& s){s.worldRunning=-1;s.replayActive=-1;}};
     for(const auto change:changes) {
         Sample s=racing;change(s);
-        if(policy.Next(s,true,raceMonitor)!=FlagAction::None) return 16;
+        if(policy.Next(s,true)!=FlagAction::None) return 16;
     }
     if(grid2vr::IsBenchmarkAttractMode(base,0)) return 17;
-    policy.Apply(policy.Next(racing,true,raceMonitor),exchange);
+    policy.Apply(policy.Next(racing,true),exchange);
     if(mode!=0 || !policy.Cleared() || policy.clears!=1 || !grid2vr::IsBenchmarkAttractMode(base,0) || grid2vr::IsBenchmarkAttractMode(base+4,0)) return 18;
-    // Inside the window readiness is not rechecked (replay screens fail it), and a
-    // paused world stays inside while a replay (the flashback rewind) plays.
+    // Race state 9 and a paused world with replay playback stay inside the window.
     Sample cleared=racing;cleared.blocked=0;cleared.raceState=9;
-    if(policy.Next(cleared,false,raceMonitor)!=FlagAction::None) return 19;
+    if(policy.Next(cleared,true)!=FlagAction::None) return 19;
     cleared.worldRunning=0;cleared.replayActive=1;
-    if(policy.Next(cleared,false,raceMonitor)!=FlagAction::None) return 25;
+    if(policy.Next(cleared,true)!=FlagAction::None) return 25;
     // The pause menu (paused world, no replay) restores the launch value for in-game Quit.
     cleared.replayActive=0;
-    policy.Apply(policy.Next(cleared,false,raceMonitor),exchange);
+    policy.Apply(policy.Next(cleared,true),exchange);
     if(mode!=2 || policy.Cleared() || policy.restores!=1) return 26;
-    policy.Apply(policy.Next(racing,false,raceMonitor),exchange);
+    policy.Apply(policy.Next(racing,true),exchange);
     if(mode!=0 || policy.clears!=2) return 27;
-    cleared.worldRunning=1;
-    cleared.raceState=3;
-    policy.Apply(policy.Next(cleared,false,raceMonitor),exchange);
+    // The finish line ends local race readiness while race state stays 0.
+    cleared=racing;cleared.blocked=0;
+    policy.Apply(policy.Next(cleared,false),exchange);
     if(mode!=2 || policy.Cleared() || policy.restores!=2 || grid2vr::IsBenchmarkAttractMode(base,0)) return 20;
-    // The same race re-clears without readiness; a new race's monitor needs it again.
-    if(policy.Next(racing,false,nextRaceMonitor)!=FlagAction::None) return 23;
-    policy.Apply(policy.Next(racing,false,raceMonitor),exchange);
+    if(policy.Next(racing,false)!=FlagAction::None) return 23;
+    policy.Apply(policy.Next(racing,true),exchange);
     if(mode!=0 || policy.clears!=3) return 24;
     // A value the game changed meanwhile is kept on restore.
     mode=5;cleared.raceState=3;
-    policy.Apply(policy.Next(cleared,false,raceMonitor),exchange);
+    policy.Apply(policy.Next(cleared,true),exchange);
     if(mode!=5 || policy.Cleared() || policy.foreign!=1 || grid2vr::IsBenchmarkAttractMode(base,0)) return 21;
     // A clear that loses the race to the game registers nothing.
     mode=1;policy.Apply(FlagAction::Clear,exchange);
@@ -173,7 +170,7 @@ int main() {
     if(after!=2 || final.find("\"reason\":\"stopped\"")==std::string::npos || final.find("\"samples\":2,\"raceReadySamples\":0,")==std::string::npos ||
        final.find("\"benchmarkFlag\":{\"cleared\":false,\"clears\":0,\"restores\":0,\"refused\":0,\"foreignChanges\":0}")==std::string::npos ||
        final.find("\"timeline\":[{\"sample\":0,\"samples\":2,\"found\":\"no_local_car\",\"remaining\":null")==std::string::npos ||
-       final.find("\"blocked\":2,\"ownerIsCar\":null,\"resetRegistered\":null,\"worldRunning\":false,\"replayActive\":false}")==std::string::npos) {std::puts(final.c_str());return 13;}
+       final.find("\"blocked\":2,\"ownerIsCar\":null,\"resetRegistered\":null,\"worldRunning\":false,\"replayActive\":false,\"raceReady\":false,\"inputEnabled\":null}")==std::string::npos) {std::puts(final.c_str());return 13;}
     // Observation never changes guarded code.
     if(std::memcmp(before.data(),image+codeGuards[0].rva,before.size()) || !InstructionsMatch(base)) return 14;
     std::filesystem::remove_all(folder);

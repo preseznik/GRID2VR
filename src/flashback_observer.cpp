@@ -9,7 +9,7 @@
 
 namespace grid2vr::flashbackobserver {
 namespace {
-constexpr ULONGLONG writeEveryMs=2000;
+constexpr ULONGLONG writeEveryMs=2000,changeWriteMs=250;
 
 uintptr_t base{};
 std::filesystem::path folder;
@@ -22,7 +22,8 @@ uint64_t samples{},readySamples{},monitorChanges{},usedIncrements{};
 uintptr_t lastMonitor{};
 int32_t lastUsed=unread;
 ULONGLONG lastWrite{};
-Timeline<128> timeline;
+size_t writtenEntries{};
+Timeline<256> timeline;
 BenchmarkFlagPolicy flag;
 
 bool Read(uintptr_t at,void* output,size_t bytes) {return ReadMemory(reinterpret_cast<void*>(at),output,bytes);}
@@ -55,6 +56,7 @@ void WriteStatus() {
         file<<',';Number(file,"mode",s.mode);file<<',';Number(file,"raceState",s.raceState);file<<',';Number(file,"vehicleFlag",s.vehicleFlag);
         file<<',';Number(file,"blocked",s.blocked);file<<',';Flag(file,"ownerIsCar",s.ownerIsCar);file<<',';Flag(file,"resetRegistered",s.resetRegistered);
         file<<',';Flag(file,"worldRunning",s.worldRunning);file<<',';Flag(file,"replayActive",s.replayActive);
+        file<<',';Flag(file,"raceReady",s.raceReady);file<<',';Flag(file,"inputEnabled",s.inputEnabled);
         file<<'}';
     }
     file<<"],\"overflow\":"<<timeline.Overflow()<<"}\n";
@@ -77,16 +79,21 @@ void Tick() {
     auto sample=ReadSample(base,route.valid?route.car:0,Read,&monitor);
     ReadWorld(base,Read,sample);
     const bool raceReady=sample.found==Found::Monitor && (NormalLocalRaceReady(base) || NormalSoloRaceReady(base));
-    readySamples+=raceReady;
-    flag.Apply(flag.Next(sample,raceReady,monitor),ExchangeFlag);
+    readySamples+=raceReady;sample.raceReady=raceReady;
+    uint8_t enabled{};
+    if(route.valid && route.controller) sample.inputEnabled=Read(route.controller+0x40,&enabled,1)?enabled==1:-1;
+    flag.Apply(flag.Next(sample,raceReady),ExchangeFlag);
     if(monitor && monitor!=lastMonitor) {++monitorChanges;lastUsed=unread;}
     if(monitor) lastMonitor=monitor;
     if(sample.found==Found::Monitor && lastUsed!=unread && sample.used!=unread && sample.used>lastUsed) usedIncrements+=sample.used-lastUsed;
     if(sample.found==Found::Monitor) lastUsed=sample.used;
     timeline.Record(sample,samples++);dirty=true;
+    // Changes are written promptly (a crash at race end must not lose the last
+    // seconds); otherwise the counters refresh every two seconds.
     const auto now=GetTickCount64();
-    if(now-lastWrite<writeEveryMs)return;
-    lastWrite=now;dirty=false;WriteStatus();
+    const bool changed=timeline.Size()+timeline.Overflow()!=writtenEntries;
+    if(now-lastWrite<(changed?changeWriteMs:writeEveryMs))return;
+    lastWrite=now;dirty=false;writtenEntries=timeline.Size()+timeline.Overflow();WriteStatus();
 }
 void Stop() {
     std::lock_guard lock(mutex);
