@@ -6,8 +6,12 @@
 # Visibility evidence: build/replay-ui-hidden-state-evidence.json.
 # Popup default/out gets a separate hidden frame; original visible fraction
 # curves remain unchanged. Evidence: docs/evidence/controls-hud-20261028/grey-strip-fix.json.
+# The full-width sponsor objective bar fades out only 0.52 below the menu
+# safeframe, behind bar_base; its faded-out travel is extended the same way as
+# replay OFF. Evidence: docs/evidence/grey-bar-20261030/attribution.json.
 $script:CinemaOriginalHash='401c6244c8698963a9647fcdcf75541a5464155935916c3ced7cae8e47553980'
-$script:CinemaModifiedHash='a74aaacfb7d80583955b77f0ab19eafa1ee6d381b0a70b6b95d75d45cf3aad6b'
+$script:CinemaModifiedHash='845ebda6c0b5f41a22e87f03c0092644cff24b1e5d69946a613274ba88a488dd'
+$script:CinemaPopupHash='a74aaacfb7d80583955b77f0ab19eafa1ee6d381b0a70b6b95d75d45cf3aad6b'
 $script:CinemaReplayOnlyHash='7fbd21a429036c1b7887195c085810ebacbd1878dcf4e7908f904983d759c0eb'
 # Superseded diagnostic candidate: recovery only, never a new deployment.
 $script:CinemaIndexOnlyHash='f74624a4fb810548c049369f4624925158dc4f485c2a0707c04feb7e75a58d6d'
@@ -42,7 +46,7 @@ function Get-CinemaMattePaths([string]$Game,[string]$Run) {
 
 function Assert-CinemaMatteEntry($Entry,[switch]$AllowLegacy) {
     $supported=@($script:CinemaModifiedHash)
-    if($AllowLegacy) { $supported+= $script:CinemaIndexOnlyHash;$supported+= $script:CinemaVerticesOnlyHash;$supported+= $script:CinemaReplayOnlyHash }
+    if($AllowLegacy) { $supported+= $script:CinemaIndexOnlyHash;$supported+= $script:CinemaVerticesOnlyHash;$supported+= $script:CinemaReplayOnlyHash;$supported+= $script:CinemaPopupHash }
     if(!$Entry -or $Entry.name -cne 'frontend/databases/overlayPersistent.pssg' -or $Entry.sha256 -notin $supported -or $Entry.originalSha256 -ne $script:CinemaOriginalHash) {
         throw 'Unsupported cinema matte recovery entry.'
     }
@@ -120,6 +124,17 @@ function New-CinemaMatteDeployment([string]$Game,[string]$Run) {
     foreach($offset in $popupEdits.Keys) {
         if([BitConverter]::ToString($bytes,$offset,4).Replace('-','').ToLowerInvariant() -cne $popupEdits[$offset][0]) { throw 'Popup hidden-frame guard mismatch.' }
     }
+    # packet589 anim[y] key0 values and the component's static anim Y. Scale the
+    # faded-out curve about its exact ON endpoint (u=1 still evaluates to 0) so
+    # faded-out is -64. Timing words, key1, X/Z, colour packet and events stay native.
+    $sponsorY=@{
+        23674=@('bf06493f3ea00b6c3f22ca9bbed90e24','c280000042188d7e429b2bc3c24ee503')
+        622018=@('bf06493f','c2800000')
+    }
+    foreach($offset in $sponsorY.Keys) {
+        $length=$sponsorY[$offset][0].Length/2
+        if([BitConverter]::ToString($bytes,$offset,$length).Replace('-','').ToLowerInvariant() -cne $sponsorY[$offset][0]) { throw 'Sponsor bar animation guard mismatch.' }
+    }
     # Collapse all four vertices to one point, including if the frontend rebuilds
     # its quad indices. Keep original indices, counts, shaders and controls intact.
     foreach($offset in $positions.Keys) { [Array]::Clear($bytes,$offset,48) }
@@ -130,6 +145,10 @@ function New-CinemaMatteDeployment([string]$Game,[string]$Run) {
     }
     foreach($offset in $popupEdits.Keys) {
         for($i=0;$i -lt 4;$i++) { $bytes[$offset+$i]=[Convert]::ToByte($popupEdits[$offset][1].Substring($i*2,2),16) }
+    }
+    foreach($offset in $sponsorY.Keys) {
+        $after=$sponsorY[$offset][1]
+        for($i=0;$i -lt $after.Length/2;$i++) { $bytes[$offset+$i]=[Convert]::ToByte($after.Substring($i*2,2),16) }
     }
     $popupKeys=@{
         121516='00000000bf000000c51c264ec4d035beb451d99a3f3fafd0000000000000000000000000' # x

@@ -57,11 +57,19 @@ $nativeKeys=@{
     121626='00000000bf000000c51c264ec4d035beba2ee000bec96920410add263b2ac000bae3a00040555555beaaaaabbd97b426bde38e3a40554fdd4104956c00000000c10add26410add26'
     121736='00000000bf000000c51c264ec4d035beba2ee000be3b7e9d3410000033400000b300000040555555beaaaaabbd97b426bde38e3a40554fddbe3b7e9300000000b410000034100000'
 }
+# packet589 sponsor anim[y] keys (timing + values) and the component's static anim Y.
+$sponsorKeys='00000000bf000000c51c264ec4d035beba2ee000bf06493f3ea00b6c3f22ca9bbed90e2440555555beaaaaabbd97b426bde38e3a40554fdd0000000000000000bea00b6b3ea00b6b'
+$sponsorY=@{
+    23674=@('bf06493f3ea00b6c3f22ca9bbed90e24','c280000042188d7e429b2bc3c24ee503')
+    622018=@('bf06493f','c2800000')
+}
 function Put-Hex([byte[]]$Bytes,[int]$Offset,[string]$Hex) {
     for($i=0;$i -lt $Hex.Length/2;$i++) { $Bytes[$Offset+$i]=[Convert]::ToByte($Hex.Substring(2*$i,2),16) }
 }
 foreach($offset in $nativeKeys.Keys) { Put-Hex $original $offset $nativeKeys[$offset] }
 foreach($offset in $popupEdits.Keys) { Put-Hex $original $offset $popupEdits[$offset][0] }
+Put-Hex $original 23654 $sponsorKeys
+Put-Hex $original 622018 $sponsorY[622018][0]
 $modified=[byte[]]$original.Clone()
 foreach($offset in @(514752,516161)) { [Array]::Clear($modified,$offset,48) }
 $verticesOnly=[byte[]]$modified.Clone()
@@ -77,6 +85,10 @@ foreach($offset in @($popupKeys.Keys | Sort-Object -Descending)) {
     [Array]::Copy($modified,$offset,$next,$offset+36,$modified.Length-$offset)
     $modified=$next
 }
+$popupOnly=[byte[]]$modified.Clone()
+# The popup inserts precede the static anim Y, which moves by 3*36 bytes.
+Put-Hex $modified 23674 $sponsorY[23674][1]
+Put-Hex $modified 622126 $sponsorY[622018][1]
 $indexOnly=[byte[]]$original.Clone()
 foreach($offset in @(456040,457099)) { [Array]::Clear($indexOnly,$offset,12) }
 $executable=[Text.Encoding]::UTF8.GetBytes('verified executable fixture')
@@ -110,6 +122,7 @@ $script:CinemaModifiedHash=Hash-Bytes $modified
 $script:CinemaIndexOnlyHash=Hash-Bytes $indexOnly
 $script:CinemaVerticesOnlyHash=Hash-Bytes $verticesOnly
 $script:CinemaReplayOnlyHash=Hash-Bytes $replayOnly
+$script:CinemaPopupHash=Hash-Bytes $popupOnly
 $script:CinemaExecutableHash=Hash-Bytes $executable
 # Fixture-only executable validator; preserves the transaction's changed-file checks.
 function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
@@ -183,9 +196,45 @@ try {
             if($actual -lt $previous -or $actual -lt -64 -or $actual -gt -0.393378) { throw 'Hidden interval overshoots or reverses.' }
             $previous=$actual
         }
+        # Sponsor objective bar: key0 values scale about the exact ON endpoint;
+        # its timing words and key1 stay native. Faded-out and static poses are -64.
+        if([BitConverter]::ToString($generated,23654,20) -cne [BitConverter]::ToString($original,23654,20) -or
+           [BitConverter]::ToString($generated,23690,36) -cne [BitConverter]::ToString($original,23690,36)) { throw 'Sponsor bar timing or key1 changed.' }
+        if((Read-BeFloat $generated 23674) -ne -64 -or (Read-BeFloat $generated 622126) -ne -64) { throw 'Sponsor bar faded-out/static pose is not hidden.' }
+        $sponsorOn=Read-NativeValuePolynomial $original 23674 1
+        if((Read-NativeValuePolynomial $generated 23674 1) -ne $sponsorOn) { throw 'Sponsor bar ON endpoint changed.' }
+        $sponsorScale=(-64.0-$sponsorOn)/((Read-BeFloat $original 23674)-$sponsorOn);$previous=-64.0
+        for($step=0;$step -le 1000;$step++) {
+            [single]$u=$step/1000.0
+            $native=Read-NativeValuePolynomial $original 23674 $u
+            $actual=Read-NativeValuePolynomial $generated 23674 $u
+            if([Math]::Abs($actual-($sponsorOn+$sponsorScale*($native-$sponsorOn))) -gt 0.0001 -or $actual -lt $previous-0.000002) { throw 'Sponsor bar travel changed its native curve shape or reverses direction.' }
+            $previous=$actual
+        }
+        # Component-space bounds of every sponsor render vertex (bar, tier blocks
+        # and caret line) at both anchor endpoints and all bottom-left parent extrema.
+        foreach($cameraName in @('orthographic','perspective','headset-orthographic','headset-perspective','headset-2150x2284-perspective',
+            'pc4090-orthographic','pc4090-perspective','pc5090-perspective')) {
+            $camera=[IO.File]::ReadAllBytes((Join-Path $root "tests/fixtures/native-ui-$cameraName.bin"))
+            foreach($parentY in @(-0.6074806451797485,0.440000057220459,3.832886219024658)) {
+                foreach($anchorY in @(-0.7244457602500916,0.006857872009277344)) {
+                    foreach($x in @(-3.618847370147705,13.859701273850847)) { foreach($y in @(-0.0001570284366607666,0.28824296593666077)) { foreach($z in @(0.0,0.006515756859538756)) {
+                        $world=@(($x+0.4924473762512207-5.039999961853027),($y+(Read-BeFloat $generated 622126)+$anchorY+$parentY-3.240000009536743),
+                            ($z-0.17761243879795074+3.80975535563266e-8),1.0)
+                        $clip=@(0.0,0.0,0.0,0.0)
+                        for($c=0;$c -lt 4;$c++) { for($r=0;$r -lt 4;$r++) { $clip[$c]+=$world[$r]*[BitConverter]::ToSingle($camera,64+16*$r+4*$c) } }
+                        if($clip[3] -le 0 -or $clip[1] -ge -$clip[3]) { throw "Hidden sponsor bar intersects $cameraName canvas at parentY=$parentY." }
+                    } } }
+                }
+            }
+        }
+        $sponsorReverted=[byte[]]$generated.Clone()
+        Put-Hex $sponsorReverted 23674 $sponsorY[23674][0]
+        Put-Hex $sponsorReverted 622126 $sponsorY[622018][0]
+        if((Hash-Bytes $sponsorReverted) -ne $script:CinemaPopupHash) { throw 'Sponsor edit changed undeclared bytes.' }
         # Removing the new keys and reversing only the declared fields must
         # exactly recover the previously deployed asset, including every event.
-        $stripped=[byte[]]$generated.Clone()
+        $stripped=[byte[]]$sponsorReverted.Clone()
         for($axis=2;$axis -ge 0;$axis--) {
             $offset=121516+146*$axis
             $next=[byte[]]::new($stripped.Length-36)
@@ -228,7 +277,7 @@ try {
         Assert-CinemaHash $case.paths.backup $script:CinemaOriginalHash
         if(Test-Path -LiteralPath $case.paths.temporary) { throw "Temporary file retained in $phase" }
     }
-    foreach($legacy in @(@{name='index-only';bytes=$indexOnly;hash=$script:CinemaIndexOnlyHash},@{name='vertices-only';bytes=$verticesOnly;hash=$script:CinemaVerticesOnlyHash},@{name='replay-only';bytes=$replayOnly;hash=$script:CinemaReplayOnlyHash})) {
+    foreach($legacy in @(@{name='index-only';bytes=$indexOnly;hash=$script:CinemaIndexOnlyHash},@{name='vertices-only';bytes=$verticesOnly;hash=$script:CinemaVerticesOnlyHash},@{name='replay-only';bytes=$replayOnly;hash=$script:CinemaReplayOnlyHash},@{name='popup';bytes=$popupOnly;hash=$script:CinemaPopupHash})) {
         $case=New-Case ('superseded-'+$legacy.name)
         [IO.File]::WriteAllBytes($case.paths.backup,$original)
         [IO.File]::WriteAllBytes($case.paths.source,$legacy.bytes)
@@ -299,7 +348,15 @@ try {
         try { Assert-Rejected { New-CinemaMatteDeployment $case.game $case.run } 'Wrong popup field guard' }
         finally { $script:CinemaOriginalHash=$saved }
     }
-    Write-Output 'Cinema matte, replay OFF and separate popup hidden frame: exact geometry/animation guards, unchanged ON endpoint, atomic replacement, interrupted recovery, legacy recovery and foreign-file refusal passed.'
+    foreach($offset in @(23674,23689,622018)) {
+        $case=New-Case ('wrong-sponsor-field-'+$offset)
+        $bad=[byte[]]$original.Clone();$bad[$offset]=$bad[$offset] -bxor 1
+        [IO.File]::WriteAllBytes($case.paths.target,$bad)
+        $saved=$script:CinemaOriginalHash;$script:CinemaOriginalHash=Hash-Bytes $bad
+        try { Assert-Rejected { New-CinemaMatteDeployment $case.game $case.run } 'Wrong sponsor bar field guard' }
+        finally { $script:CinemaOriginalHash=$saved }
+    }
+    Write-Output 'Cinema matte, replay OFF, separate popup hidden frame and sponsor bar OFF: exact geometry/animation guards, unchanged ON endpoints, atomic replacement, interrupted recovery, legacy recovery and foreign-file refusal passed.'
 } finally {
     $resolved=[IO.Path]::GetFullPath($fixture)
     $parent=[IO.Path]::GetFullPath((Join-Path $root 'artifacts'))
