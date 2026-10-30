@@ -1,4 +1,5 @@
 #include "xr_session.h"
+#include "frame_timing.h"
 #include "tracked_views.h"
 #include <dxgi.h>
 #include <algorithm>
@@ -132,7 +133,8 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
     space.referenceSpaceType=XR_REFERENCE_SPACE_TYPE_VIEW;
     if (!Check(xrCreateReferenceSpace(session_,&space,&head_),"create_head_space")) {Shutdown();return false;}
     const bool performance=performance_.Initialize(session_,head_,local_,device,output);
-    Log("session initialized=1 images_submitted=0 performance_display=%u",performance);return true;
+    const bool summary=frametiming::Start(device,output,resolution_.width,resolution_.height,resolution_.scale);
+    Log("session initialized=1 images_submitted=0 performance_display=%u performance_summary=%u",performance,summary);return true;
 }
 bool XrSessionProbe::Poll() {
     if (!OnThread() || !instance_ || failed_) return false;
@@ -175,7 +177,9 @@ bool XrSessionProbe::BeginFrame(uint64_t frame) {
     if (!OnThread() || !running_ || failed_ || frameOpen_ || frame<=frame_) return false;
     frame_=frame;
     XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};XrFrameState state{XR_TYPE_FRAME_STATE};
+    const auto waitStarted=frametiming::Now();
     if (!Check(xrWaitFrame(session_,&wait,&state),"wait_frame")) return false;
+    frametiming::Wait(waitStarted,state.predictedDisplayPeriod);
     XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};const auto begun=xrBeginFrame(session_,&begin);
     if (XR_FAILED(begun)) return Check(begun,"begin_frame");
     frameOpen_=true;displayTime_=state.predictedDisplayTime;
@@ -259,13 +263,14 @@ bool XrSessionProbe::EndFrame(const XrCompositionLayerBaseHeader* layer) {
     end.layerCount=layer?(layers[1]?2:1):0;end.layers=layer?layers.data():nullptr;
     const bool screen=layer && layer->type==XR_TYPE_COMPOSITION_LAYER_QUAD;
     const bool ok=Check(xrEndFrame(session_,&end),layer?(screen?"end_frame_screen":"end_frame_projection"):"end_frame_zero_layers");
-    if (ok && layer) { if(screen)++screensSubmitted_;else ++imagesSubmitted_;performance_.Submitted(GetTickCount64()); }
+    if (ok && layer) { if(screen)++screensSubmitted_;else ++imagesSubmitted_;performance_.Submitted(GetTickCount64());frametiming::Submitted(!screen); }
     if (layer) Log("%s submitted=%u frame=%llu display_time=%lld",screen?"screen":"images",ok,frame_,displayTime_);
     frameOpen_=false;return ok;
 }
 void XrSessionProbe::Shutdown() {
     if (!OnThread()) return;
     if (frameOpen_) EndFrame();
+    frametiming::Stop();
     if (!performance_.Shutdown()) {
         failed_=true;Log("session shutdown=0 reason=performance_images_pending");return;
     }

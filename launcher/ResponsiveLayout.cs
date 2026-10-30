@@ -85,6 +85,7 @@ internal class VerticalStack : Panel
                 if (collapsedHidden.Remove(child)) child.Visible = true;
                 var width = Math.Max(1, ClientSize.Width - Padding.Horizontal - child.Margin.Horizontal);
                 if (child is Label label) label.MaximumSize = new Size(width, 0);
+                else if (child is SelectableStatusText status) status.FitWidth(width);
                 var fixedWidth = child is Button or LinkLabel;
                 child.SetBounds(Padding.Left + child.Margin.Left, y + child.Margin.Top,
                     fixedWidth ? Math.Min(width, child.PreferredSize.Width) : width, child.Height);

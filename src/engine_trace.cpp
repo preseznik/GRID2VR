@@ -29,6 +29,7 @@
 #include "instance_observation_policy.h"
 #include "headset_visibility_candidate.h"
 #include "transient_refusal.h"
+#include "frame_timing.h"
 #include <intrin.h>
 #include <MinHook.h>
 #include <array>
@@ -938,6 +939,7 @@ void ApplyReplayProjection(void* self,uintptr_t context,uintptr_t caller) {
 }
 bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSaved,bool& gpuRestoredOutput) {
     profile::Scope measure(profile::Replay);
+    if (replayPass==2) frametiming::Mark(frametiming::RightBegin);
     gpuRestoredOutput=false;
     replayedEmptyBuilder=false;
     // Every refusal below precedes ApplyReplayHistorySeed, the first game write.
@@ -1198,6 +1200,7 @@ bool ReplayOnce(const PendingScene& scene,bool nativeStereo,bool firstImageSaved
     bool allGpuRestored=true,allEmptyBuilder=true;
     transientRefusal=nullptr;
     const bool accepted=InvokeReplayPair(scene,nativeStereo,firstImageSaved,allGpuRestored,allEmptyBuilder);
+    frametiming::Mark(frametiming::RightEnd);
     if (accepted || !transientRefusal || !replaySequence.Cancel()) { transientRefusal=nullptr;replaySequence.Finish(accepted); }
     if(!accepted || !allGpuRestored) opponentlod::host::RevokeWorld();
     if (accepted && allGpuRestored && Read<uint8_t>(mainObject+0x9d)==1) ++alternateVisibilityPairs;
@@ -1416,6 +1419,7 @@ bool __fastcall Predicate(void* renderer,void*) {
             CancelTransientScene(visibilityRefusedReason,RestoreVisibility("visibility_refused"));
             return result;
         }
+        frametiming::Mark(frametiming::CenterEnd);
         ObserveCompletedEmptyLists();
         const bool captured=SceneSnapshot(pendingScene,"scene-complete");
         const bool accepted=ReplayOnce(pendingScene,result,captured);
@@ -1443,8 +1447,10 @@ void __fastcall Prepare(void* self,void*,uintptr_t arg) {
         pendingVisibility.frame==frame.load() && reinterpret_cast<uintptr_t>(self)==mainObject &&
         GetCurrentThreadId()==renderThread);
     if (visibility) SnapshotVisibility(currentStage.id,"prepare-before");
-    if (GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject)
+    if (GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject) {
+        if (!inReplay) frametiming::Mark(frametiming::CenterBegin);
         signvisibility::Snapshot(frame.load(),currentStage.id,replayPass,"prepare-before",mainObject,0);
+    }
     realPrepare(self,arg);
     if (visibility) SnapshotVisibility(currentStage.id,"prepare-after");
     if (GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject)

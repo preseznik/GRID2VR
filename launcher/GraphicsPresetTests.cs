@@ -81,7 +81,7 @@ internal static class GraphicsPresetTests
     {
         using var catalogStream = typeof(GraphicsCatalog).Assembly.GetManifestResourceStream("GRID2VR.GraphicsOptions.json")!;
         var catalogHash = Convert.ToHexStringLower(SHA256.HashData(catalogStream));
-        foreach (var preset in GraphicsCatalog.Presets.Select(p => p.Id).Append("potato"))
+        foreach (var preset in GraphicsCatalog.Presets.Select(p => p.Id).Append("potato").Append("vrbalanced"))
         foreach (var mode in new[] { "VR", "Desktop" })
         {
             var graphics = GraphicsCatalog.ApplyPreset(original, preset);

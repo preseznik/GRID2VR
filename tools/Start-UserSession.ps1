@@ -247,6 +247,8 @@ try {
             if($receipt.run) {
                 $sizeReceipt=Join-Path $receipt.run 'scene-resolution.json'
                 if(Test-Path -LiteralPath $sizeReceipt) { try { $receipt.resolution=Read-SessionJson $sizeReceipt } catch {} }
+                $performanceReceipt=Join-Path $receipt.run 'performance-summary.json'
+                if(Test-Path -LiteralPath $performanceReceipt) { try { $receipt.performance=Read-SessionJson $performanceReceipt } catch {} }
                 $runtimeReceipt=Join-Path $receipt.run 'runtime-summary.json'
                 if(Test-Path -LiteralPath $runtimeReceipt) {
                     try {

@@ -40,6 +40,7 @@
 #include "scene_resolution.h"
 #include "frontend_video_resize.h"
 #include "exposure_audit.h"
+#include "frame_timing.h"
 #ifdef GRID2VR_ENABLE_XR_SESSION
 #include "xr_session.h"
 #include "tracked_views.h"
@@ -1020,7 +1021,9 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     MirrorPreview(chain,f);
     // Polls, recenter/suspension, stop, shutdown and preview decisions are final.
     PublishOpponentWorld();
+    const auto presentStarted=frametiming::Now();
     const auto hr=realPresent(chain,sync,flags);
+    frametiming::Present(presentStarted);
     if (FAILED(hr)) {opponentlod::host::RevokeWorld();Log("Present failed hr=0x%08lx",hr);}
     // Wait for all sampled render callbacks to return, not just the first PPM.
     // This marker ends a probe; rejected hooks or missing snapshots still fail

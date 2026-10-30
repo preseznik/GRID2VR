@@ -31,9 +31,9 @@ internal sealed partial class MainForm
         }
         Move(lapsHint, play); simpleEventRows.Add(lapsHint);
         Section(performance, "Performance");
-        MoveRow(graphicsPreset, performance); Move(presetActions, performance); Move(presetHint, performance);
+        MoveRow(graphicsPreset, performance); Move(presetActions, performance); Move(presetHint, performance); MoveRow(lastPerformance, performance);
         MoveRow(renderScale, performance); Move(refreshHeadset, performance); MoveRow(vrResolutionSummary, performance);
-        performance.Controls.Add(TextLabel("Quality is shared with desktop. VR scale affects scene detail, not headset output. Potato selects Ultra Low, VR MSAA Off and 70% VR scale. Save or launch to keep your choices."));
+        performance.Controls.Add(TextLabel("Quality is shared with desktop. VR scale affects scene detail, not headset output. Recommend for this PC suggests a VR scale, and a lighter preset when needed, from your last VR session or your graphics card and headset. Potato selects Ultra Low, VR MSAA Off and 70% VR scale. Save or launch to keep your choices."));
         Section(performance, "Controls & comfort");
         simpleSeat = Button("Seat adjustment…", "SimpleSeat"); simpleProfile = Button("Career profiles…", "SimpleProfiles");
         var comfort = new UniformButtonColumn("SimpleComfortActions", simpleSeat, simpleProfile);

@@ -345,6 +345,7 @@ internal static class SelfTests
             Check(LauncherPresentation.MeasuredScene(invalidSize.RootElement, true) == "Current session: scene not yet measured.");
             LaunchModeTests.Run(client);
             GraphicsPresetTests.Run(root, client);
+            GraphicsRecommendationTests.Run(client);
             SimpleViewFollowupTests.Run(root, client);
             SettingsWheelGuardTests.Run(root, client);
             LaunchProgressTests.Run(root);

@@ -72,7 +72,7 @@ static void CollectGpu(GpuCounterState& self) {
     } } catch(...) {self.percent.store(-1);}
     PdhCloseQuery(query);
 }
-DWORD WINAPI PerformanceDisplay::SampleGpu(void* raw) {
+static DWORD WINAPI SampleGpu(void* raw) {
     auto* worker=static_cast<GpuWorker*>(raw);const auto module=worker->module;
     CollectGpu(*worker->state);
     delete worker;
@@ -80,15 +80,24 @@ DWORD WINAPI PerformanceDisplay::SampleGpu(void* raw) {
     // without making game Quit wait for a slow Windows performance provider.
     FreeLibraryAndExitThread(module,0);
 }
+bool GpuUsageSampler::Start(ID3D11Device* device) {
+    if(state_ || !device)return false;
+    Microsoft::WRL::ComPtr<IDXGIDevice> dxgi;Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;DXGI_ADAPTER_DESC desc{};
+    if(FAILED(device->QueryInterface(IID_PPV_ARGS(&dxgi))) || FAILED(dxgi->GetAdapter(&adapter)) || FAILED(adapter->GetDesc(&desc)))return false;
+    wchar_t name[64]{};swprintf_s(name,L"luid_0x%08x_0x%08x",unsigned(desc.AdapterLuid.HighPart),desc.AdapterLuid.LowPart);
+    auto state=std::make_shared<GpuCounterState>();state->adapter=name;HMODULE module{};
+    if(!state->stop || !GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,reinterpret_cast<LPCWSTR>(&SampleGpu),&module))return false;
+    auto* worker=new GpuWorker{state,module};const auto handle=CreateThread(nullptr,0,SampleGpu,worker,0,nullptr);
+    if(!handle) {delete worker;FreeLibrary(module);return false;}
+    CloseHandle(handle);state_=std::move(state);return true;
+}
+double GpuUsageSampler::Percent() const {return state_?state_->percent.load():-1.;}
+void GpuUsageSampler::Stop() {if(state_) {SetEvent(state_->stop);state_.reset();}}
 bool PerformanceDisplay::Initialize(XrSession session,XrSpace head,XrSpace local,ID3D11Device* device,const std::filesystem::path& output) {
     if(thread_ || !session || !head || !local || !device)return false;
     std::error_code error;if(!std::filesystem::exists(output/L"performance-display.request",error))return false;
     followView_=!std::filesystem::exists(output/L"performance-display-fixed.request",error);
     thread_=GetCurrentThreadId();output_=output;device->GetImmediateContext(&context_);
-    Microsoft::WRL::ComPtr<IDXGIDevice> dxgi;Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;DXGI_ADAPTER_DESC desc{};
-    if(SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&dxgi))) && SUCCEEDED(dxgi->GetAdapter(&adapter)) && SUCCEEDED(adapter->GetDesc(&desc))) {
-        wchar_t name[64]{};swprintf_s(name,L"luid_0x%08x_0x%08x",unsigned(desc.AdapterLuid.HighPart),desc.AdapterLuid.LowPart);adapter_=name;
-    }
     uint32_t count{};if(xrEnumerateSwapchainFormats(session,0,&count,nullptr)!=XR_SUCCESS || !count || count>128)return false;
     std::vector<int64_t> formats(count);
     if(xrEnumerateSwapchainFormats(session,count,&count,formats.data())!=XR_SUCCESS || count!=formats.size() ||
@@ -109,14 +118,7 @@ bool PerformanceDisplay::Initialize(XrSession session,XrSpace head,XrSpace local
     layer_.space=followView_?head:local;layer_.eyeVisibility=XR_EYE_VISIBILITY_BOTH;layer_.subImage.swapchain=chain_;
     layer_.subImage.imageRect.extent={width,height};layer_.pose.orientation.w=1;
     layer_.pose.position={0,-.45f,-1.5f};layer_.size=followView_?XrExtent2Df{.6f,.075f}:XrExtent2Df{.8f,.1f};enabled_=true;
-    if(!adapter_.empty()) {
-        auto state=std::make_shared<GpuCounterState>();state->adapter=adapter_;HMODULE module{};
-        if(state->stop && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,reinterpret_cast<LPCWSTR>(&SampleGpu),&module)) {
-            auto* worker=new GpuWorker{state,module};const auto handle=CreateThread(nullptr,0,SampleGpu,worker,0,nullptr);
-            if(handle) {CloseHandle(handle);counter_=std::move(state);}
-            else {delete worker;FreeLibrary(module);}
-        }
-    }
+    gpu_.Start(device);
     WriteReceipt(-1);return true;
 }
 void PerformanceDisplay::WriteReceipt(double gpu,bool stopped) {
@@ -142,7 +144,7 @@ bool PerformanceDisplay::Upload(uint64_t now) {
     if(result!=XR_SUCCESS)return false;
     waited_=true;
     if(index_>=images_.size())return false;
-    const auto gpu=counter_?counter_->percent.load():-1.;const auto pixels=Pixels(rate_.Fps(),gpu);
+    const auto gpu=gpu_.Percent();const auto pixels=Pixels(rate_.Fps(),gpu);
     Microsoft::WRL::ComPtr<ID3D11Predicate> predicate;BOOL predicateValue{};
     context_->GetPredication(&predicate,&predicateValue);context_->SetPredication(nullptr,FALSE);
     context_->UpdateSubresource(images_[index_].texture,0,nullptr,pixels.data(),width*4,0);
@@ -159,15 +161,15 @@ const XrCompositionLayerQuad* PerformanceDisplay::Layer(uint64_t now,const XrPos
         // this keeps the previous angular size and lower placement.
         layer_.pose=*anchor;layer_.pose.position.y-=.6f;
     }
-    if(!Upload(now)) {enabled_=false;WriteReceipt(counter_?counter_->percent.load():-1.);return nullptr;}
+    if(!Upload(now)) {enabled_=false;WriteReceipt(gpu_.Percent());return nullptr;}
     return ready_?&layer_:nullptr;
 }
 bool PerformanceDisplay::Shutdown() {
     if(!thread_)return true;
     if(thread_!=GetCurrentThreadId())return false;
     enabled_=false;
-    const auto gpu=counter_?counter_->percent.load():-1.;
-    if(counter_) {SetEvent(counter_->stop);counter_.reset();}
+    const auto gpu=gpu_.Percent();
+    gpu_.Stop();
     if(acquired_) {
         const XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO,nullptr,100000000};
         if(!waited_ && xrWaitSwapchainImage(chain_,&wait)!=XR_SUCCESS)return false;

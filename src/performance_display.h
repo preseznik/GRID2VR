@@ -12,6 +12,20 @@
 
 namespace grid2vr {
 struct GpuCounterState;
+// Windows adapter counters sampled once per second on a worker that owns no
+// D3D/XR objects. Stop signals the worker and never waits for it.
+class GpuUsageSampler {
+public:
+    GpuUsageSampler()=default;
+    GpuUsageSampler(const GpuUsageSampler&)=delete;
+    GpuUsageSampler& operator=(const GpuUsageSampler&)=delete;
+    ~GpuUsageSampler() {Stop();}
+    bool Start(ID3D11Device* device);
+    double Percent() const;
+    void Stop();
+private:
+    std::shared_ptr<GpuCounterState> state_;
+};
 // Optional independent compositor panel. No game shader, render target or HUD
 // geometry is changed. All XR/GPU calls remain on the owning render thread.
 class PerformanceDisplay {
@@ -23,7 +37,6 @@ public:
     bool Enabled() const {return enabled_;}
     bool FollowsView() const {return followView_;}
 private:
-    static DWORD WINAPI SampleGpu(void* self);
     void WriteReceipt(double gpu,bool stopped=false);
     bool Upload(uint64_t milliseconds);
     XrSwapchain chain_{};
@@ -33,8 +46,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Query> completion_;
     std::filesystem::path output_;
     SubmittedFrameRate rate_;
-    std::shared_ptr<GpuCounterState> counter_;
-    std::wstring adapter_;
+    GpuUsageSampler gpu_;
     DWORD thread_{};
     uint64_t updated_{};
     uint32_t index_{};

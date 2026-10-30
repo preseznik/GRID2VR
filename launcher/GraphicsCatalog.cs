@@ -78,6 +78,10 @@ internal static class GraphicsCatalog
     {
         "working" => WithQuality(value, Categories.Select(c => new KeyValuePair<string, string>(c.Field, c.Default))),
         "potato" => ApplyPreset(value, "ultralow") with { VrRenderScale = 70, VrMsaa = "off" },
+        // GRID2VR renders each frame's scene three times in VR. High keeps
+        // Ultra's look but skips its heaviest per-view work; crowd drops one
+        // step. Render scale stays separate: it depends on the PC and headset.
+        "vrbalanced" => ApplyPreset(value, "high") with { CrowdDetail = "medium", VrMsaa = "off" },
         _ => WithQuality(value, Effective(Presets.SingleOrDefault(p => p.Id == id) ?? throw new ArgumentException("Unknown graphics preset.")))
     };
 
@@ -86,6 +90,8 @@ internal static class GraphicsCatalog
         bool Matches(IEnumerable<KeyValuePair<string, string>> choices) => choices.All(p => Get(value, p.Key) == p.Value);
         if (value.VrRenderScale == 70 && value.VrMsaa == "off" && Matches(Effective(Presets.Single(p => p.Id == "ultralow")))) return "potato";
         if (Matches(Categories.Select(c => new KeyValuePair<string, string>(c.Field, c.Default)))) return "working";
+        var balanced = ApplyPreset(value, "vrbalanced");
+        if (value.VrMsaa == "off" && Matches(Categories.Select(c => new KeyValuePair<string, string>(c.Field, Get(balanced, c.Field))))) return "vrbalanced";
         return Presets.FirstOrDefault(p => Matches(Effective(p)))?.Id ?? "custom";
     }
 

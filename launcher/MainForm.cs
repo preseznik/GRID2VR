@@ -600,6 +600,7 @@ internal sealed partial class MainForm : LauncherForm
                 UpdateResolutionLabels();
             }
             measuredScene.Text = LauncherPresentation.MeasuredScene(Child(data, "resolution"), pending || active);
+            UpdateMeasuredPerformance(Child(data, "performance"), Child(last, "graphics"), pending || active);
             headset = TextValue(session, "mode") == "Headset"; stopped = Flag(data, "stopped");
             rendering = !Flag(status, "failed") && status.TryGetProperty("state", out var phase) && phase.GetInt32() == 0;
             known = true;

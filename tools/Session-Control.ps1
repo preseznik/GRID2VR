@@ -5,7 +5,7 @@ $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'User-Session.ps1')
 $session=Get-UserSession $root
 if($Action -eq 'Status') {
-    $result=@{pending=[bool]$session;session=$session;status=$null;readiness=$null;resolution=$null;stopped=$false;last=$null}
+    $result=@{pending=[bool]$session;session=$session;status=$null;readiness=$null;resolution=$null;performance=$null;stopped=$false;last=$null}
     $last=Join-Path (Get-Grid2DataRoot $root) 'user-session-last.json'
     if(Test-Path -LiteralPath $last) {
         try {
@@ -16,7 +16,7 @@ if($Action -eq 'Status') {
         } catch {}
     }
     if($session -and $session.run) {
-        foreach($pair in @(@('status','runtime-status.json'),@('readiness','runtime-readiness.json'),@('resolution','scene-resolution.json'))) {
+        foreach($pair in @(@('status','runtime-status.json'),@('readiness','runtime-readiness.json'),@('resolution','scene-resolution.json'),@('performance','performance-summary.json'))) {
             $file=Join-Path $session.run $pair[1]
             if(Test-Path -LiteralPath $file) { try {$result[$pair[0]]=Read-SessionJson $file} catch {} }
         }
@@ -24,6 +24,7 @@ if($Action -eq 'Status') {
     }
     # Never present a previous run's dimensions as a measurement of an active one.
     if(!$session -and $result.last -and $result.last.state -ne 'starting' -and $result.last.resolution) { $result.resolution=$result.last.resolution }
+    if(!$session -and $result.last -and $result.last.state -ne 'starting' -and $result.last.performance) { $result.performance=$result.last.performance }
     $result | ConvertTo-Json -Depth 8; return
 }
 if($Action -ne 'Recover') { Send-UserSessionCommand $root $Action | ConvertTo-Json; return }
