@@ -1,3 +1,17 @@
+# GRID2VR 0.2.13 — Experimental
+
+Changes since 0.2.12:
+
+- **Recover from stale or damaged prepared files.** The launcher now rebuilds its prepared startup and cockpit files when needed, including after Steam replaces the game executable. If preparation still fails, the error shows the reason and suggested next steps.
+- **Improve VR recovery during flashback.** Temporary camera changes can now pause and resume VR instead of switching the rest of the session to flat rendering.
+- **Hide the flat impact-glitch overlay in VR.** The new **Graphics → VR rendering → Hide impact glitch effect** option is on by default. Turn it off to restore the game's original effect.
+- **Improve in-game Quit handling in VR** to avoid the shutdown crash seen after races.
+- **Collapse launcher sections** by clicking their headings or pressing Space while a heading is focused. The launcher remembers which sections you collapsed.
+
+This is an Experimental pre-release. The new flashback recovery path still needs confirmation in an affected player's run. For flashback, use **Normal** launch; direct **Practice / Race** support remains pending. Clean in-game Quit was verified in one VR Race with VDXR; Practice, closing the window and SteamVR still need testing.
+
+For experimental updates, enable **Include experimental releases** under **Help / About**.
+
 # GRID2VR 0.2.12 — Experimental
 
 - **Rumble and force feedback now work in Practice and Race.** These launches skip the game's Press Start screen, where GRID 2 normally picks your controller or wheel, so the game stayed on its keyboard setup and sent no rumble or force feedback. GRID2VR now makes that choice for you once the race loads. Pick the device under **Driving controls → Practice/Race device**: **Auto** (your steering device, then an Xbox controller), **Keyboard only**, **Xbox controller**, or a bound wheel. Normal launches are unchanged.
