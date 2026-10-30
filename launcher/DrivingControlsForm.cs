@@ -266,8 +266,8 @@ internal sealed class DrivingCalibrationForm : LauncherForm
 
 internal sealed class DrivingBindingForm : LauncherForm
 {
-    private readonly string[] actions;
-    private int step;
+    private readonly DrivingWizard wizard;
+    private readonly Label batch = new() { AutoSize = true, MaximumSize = new(620, 0), Tag = "hint" };
     private readonly Label heading = new() { AutoSize = true, Font = new((SystemFonts.MessageBoxFont ?? SystemFonts.DefaultFont).FontFamily, 22, FontStyle.Bold) };
     private readonly Label instruction = new() { AutoSize = true, MaximumSize = new(620, 0) };
     private readonly Label status = new() { AutoSize = true, MaximumSize = new(620, 0), Tag = "hint" };
@@ -275,9 +275,12 @@ internal sealed class DrivingBindingForm : LauncherForm
     private readonly ComboBox devices = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 500 };
     private readonly CheckBox allDevices = new() { Text = "Detect inputs from all connected devices", Checked = true, AutoSize = true };
     private readonly ComboBox filter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
+    private readonly Button refresh = new() { Text = "Refresh devices", AutoSize = true };
+    private readonly FlowLayoutPanel captureButtons = new() { Name = "WizardCaptureButtons", AutoSize = true };
+    private readonly FlowLayoutPanel batchButtons = new() { Name = "WizardBatchButtons", AutoSize = true, Visible = false };
+    private readonly Button bindBatch = new() { Name = "WizardBindBatch", AutoSize = true };
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 40 };
     private readonly Dictionary<string, DrivingCapture> captures = [];
-    private readonly List<DrivingBinding> bindings = [];
     private DrivingInput? input;
     private DrivingCapture? active;
     private Keys held;
@@ -285,13 +288,14 @@ internal sealed class DrivingBindingForm : LauncherForm
     private DrivingBinding? pendingKey;
     private bool updating;
     private readonly bool deviceButtons;
-    public IReadOnlyList<DrivingBinding> Bindings => bindings;
+    public IReadOnlyList<DrivingBinding> Bindings => wizard.Bindings;
     public bool ListenAllDevices => allDevices.Checked;
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
     public DrivingBindingForm(string? action, bool keyboard, bool deviceButtonOnly = false, bool listenAllDevices = true)
     {
         deviceButtons = deviceButtonOnly;
-        actions = action is null ? DrivingControls.WizardActions : [action];
+        wizard = new(action is null ? DrivingControls.WizardBatches : [new DrivingWizardBatch(action, action, [action])]);
+        batch.Visible = wizard.Batches.Count > 1;
         allDevices.Checked = listenAllDevices;
         Text = "GRID2VR — Bind driving controls"; ClientSize = new(680, 470); MinimumSize = new(600, 470);
         StartPosition = FormStartPosition.CenterParent; AutoScaleMode = AutoScaleMode.Dpi;
@@ -299,14 +303,18 @@ internal sealed class DrivingBindingForm : LauncherForm
         filter.Items.AddRange(["Automatic input", "Axis only", "Button / hat only"]); filter.SelectedIndex = 0;
         if (deviceButtonOnly) { source.SelectedIndex = 0; source.Visible = false; filter.SelectedIndex = 2; filter.Visible = false; Text = "GRID2VR — Bind recenter"; }
         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, Padding = new(20) };
-        var refresh = new Button { Text = "Refresh devices", AutoSize = true }; refresh.Click += (_, _) => RefreshDevices();
-        var buttons = new FlowLayoutPanel { AutoSize = true };
+        refresh.Click += (_, _) => RefreshDevices();
         var skip = new Button { Text = "Skip / keep current", AutoSize = true }; skip.Click += (_, _) => Next(null);
         var retry = new Button { Text = "Try again", AutoSize = true }; retry.Click += (_, _) => BeginStep();
         // Escape is a valid game binding. Do not assign Form.CancelButton.
-        var cancel = new Button { Text = "Cancel", AutoSize = true }; cancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
-        buttons.Controls.AddRange([skip, retry, cancel]);
-        panel.Controls.AddRange([heading, source, allDevices, devices, filter, refresh, instruction, status, buttons]); Controls.Add(panel);
+        var cancel = new Button { Text = "Cancel", AutoSize = true }; cancel.Click += (_, _) => End();
+        captureButtons.Controls.AddRange([skip, retry, cancel]);
+        bindBatch.Click += (_, _) => { wizard.Accept(); BeginStep(); };
+        var skipBatch = new Button { Name = "WizardSkipBatch", Text = "Skip batch", AutoSize = true };
+        skipBatch.Click += (_, _) => { wizard.Skip(); if (wizard.Done) End(); else BeginStep(); };
+        var finish = new Button { Name = "WizardFinish", Text = "Finish", AutoSize = true }; finish.Click += (_, _) => End();
+        batchButtons.Controls.AddRange([bindBatch, skipBatch, finish]);
+        panel.Controls.AddRange([batch, heading, source, allDevices, devices, filter, refresh, instruction, status, captureButtons, batchButtons]); Controls.Add(panel);
         source.SelectedIndexChanged += (_, _) => BeginStep(); devices.SelectedIndexChanged += (_, _) =>
         {
             if (updating) return;
@@ -335,24 +343,45 @@ internal sealed class DrivingBindingForm : LauncherForm
     private void BeginStep()
     {
         captures.Clear(); active = null; held = Keys.None; pendingKey = null; releaseAt = -1;
-        if (step >= actions.Length) return;
-        heading.Text = actions[step].ToUpperInvariant() + (actions.Length > 1 ? $"  ({step + 1}/{actions.Length})" : "");
+        if (wizard.Done) return;
+        if (wizard.Batches.Count > 1)
+        {
+            foreach (var control in new Control[] { source, allDevices, devices, filter, refresh, status, captureButtons }) control.Visible = !wizard.Asking;
+            batchButtons.Visible = wizard.Asking;
+            batch.Text = (wizard.Asking ? "Next: " : "") + wizard.Batch.Name + $" — batch {wizard.BatchIndex + 1} of {wizard.Batches.Count}";
+        }
+        if (wizard.Asking)
+        {
+            heading.Text = wizard.Batch.Name.ToUpperInvariant() + "?";
+            instruction.Text = $"Bind {wizard.Batch.Summary} next ({wizard.Batch.Actions.Length} actions)? Skip batch keeps their current bindings. " +
+                "Finished batches are kept, even if you cancel a later one.";
+            bindBatch.Text = "Bind " + wizard.Batch.Name; bindBatch.Focus();
+            return;
+        }
+        var action = wizard.Action!; var count = wizard.Batch.Actions.Length;
+        heading.Text = action.ToUpperInvariant() + (count > 1 ? $"  ({wizard.Step + 1}/{count})" : "");
         filter.Enabled = allDevices.Enabled = source.SelectedIndex == 0;
         devices.Enabled = source.SelectedIndex == 0 && !allDevices.Checked;
         instruction.Text = source.SelectedIndex == 1 ? "Press and release a key. Escape can be assigned; use Cancel to leave." : "Center steering and release pedals. Keep still for a moment, then move the desired input and return it to rest.";
         if (deviceButtons) instruction.Text = "Release buttons and hats, wait a moment, then press and release the button or hat direction you want to use for recentering.";
-        else if (actions[step].StartsWith("Gear ", StringComparison.Ordinal) && actions[step] is not ("Gear Up" or "Gear Down") && source.SelectedIndex == 0)
+        else if (action.StartsWith("Gear ", StringComparison.Ordinal) && action is not ("Gear Up" or "Gear Down") && source.SelectedIndex == 0)
             instruction.Text = "Leave the shifter in neutral, select this gear, then return to neutral. Skip gears your shifter does not have. A separate USB shifter works with all-device detection.";
         status.Text = source.SelectedIndex == 1 ? "Ready" : "Waiting for stable rest…";
     }
     private void Next(DrivingBinding? binding)
     {
-        if (binding is not null) bindings.Add(binding);
-        if (++step >= actions.Length) { DialogResult = DialogResult.OK; Close(); } else BeginStep();
+        wizard.Record(binding);
+        if (wizard.Done) End(); else BeginStep();
+    }
+    // Finish, Cancel and the last batch all end here; finished batches are kept.
+    private void End()
+    {
+        wizard.Finish();
+        DialogResult = wizard.FinishedBatches > 0 ? DialogResult.OK : DialogResult.Cancel; Close();
     }
     protected override bool ProcessCmdKey(ref Message message, Keys keyData)
     {
-        if (source.SelectedIndex != 1 || step >= actions.Length) return base.ProcessCmdKey(ref message, keyData);
+        if (source.SelectedIndex != 1 || wizard.Action is not { } action) return base.ProcessCmdKey(ref message, keyData);
         if (held != Keys.None) return true;
         var key = keyData & Keys.KeyCode;
         if (key == Keys.Tab) return base.ProcessCmdKey(ref message, keyData);
@@ -360,12 +389,12 @@ internal sealed class DrivingBindingForm : LauncherForm
         var native = DrivingControls.KeyInput(key);
         if (native is null) { status.Text = "That key is not supported. Try another."; return true; }
         held = key; releaseAt = -1;
-        pendingKey = new() { Action = actions[step], Device = "Keyboard", DeviceType = "keyboard", DeviceId = "keyboard", Input = native };
+        pendingKey = new() { Action = action, Device = "Keyboard", DeviceType = "keyboard", DeviceId = "keyboard", Input = native };
         status.Text = DrivingInput.Description(pendingKey) + " — release to continue."; return true;
     }
     private void Poll()
     {
-        if (!ContainsFocus || step >= actions.Length) return;
+        if (!ContainsFocus || wizard.Action is not { } action) return;
         var now = Environment.TickCount64;
         if (source.SelectedIndex == 1)
         {
@@ -381,7 +410,7 @@ internal sealed class DrivingBindingForm : LauncherForm
         foreach (var device in input.Devices)
         {
             if (selected is not null && selected.Id != device.Id) continue;
-            if (!captures.TryGetValue(device.Id, out var capture)) captures[device.Id] = capture = new(device, actions[step]) { AxesOnly = filter.SelectedIndex == 1, ButtonsOnly = filter.SelectedIndex == 2 };
+            if (!captures.TryGetValue(device.Id, out var capture)) captures[device.Id] = capture = new(device, action) { AxesOnly = filter.SelectedIndex == 1, ButtonsOnly = filter.SelectedIndex == 2 };
             var sample = input.Read(device); capture.Update(sample, now);
             if (sample.Connected != 0) ++connected;
             if (ReferenceEquals(active, capture) && sample.Connected == 0) { BeginStep(); status.Text = "Device disconnected. Reconnect and Refresh."; return; }

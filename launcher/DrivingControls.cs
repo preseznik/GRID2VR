@@ -45,8 +45,19 @@ internal sealed class DrivingControls
         "Change View", "Look Back", "Look Left", "Look Right", "Look Up", "Look Down", "Horn", "Boost", "Pause", "Instant Replay",
         "Menu Start Button", "Menu Select", "Menu Back", "Menu Up", "Menu Down", "Menu Left", "Menu Right",
         "Replay Rewind", "Replay Fast Forward", "Replay Pause", "Replay Next Camera", "Replay Prev Camera", "Replay Jump In", "Replay Exit", "Replay UI On Off"];
-    internal static readonly string[] WizardActions = ["Steer Left", "Steer Right", "Accelerate", "Brake", "Clutch", "Handbrake",
-        "Gear Up", "Gear Down", "Gear 1", "Gear 2", "Gear 3", "Gear 4", "Gear 5", "Gear 6", "Gear 7", "Gear Reverse", "Change View", "Look Back", "Pause"];
+    // The wizard binds Essentials, then asks before each later batch. Together the
+    // batches cover every action exactly once.
+    internal static readonly DrivingWizardBatch[] WizardBatches =
+    [
+        new("Essentials", "steering, pedals, handbrake, gear up/down, camera and pause",
+            ["Steer Left", "Steer Right", "Accelerate", "Brake", "Clutch", "Handbrake", "Gear Up", "Gear Down", "Change View", "Look Back", "Pause"]),
+        new("H-pattern shifter", "Gear 1–7 and Reverse", ["Gear 1", "Gear 2", "Gear 3", "Gear 4", "Gear 5", "Gear 6", "Gear 7", "Gear Reverse"]),
+        new("Replay controls", "Instant Replay and the replay viewer",
+            ["Instant Replay", "Replay Pause", "Replay Rewind", "Replay Fast Forward", "Replay Next Camera", "Replay Prev Camera", "Replay Jump In", "Replay Exit", "Replay UI On Off"]),
+        new("Menu controls", "menu navigation, select, back and start",
+            ["Menu Up", "Menu Down", "Menu Left", "Menu Right", "Menu Select", "Menu Back", "Menu Start Button"]),
+        new("Look, horn and boost", "look left/right/up/down, horn and boost", ["Look Left", "Look Right", "Look Up", "Look Down", "Horn", "Boost"])
+    ];
     public static readonly string[] Calibrations = ["uniDirPos", "uniDirNeg", "biDirLower", "biDirUpper"];
     internal static readonly string[] XboxAxes = ["xinput_left_stick_x", "xinput_left_stick_y", "xinput_right_stick_x", "xinput_right_stick_y", "xinput_left_trigger", "xinput_right_trigger"];
     internal static readonly string[] DirectAxes = ["di_x_axis", "di_y_axis", "di_z_axis", "di_x_axis_rotation", "di_y_axis_rotation", "di_z_axis_rotation", "di_slider_0", "di_slider_1"];
@@ -198,5 +209,54 @@ internal sealed class DrivingControls
         var value = (int)(key & Keys.KeyCode);
         if (value is < 8 or > 254 || key is Keys.LWin or Keys.RWin or Keys.Apps || (key & Keys.Modifiers) != 0) return null;
         return "vk_code_0x" + value.ToString("X2", CultureInfo.InvariantCulture);
+    }
+}
+
+internal sealed record DrivingWizardBatch(string Name, string Summary, string[] Actions);
+
+// Binding wizard progress, one batch at a time. Every batch after the first waits
+// for Accept or Skip. Only finished batches are kept, so a skipped, cancelled or
+// unfinished batch leaves that batch's current bindings untouched.
+internal sealed class DrivingWizard
+{
+    private readonly List<DrivingBinding> kept = [], pending = [];
+    public IReadOnlyList<DrivingWizardBatch> Batches { get; }
+    public int BatchIndex { get; private set; }
+    public int Step { get; private set; }
+    public int FinishedBatches { get; private set; }
+    public bool Asking { get; private set; }
+    public bool Done { get; private set; }
+    public DrivingWizardBatch Batch => Batches[BatchIndex];
+    public string? Action => Asking || Done ? null : Batch.Actions[Step];
+    public IReadOnlyList<DrivingBinding> Bindings => kept;
+    public DrivingWizard(IReadOnlyList<DrivingWizardBatch> batches)
+    {
+        if (batches.Count == 0 || batches.Any(b => b.Actions.Length == 0)) throw new ArgumentException("The binding wizard needs actions.", nameof(batches));
+        Batches = batches;
+    }
+    public void Record(DrivingBinding? binding)
+    {
+        var action = Action ?? throw new InvalidOperationException("The binding wizard is not capturing.");
+        if (binding is not null && binding.Action != action) throw new InvalidOperationException("Binding does not match the wizard step.");
+        if (binding is not null) pending.Add(binding);
+        if (++Step < Batch.Actions.Length) return;
+        kept.AddRange(pending); pending.Clear(); ++FinishedBatches; Advance();
+    }
+    public void Accept()
+    {
+        if (!Asking) throw new InvalidOperationException("The binding wizard is not asking.");
+        Asking = false;
+    }
+    public void Skip()
+    {
+        if (!Asking) throw new InvalidOperationException("The binding wizard is not asking.");
+        Advance();
+    }
+    public void Finish() { pending.Clear(); Asking = false; Done = true; }
+    private void Advance()
+    {
+        Step = 0;
+        if (BatchIndex + 1 < Batches.Count) { ++BatchIndex; Asking = true; }
+        else { Asking = false; Done = true; }
     }
 }

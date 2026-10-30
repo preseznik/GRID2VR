@@ -129,8 +129,7 @@ internal static class DrivingControlsTests
         Check(independentSteering.Problems().Count == 1);
         var limit = new DrivingControls { Bindings = Enumerable.Range(1, DrivingControls.MaxDevices).Select(i => wheelThrottle with { DeviceId = $"{{{i:X8}-0000-0000-0000-504944564944}}" }).ToList() };
         limit.Validate(); limit.Assign(keyboard); Reject(limit.Validate);
-        Check(DrivingControls.WizardActions.Distinct().Count() == DrivingControls.WizardActions.Length);
-        Check(Enumerable.Range(1, 7).Select(i => "Gear " + i).Append("Gear Reverse").All(DrivingControls.WizardActions.Contains));
+        DrivingWizardTests.Run();
         // Profiles are portable controls files. Loading changes only the returned
         // editing model; bad saves must leave the previous profile intact.
         var profile = Path.Combine(DrivingControls.ProfilesPath(root), "Rig A.json"); multi.SaveFile(profile);
