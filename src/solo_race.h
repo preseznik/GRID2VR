@@ -1,9 +1,15 @@
 #pragma once
+#include "benchmark_mode.h"
 #include "guarded_hooks.h"
 #include "local_controller_identity.h"
 #include <array>
 
 namespace grid2vr {
+// Direct-launch identity: benchmark mode 2, or 0 while the flashback module holds it cleared.
+inline bool BenchmarkAttractLaunch(uintptr_t base) {
+    uint32_t value{};
+    return ReadMemory(reinterpret_cast<void*>(base+benchmarkModeWordRva),&value,sizeof(value)) && IsBenchmarkAttractMode(base,value);
+}
 inline bool LocalControllerIdentity(uintptr_t base,uintptr_t object) {
     return ReadLocalControllerIdentity(base,object,[](uintptr_t at,void* output,size_t bytes){
         return ReadMemory(reinterpret_cast<void*>(at),output,bytes);});
@@ -23,7 +29,7 @@ inline bool NormalSoloRaceReady(uintptr_t base) {
             value<=UINTPTR_MAX-0x10000 && value%4==0;
     };
     uintptr_t parent{},otherParent{},begin{},end{},car{},head{},node{},group{},children{},childrenEnd{},local{},ai{};
-    if(!word(base+0xe61010,0) || !word(base+0xe5917c,2) ||
+    if(!word(base+0xe61010,0) || !BenchmarkAttractLaunch(base) ||
        !pointer(base+0xd96808,parent) || !pointer(base+0xdaa424,otherParent) || parent!=otherParent ||
        !word(parent,static_cast<uint32_t>(base+0xd1266c)) ||
        !pointer(parent+0xa8,begin) || !pointer(parent+0xac,end) || end-begin!=4 || !pointer(begin,car) || !word(car+0xb0,0)) return false;
@@ -53,7 +59,7 @@ inline bool NormalLocalRaceReady(uintptr_t base) {
             value<=UINTPTR_MAX-0x10000 && value%4==0;
     };
     uintptr_t parent{},otherParent{},begin{},end{};
-    if(!word(base+0xe61010,0) || !word(base+0xe5917c,2) ||
+    if(!word(base+0xe61010,0) || !BenchmarkAttractLaunch(base) ||
        !pointer(base+0xd96808,parent) || !pointer(base+0xdaa424,otherParent) || parent!=otherParent ||
        !word(parent,static_cast<uint32_t>(base+0xd1266c)) ||
        !pointer(parent+0xa8,begin) || !pointer(parent+0xac,end) || end<=begin || (end-begin)%4 || (end-begin)/4>8) return false;
@@ -110,6 +116,6 @@ inline bool NormalLocalRaceReady(uintptr_t base) {
     // Reject a graph that changed while the passive checks were in progress.
     return word(base+0xd96808,static_cast<uint32_t>(parent)) && word(base+0xdaa424,static_cast<uint32_t>(parent)) &&
         word(parent+0xa8,static_cast<uint32_t>(begin)) && word(parent+0xac,static_cast<uint32_t>(end)) && word(manager+0x18,count) &&
-        word(base+0xe61010,0) && word(base+0xe5917c,2);
+        word(base+0xe61010,0) && BenchmarkAttractLaunch(base);
 }
 }

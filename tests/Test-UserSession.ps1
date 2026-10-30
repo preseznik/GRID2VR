@@ -64,6 +64,32 @@ try {
     [IO.File]::WriteAllText($save,'new progress')
     $manifest=Join-Path $backup 'manifest.json'
     Write-SessionJson $manifest @{files=$files}
+    # Status is polled while the worker replaces it: an open reader never blocks
+    # the replace, and a brief foreign lock is retried rather than failing a launch.
+    $status=Join-Path $artifacts 'user-session-last.json'
+    Write-SessionJson $status @{state='starting';message='one'}
+    $reader=[IO.FileStream]::new($status,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]'ReadWrite, Delete')
+    try { Write-SessionJson $status @{state='starting';message='two'} } finally { $reader.Dispose() }
+    Check ((Read-SessionJson $status).message -ceq 'two') 'Replace under an open status reader failed.'
+    $holder=Start-ThreadJob -ScriptBlock {
+        $lock=[IO.File]::Open($using:status,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+        Start-Sleep -Milliseconds 300; $lock.Dispose()
+    }
+    # Wait until the job holds its read-only-share lock (a writer can no longer open).
+    $locked=$false;$deadline=[DateTime]::UtcNow.AddSeconds(5)
+    while(!$locked -and [DateTime]::UtcNow -lt $deadline) {
+        try { [IO.File]::Open($status,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]'ReadWrite, Delete').Dispose(); Start-Sleep -Milliseconds 5 }
+        catch { $locked=$true }
+    }
+    Check $locked 'Test lock was not taken.'
+    Write-SessionJson $status @{state='starting';message='three'}
+    $holder | Wait-Job | Remove-Job
+    Check ((Read-SessionJson $status).message -ceq 'three') 'Briefly locked status replace was not retried.'
+    $lock=[IO.File]::Open($status,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try { Reject {Write-SessionJson $status @{state='starting';message='four'}} } finally { $lock.Dispose() }
+    Check ((Read-SessionJson $status).message -ceq 'three') 'Persistently locked status changed.'
+    Check (!(Get-ChildItem -LiteralPath $artifacts -Filter '*.tmp')) 'Status temporary file left behind.'
+    Remove-Item -LiteralPath $status
     Reject {Get-SessionChild $artifacts (Join-Path $fixture 'stereo-probe-1') '^stereo-probe-[0-9-]+$'}
     Reject {Get-SessionChild $artifacts 'relative/path' '.*'}
     # Validate both backups before touching either current settings file.

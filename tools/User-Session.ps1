@@ -60,15 +60,35 @@ function Get-SessionBackup([string]$Root,[string]$Path) {
 }
 function Read-SessionJson([string]$Path) {
     Assert-PlainPath $Path | Out-Null
-    if((Get-Item -LiteralPath $Path).Length -gt 256KB) { throw 'Session metadata exceeds its bound.' }
-    return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    # Share delete: the launcher polls status files while the worker atomically
+    # replaces them, and a reader must never make that replace fail.
+    $stream=[IO.FileStream]::new($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]'ReadWrite, Delete')
+    try {
+        if($stream.Length -gt 256KB) { throw 'Session metadata exceeds its bound.' }
+        $text=[IO.StreamReader]::new($stream,[Text.UTF8Encoding]::new($false),$true).ReadToEnd()
+    } finally { $stream.Dispose() }
+    return $text | ConvertFrom-Json
+}
+function Test-SharingViolation($ErrorRecord) {
+    for($exception=$ErrorRecord.Exception;$exception;$exception=$exception.InnerException) {
+        # ERROR_SHARING_VIOLATION / ERROR_LOCK_VIOLATION
+        if($exception -is [IO.IOException] -and $exception.HResult -in @(-2147024864,-2147024863)) { return $true }
+    }
+    return $false
 }
 function Write-SessionJson([string]$Path,$Value) {
     $target=Assert-PlainPath $Path
     $temporary=$target+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
     try {
         [IO.File]::WriteAllText($temporary,($Value | ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-        if(Test-Path -LiteralPath $target) { [IO.File]::Replace($temporary,$target,[NullString]::Value) }
+        if(Test-Path -LiteralPath $target) {
+            # Another reader (a scanner, an older tool) may hold the old file
+            # briefly; retry only a sharing violation, within about a second.
+            for($attempt=1;;$attempt++) {
+                try { [IO.File]::Replace($temporary,$target,[NullString]::Value); break }
+                catch { if($attempt -ge 40 -or !(Test-SharingViolation $_)) { throw }; Start-Sleep -Milliseconds 25 }
+            }
+        }
         else { [IO.File]::Move($temporary,$target) }
     } finally { if(Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary } }
 }

@@ -28,6 +28,7 @@
 #include "player_control.h"
 #include "background_play.h"
 #include "ffb_observer.h"
+#include "flashback_observer.h"
 #include "chase_observer.h"
 #include "chase_camera.h"
 #include "solo_race.h"
@@ -199,7 +200,7 @@ const char* BeforeGameExit() {
     }
     runtimeStopped=true;
     frontendvideo::Stop();
-    playercontrol::Stop();backgroundplay::Stop();ffbobserver::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();cockpitanimation::Stop();opponentlod::runtime::Stop();
+    playercontrol::Stop();backgroundplay::Stop();ffbobserver::Stop();flashbackobserver::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();cockpitanimation::Stop();opponentlod::runtime::Stop();
     if (!flatMenuUi.Reset()) return "flat_menu_not_restored";
 #ifdef GRID2VR_ENABLE_XR_SESSION
     recenter::Enable(false);
@@ -690,6 +691,10 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
             drivingcontrols::Install(gameBase,output);
             // Observe-only rumble/force-feedback counters for every launch mode.
             ffbobserver::Install(gameBase,output);
+            // Flashback monitor sampling for every launch mode; in -benchmarkAttract
+            // (direct) launches the benchmark mode word is cleared only while racing.
+            // No game code is patched; Normal launches are never written.
+            flashbackobserver::Install(gameBase,output);
             // Active() has already validated the admitted AVX executable. The
             // LOD module additionally pins every live body/table it consumes.
             opponentlod::bridge::Configure(output);
@@ -698,6 +703,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
         }
         drivingcontrols::Tick();
         ffbobserver::Tick();
+        flashbackobserver::Tick();
     }
     processexit::Service();
     // An early window-close request has stopped XR at this restored boundary.

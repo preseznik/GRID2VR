@@ -128,6 +128,17 @@ int main() {
         put(change.offset,before);
     }
     if(!grid2vr::NormalLocalRaceReady(base))return 12;
+    // Mode 0 is a direct launch only while the flashback module holds it cleared for this image.
+    put(0xe5917c,0);
+    if(grid2vr::NormalLocalRaceReady(base))return 18;
+    grid2vr::benchmarkModeClearedImage.store(base+4);
+    if(grid2vr::NormalLocalRaceReady(base))return 19;
+    grid2vr::benchmarkModeClearedImage.store(base);
+    if(!grid2vr::NormalLocalRaceReady(base))return 20;
+    put(0xe5917c,1);
+    if(grid2vr::NormalLocalRaceReady(base))return 21;
+    grid2vr::benchmarkModeClearedImage.store(0);put(0xe5917c,2);
+    if(!grid2vr::NormalLocalRaceReady(base))return 22;
     if(!VirtualProtect(memory+0x15000,0x1000,PAGE_NOACCESS,&previous))return 13;
     if(grid2vr::NormalLocalRaceReady(base))return 14;
     VirtualFree(memory,0,MEM_RELEASE);
