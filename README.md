@@ -47,6 +47,8 @@ Stable 0.2.0 also publishes its compatible [cockpit texture pack](https://github
 
 Use **Help / About** to check for updates and read the instructions. Enable **Include experimental releases** to receive Experimental updates; Stable remains available through **Return to stable…** in Experimental builds or the Stable download above. Updates preserve your settings and careers.
 
+**An OpenXR add-on stops VR from starting:** GRID 2 is a 32-bit game, and an add-on layer such as ReShade or OpenXR OBS Mirror that has no working 32-bit library can stop every OpenXR app in it from starting. In the current development build, **Launch VR** names the layer and offers **Disable and retry** when its installed registration provides its own disable switch. Review which features will be unavailable before accepting. The layer is disabled only for GRID2VR; other applications keep their settings. **Remember for this GRID2VR installation** is optional and is saved only after the retry succeeds. To undo it, use **Settings → VR compatibility → Manage layer bypasses… → Re-enable selected**. A changed layer registration needs approval again. This is not yet in the published downloads above and still needs testing by an affected player.
+
 Having trouble? [Report an issue](https://github.com/preseznik/GRID2VR/issues) with your headset/runtime, what happened, and the latest session logs from **Open logs**.
 
 GRID2VR requires your own copy of GRID 2. No game files or saves are included.

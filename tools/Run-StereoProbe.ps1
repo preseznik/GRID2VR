@@ -68,6 +68,7 @@ param(
     [string]$RecordedViewsFile='',
     [string]$SessionDirectory='',
     [switch]$NormalLaunch,
+    [string[]]$XrLayerBypass=@(),
     [string]$PythonPath=''
 )
 $ErrorActionPreference='Stop'
@@ -355,7 +356,7 @@ try {
         ReplayEyeOffset=$true;ReplayEyeFrames=$Frames;ReplayAsymmetricFov=$true
         ReplayFullPose=$true;ReplayStereo=$true;CompactStereoTrace=$true;DisableMotionBlur=$true
         RecordedViewsFile=$recordedViewsFile;XrSessionProbe=($Mode -eq 'Headset');XrProjection=($Mode -eq 'Headset')
-        XrRuntimeManifest=$runtime
+        XrRuntimeManifest=$runtime;XrLayerBypass=$XrLayerBypass
         HeadsetScale=$HeadsetScale
         HeadsetWidth=$HeadsetWidth;HeadsetHeight=$HeadsetHeight;VrRenderScale=$VrRenderScale
         TraceVisibility=$true;ExpandVisibility=$true;RestoreReplayComputeState=$true

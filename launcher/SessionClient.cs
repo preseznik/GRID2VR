@@ -197,7 +197,7 @@ internal sealed class SessionClient(string root)
         return folder;
     }
 
-    public ProcessStartInfo LaunchCommand(Choices value, bool vr)
+    public ProcessStartInfo LaunchCommand(Choices value, bool vr, IReadOnlyList<VrLayerBypass>? layers = null)
     {
         Validate(value);
         var command = Command("Start-UserSession.ps1", "-Mode", vr ? "VR" : "Desktop", "-XrRuntime", value.Runtime, "-Car", value.Car, "-Track", value.Track,
@@ -250,12 +250,13 @@ internal sealed class SessionClient(string root)
         if (value.DiagnosticLogging) command.ArgumentList.Add("-DiagnosticLogging");
         if (value.CockpitTextures != "Off") { command.ArgumentList.Add("-CockpitTextures"); command.ArgumentList.Add(value.CockpitTextures); }
         if (vr && (value.PreviewVrFixes || AppPaths.Packaged(Root))) command.ArgumentList.Add("-PreviewVrFixes");
+        if (vr && layers is { Count: > 0 }) { command.ArgumentList.Add("-XrLayerBypassBase64"); command.ArgumentList.Add(VrApiLayers.Encode(layers)); }
         return command;
     }
 
-    internal ProcessStartInfo PrepareLaunchCommand(Choices value, bool vr)
+    internal ProcessStartInfo PrepareLaunchCommand(Choices value, bool vr, IReadOnlyList<VrLayerBypass>? layers = null)
     {
-        var command = LaunchCommand(value, vr);
+        var command = LaunchCommand(value, vr, layers);
         var controls = ExportDrivingControls();
         if (controls is not null)
         {
@@ -272,9 +273,9 @@ internal sealed class SessionClient(string root)
         return command;
     }
 
-    public Process Launch(Choices value, bool vr)
+    public Process Launch(Choices value, bool vr, IReadOnlyList<VrLayerBypass>? layers = null)
     {
-        var command = PrepareLaunchCommand(value, vr);
+        var command = PrepareLaunchCommand(value, vr, layers);
         Save(value);
         // No redirected streams: the independent worker survives closing this UI.
         return Process.Start(command) ?? throw new IOException("Could not start the session worker.");
@@ -345,10 +346,31 @@ internal sealed class SessionClient(string root)
         return $"{LocationLabel(id[..separator])} — {LocationLabel(id[(separator + 1)..])}";
     }
 
+    internal ProcessStartInfo HeadsetQueryCommand(string runtime, IReadOnlyList<VrLayerBypass> layers)
+    {
+        var command = Command("Get-VrResolution.ps1", "-Runtime", runtime);
+        if (layers.Count > 0) { command.ArgumentList.Add("-LayerBypassBase64"); command.ArgumentList.Add(VrApiLayers.Encode(layers)); }
+        return command;
+    }
+
+    // Remembered layer bypasses apply to every headset query; new ones need the launch prompt.
     internal async Task<HeadsetResolution> ReadHeadsetResolution(string runtime) => HeadsetResolution.Parse(
-        await ReadCommand(Command("Get-VrResolution.ps1", "-Runtime", runtime), TimeSpan.FromSeconds(25)), runtime);
+        await ReadCommand(HeadsetQueryCommand(runtime, VrApiLayers.Remembered(Artifacts)), TimeSpan.FromSeconds(25)), runtime);
+
+    internal async Task<VrHeadsetPreflight> HeadsetPreflight(string runtime, IReadOnlyList<VrLayerBypass> layers)
+    {
+        var (exitCode, output, error) = await RunCommand(HeadsetQueryCommand(runtime, layers), TimeSpan.FromSeconds(25));
+        return VrHeadsetPreflight.Parse(exitCode, output, error, runtime, layers);
+    }
 
     private static async Task<string> ReadCommand(ProcessStartInfo info, TimeSpan? timeout = null)
+    {
+        var (exitCode, text, failure) = await RunCommand(info, timeout);
+        if (exitCode != 0) throw new IOException(string.IsNullOrWhiteSpace(failure) ? text : failure);
+        return text;
+    }
+
+    private static async Task<(int ExitCode, string Output, string Error)> RunCommand(ProcessStartInfo info, TimeSpan? timeout = null)
     {
         info.RedirectStandardOutput = info.RedirectStandardError = true;
         using var process = Process.Start(info) ?? throw new IOException("Could not start command.");
@@ -360,8 +382,6 @@ internal sealed class SessionClient(string root)
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             throw new IOException("Headset query timed out. Connect the headset and refresh.");
         }
-        var text = await output; var failure = await error;
-        if (process.ExitCode != 0) throw new IOException(string.IsNullOrWhiteSpace(failure) ? text : failure);
-        return text;
+        return (process.ExitCode, await output, await error);
     }
 }

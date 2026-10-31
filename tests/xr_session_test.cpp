@@ -19,6 +19,7 @@ XrPosef lastPerformancePose{};
 bool hidden{};
 const char* runtimeName="SteamVR/test";
 std::wstring expectedRuntimePath;
+std::vector<std::wstring> expectedLayerSwitches;
 unsigned recommendedWidth=100,recommendedHeight=120;
 XrPosef headPose{{0,0,0,1},{0,0,0}},lastScreenPose{};
 XrExtent2Df lastScreenSize{};
@@ -49,6 +50,10 @@ XrResult XRAPI_CALL Requirements(XrInstance,XrSystemId,XrGraphicsRequirementsD3D
 XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo*,XrInstance* out) {
     wchar_t selected[1024]{};GetEnvironmentVariableW(L"XR_RUNTIME_JSON",selected,1024);
     if (expectedRuntimePath!=selected) protocolError=true;
+    for (const auto& name:expectedLayerSwitches) {
+        wchar_t value[8]{};
+        if (GetEnvironmentVariableW(name.c_str(),value,8)!=1 || wcscmp(value,L"1")) protocolError=true;
+    }
     *out=1;++instances;return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProperties(XrInstance,XrInstanceProperties* out) {strcpy_s(out->runtimeName,runtimeName);return XR_SUCCESS;}
@@ -189,6 +194,8 @@ int main(int argc,char** argv) {
     const auto folder=std::filesystem::absolute(argv[1]);std::filesystem::create_directories(folder);
     const auto performanceRequest=folder/L"performance-display.request";
     std::filesystem::remove(performanceRequest);
+    const auto layerRequest=folder/L"xr-layer-bypass.request";
+    std::filesystem::remove(layerRequest);
     const auto manifest=folder/L"steamxr_win32.json";std::ofstream(manifest)<<"test-only; fake runtime functions are linked";
     expectedRuntimePath=manifest.wstring();
     SetEnvironmentVariableW(L"XR_RUNTIME_JSON",L"preserve-test-value");
@@ -400,5 +407,44 @@ int main(int argc,char** argv) {
     if(!fixed.Closed() || instances || sessions || spaces || phase || swapchains || protocolError)return 75;
     std::filesystem::remove(fixedRequest);
     std::filesystem::remove(performanceRequest);
+    // Approved implicit-layer switches exist only while the instance is created; the
+    // player's own values return afterwards. Malformed requests refuse before any change.
+    runtimeName="SteamVR/test";expectedRuntimePath=manifest.wstring();
+    SetEnvironmentVariableW(L"DISABLE_XR_APILAYER_NOVENDOR_OBSMirror",L"player");
+    SetEnvironmentVariableW(L"DISABLE_XR_APILAYER_reshade",nullptr);
+    std::ofstream(layerRequest,std::ios::binary)<<"DISABLE_XR_APILAYER_reshade\r\nDISABLE_XR_APILAYER_NOVENDOR_OBSMirror\n";
+    expectedLayerSwitches={L"DISABLE_XR_APILAYER_reshade",L"DISABLE_XR_APILAYER_NOVENDOR_OBSMirror"};
+    Reset();
+    {
+        grid2vr::XrSessionProbe layered;
+        if(!layered.Initialize(device.Get(),manifest,folder) || layered.Failed())return 76;
+        layered.Shutdown();
+    }
+    wchar_t player[16]{};
+    if(instances || protocolError || GetEnvironmentVariableW(L"DISABLE_XR_APILAYER_NOVENDOR_OBSMirror",player,16)!=6 || wcscmp(player,L"player") ||
+        GetEnvironmentVariableW(L"DISABLE_XR_APILAYER_reshade",nullptr,0))return 77;
+    expectedLayerSwitches.clear();
+    std::string tooMany;
+    for(unsigned i=0;i<17;++i) tooMany+="DISABLE_XR_APILAYER_"+std::to_string(i)+"\n";
+    for(const std::string request:{std::string("PATH"),std::string("XR_RUNTIME_JSON"),std::string("DISABLE_XR_"),std::string(),std::string("DISABLE_XR_A\n\nDISABLE_XR_B"),
+            std::string("DISABLE_XR_APILAYER_reshade\nDISABLE_XR_APILAYER_RESHADE"),std::string("DISABLE_XR_A-B"),std::string("DISABLE_XR_")+std::string(181,'A'),tooMany}) {
+        std::ofstream(layerRequest,std::ios::binary|std::ios::trunc)<<request;
+        Reset();grid2vr::XrSessionProbe refused;
+        if(refused.Initialize(device.Get(),manifest,folder) || !refused.Failed() || instances)return 78;
+        refused.Shutdown();
+        wchar_t previous[64]{};GetEnvironmentVariableW(L"XR_RUNTIME_JSON",previous,64);
+        if(wcscmp(previous,L"preserve-test-value") || GetEnvironmentVariableW(L"DISABLE_XR_APILAYER_reshade",nullptr,0) || protocolError)return 79;
+    }
+    std::ofstream(layerRequest,std::ios::binary|std::ios::trunc)<<"DISABLE_OPENXR_"<<std::string(180,'z');
+    expectedLayerSwitches={L"DISABLE_OPENXR_"+std::wstring(180,L'z')};
+    Reset();
+    {
+        grid2vr::XrSessionProbe longest;
+        if(!longest.Initialize(device.Get(),manifest,folder) || protocolError)return 80;
+        longest.Shutdown();
+    }
+    expectedLayerSwitches.clear();
+    std::filesystem::remove(layerRequest);
+    SetEnvironmentVariableW(L"DISABLE_XR_APILAYER_NOVENDOR_OBSMirror",nullptr);
     puts("Game-device/frame identity, stereo/menu transitions, following/fixed performance display, recenter, failures and cleanup pass.");
 }

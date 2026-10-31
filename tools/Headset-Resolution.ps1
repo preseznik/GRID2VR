@@ -53,7 +53,10 @@ function ConvertFrom-HeadsetQuery([string]$Text,[string]$Runtime) {
     return [ordered]@{runtime=$Runtime;headset=$name.Groups[1].Value;width=$plan.width;height=$plan.height}
 }
 
-function Get-ConnectedHeadsetResolution([string]$Root,[ValidateSet('VDXR','SteamVR')][string]$Runtime) {
+. (Join-Path $PSScriptRoot 'OpenXR-Layers.ps1')
+
+# Run the 32-bit probe once. $LayerBypasses are approved, revalidated layer identities.
+function Invoke-HeadsetQuery([string]$Root,[ValidateSet('VDXR','SteamVR')][string]$Runtime,[object[]]$LayerBypasses=@()) {
     . (Join-Path $PSScriptRoot 'Paths.ps1')
     . (Join-Path $PSScriptRoot 'OpenXR-Runtime.ps1')
     $manifest=Get-Grid2VrRuntimeManifest $Runtime
@@ -64,6 +67,12 @@ function Get-ConnectedHeadsetResolution([string]$Root,[ValidateSet('VDXR','Steam
     $start.UseShellExecute=$false; $start.CreateNoWindow=$true
     $start.RedirectStandardOutput=$true; $start.RedirectStandardError=$true
     $start.Environment['XR_RUNTIME_JSON']=$manifest
+    # Loader warnings name an add-on layer that failed to load; keep a user's more verbose choice.
+    if(!$start.Environment.ContainsKey('XR_LOADER_DEBUG') -or $start.Environment['XR_LOADER_DEBUG'] -notin 'warn','info','verbose','all') { $start.Environment['XR_LOADER_DEBUG']='warn' }
+    foreach($layer in @($LayerBypasses | Where-Object { $_ })) {
+        if(!(Test-Grid2VrLayerDisableVariable $layer.disableVariable)) { throw 'Invalid OpenXR layer disable switch.' }
+        $start.Environment[$layer.disableVariable]='1'
+    }
     $process=[Diagnostics.Process]::Start($start)
     try {
         $output=$process.StandardOutput.ReadToEndAsync(); $errorOutput=$process.StandardError.ReadToEndAsync()
@@ -71,8 +80,32 @@ function Get-ConnectedHeadsetResolution([string]$Root,[ValidateSet('VDXR','Steam
             $process.Kill($true)
             throw "Headset query timed out. Connect your headset through $Runtime and refresh."
         }
-        $text=$output.GetAwaiter().GetResult(); $null=$errorOutput.GetAwaiter().GetResult()
-        if($process.ExitCode -ne 0) { throw "Could not read the headset resolution (query exit $($process.ExitCode)). Connect your headset through $Runtime and refresh." }
-        return ConvertFrom-HeadsetQuery $text $Runtime
+        $text=$output.GetAwaiter().GetResult(); $errors=$errorOutput.GetAwaiter().GetResult()
+        if($errors.Length -gt 65536) { $errors=$errors.Substring(0,65536) }
+        return [pscustomobject][ordered]@{runtime=$Runtime;exitCode=$process.ExitCode;output=$text;errors=$errors
+            disabledLayers=@($LayerBypasses | Where-Object { $_ } | ForEach-Object { $_.layerName })}
     } finally { $process.Dispose() }
+}
+
+# Loader warnings share stdout with the probe; loader errors also go to stderr.
+function Get-HeadsetQueryText($Query) { return "$($Query.output)`n$($Query.errors)" }
+
+function Get-HeadsetQueryReport($Query) {
+    return "runtime_selection=$($Query.runtime)`r`ndisabled_api_layers=$($Query.disabledLayers -join ',')`r`nexit_code=$($Query.exitCode)`r`n$(Get-HeadsetQueryText $Query)"
+}
+
+function Get-HeadsetQueryFailure($Query) {
+    $failures=@(Get-Grid2VrLayerFailures $Query.exitCode (Get-HeadsetQueryText $Query))
+    if($failures.Count) { return Format-Grid2VrLayerFailures $failures }
+    $step=[regex]::Matches($Query.output,'(?m)^([a-z_]+)=(-[0-9]+)\r?$') | Select-Object -Last 1
+    $detail=if($step) { ", $($step.Groups[1].Value)=$($step.Groups[2].Value)" } else { '' }
+    return "Could not read the headset resolution (query exit $($Query.exitCode)$detail). Connect your headset through $($Query.runtime) and refresh."
+}
+
+function Get-ConnectedHeadsetResolution([string]$Root,[ValidateSet('VDXR','SteamVR')][string]$Runtime,[object[]]$LayerBypasses=@(),[string]$ReportPath='',[switch]$ReportSuccess) {
+    $query=Invoke-HeadsetQuery $Root $Runtime $LayerBypasses
+    # A failed query always keeps its loader report; it names the step and any failing layer.
+    if($ReportPath -and ($query.exitCode -ne 0 -or $ReportSuccess)) { [IO.File]::WriteAllText($ReportPath,(Get-HeadsetQueryReport $query),[Text.UTF8Encoding]::new($false)) }
+    if($query.exitCode -ne 0) { throw (Get-HeadsetQueryFailure $query) }
+    return ConvertFrom-HeadsetQuery $query.output $Runtime
 }

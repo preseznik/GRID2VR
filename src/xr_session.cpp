@@ -11,6 +11,38 @@
 using Microsoft::WRL::ComPtr;
 namespace grid2vr {
 namespace {
+// Implicit API layers the launcher's loader check named and the player chose to
+// disable for GRID2VR (tools/OpenXR-Layers.ps1): one manifest-declared switch per line.
+bool ValidLayerSwitch(const std::string& name) {
+    const size_t prefix=name.rfind("DISABLE_XR_",0)==0?11:name.rfind("DISABLE_OPENXR_",0)==0?15:0;
+    return prefix && name.size()>prefix && name.size()-prefix<=180 && std::all_of(name.begin()+prefix,name.end(),
+        [](char c){return (c>='A' && c<='Z') || (c>='a' && c<='z') || (c>='0' && c<='9') || c=='_';});
+}
+bool ReadLayerSwitches(const std::filesystem::path& path,std::vector<std::wstring>& names) {
+    std::error_code error;
+    if (!std::filesystem::exists(path,error)) return !error;
+    const auto size=std::filesystem::file_size(path,error);
+    if (error || !size || size>4096) return false;
+    std::ifstream request(path,std::ios::binary);std::string line;
+    while (std::getline(request,line)) {
+        if (!line.empty() && line.back()=='\r') line.pop_back();
+        std::wstring name(line.begin(),line.end());
+        if (!ValidLayerSwitch(line) || names.size()==16 || std::any_of(names.begin(),names.end(),
+            [&](const std::wstring& other){return !_wcsicmp(other.c_str(),name.c_str());})) return false;
+        names.push_back(std::move(name));
+    }
+    return request.eof() && !names.empty();
+}
+struct SavedVariable { std::wstring name; std::vector<wchar_t> value; };
+bool SaveVariable(const std::wstring& name,SavedVariable& saved) {
+    saved.name=name;
+    const DWORD length=GetEnvironmentVariableW(name.c_str(),nullptr,0);
+    saved.value.assign(length,L'\0');
+    return !length || GetEnvironmentVariableW(name.c_str(),saved.value.data(),length);
+}
+bool RestoreVariable(const SavedVariable& saved) {
+    return SetEnvironmentVariableW(saved.name.c_str(),saved.value.empty()?nullptr:saved.value.data())!=FALSE;
+}
 bool LevelScreenAnchor(const XrPosef& head,XrPosef& anchor) {
     std::array<double,4> q{};
     if (!TrackingPosition(head.position) || !TrackingOrientation(head.orientation,q)) return false;
@@ -58,19 +90,32 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
     if (!log_ || !runtime.is_absolute() || (!vdxr && !steamVr) || !std::filesystem::is_regular_file(runtime)) {
         failed_=true;Log("session refused reason=runtime_manifest");return false;
     }
+    std::vector<std::wstring> layerSwitches;
+    if (!ReadLayerSwitches(output/L"xr-layer-bypass.request",layerSwitches)) {
+        failed_=true;Log("session refused reason=layer_bypass_request");return false;
+    }
     // Steam can spawn the AVX process without inheriting launcher variables.
-    // Select the loader runtime inside this process, then restore its old value.
-    const DWORD length=GetEnvironmentVariableW(L"XR_RUNTIME_JSON",nullptr,0);
-    std::vector<wchar_t> previous(length?length:1);
-    if (length && !GetEnvironmentVariableW(L"XR_RUNTIME_JSON",previous.data(),length)) {failed_=true;return false;}
-    if (!SetEnvironmentVariableW(L"XR_RUNTIME_JSON",runtime.c_str())) {failed_=true;return false;}
-    const char* extension=XR_KHR_D3D11_ENABLE_EXTENSION_NAME;
-    XrInstanceCreateInfo create{XR_TYPE_INSTANCE_CREATE_INFO};
-    strcpy_s(create.applicationInfo.applicationName,"GRID2VR game-device session probe");
-    create.applicationInfo.apiVersion=XR_MAKE_VERSION(1,0,0);
-    create.enabledExtensionCount=1;create.enabledExtensionNames=&extension;
-    const auto created=xrCreateInstance(&create,&instance_);
-    const bool environmentRestored=SetEnvironmentVariableW(L"XR_RUNTIME_JSON",length?previous.data():nullptr)!=FALSE;
+    // Select the loader runtime and layer switches inside this process, then restore their old values.
+    std::vector<SavedVariable> saved(layerSwitches.size()+1);
+    bool environmentSaved=SaveVariable(L"XR_RUNTIME_JSON",saved[0]);
+    for (size_t i=0;i<layerSwitches.size();++i) environmentSaved=environmentSaved && SaveVariable(layerSwitches[i],saved[i+1]);
+    if (!environmentSaved) {failed_=true;return false;}
+    bool environmentSet=SetEnvironmentVariableW(L"XR_RUNTIME_JSON",runtime.c_str())!=FALSE;
+    for (const auto& name:layerSwitches) {
+        environmentSet=environmentSet && SetEnvironmentVariableW(name.c_str(),L"1");
+        Log("layer_bypass disable=%ls",name.c_str());
+    }
+    XrResult created=XR_ERROR_INITIALIZATION_FAILED;
+    if (environmentSet) {
+        const char* extension=XR_KHR_D3D11_ENABLE_EXTENSION_NAME;
+        XrInstanceCreateInfo create{XR_TYPE_INSTANCE_CREATE_INFO};
+        strcpy_s(create.applicationInfo.applicationName,"GRID2VR game-device session probe");
+        create.applicationInfo.apiVersion=XR_MAKE_VERSION(1,0,0);
+        create.enabledExtensionCount=1;create.enabledExtensionNames=&extension;
+        created=xrCreateInstance(&create,&instance_);
+    }
+    bool environmentRestored=true;
+    for (const auto& variable:saved) environmentRestored=RestoreVariable(variable) && environmentRestored;
     Log("runtime_selection process_only=1 environment_restored=%u",environmentRestored);
     if (!Check(created,"create_instance") || !environmentRestored) {failed_=true;Shutdown();return false;}
     XrInstanceProperties properties{XR_TYPE_INSTANCE_PROPERTIES};
