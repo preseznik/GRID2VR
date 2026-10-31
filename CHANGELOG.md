@@ -1,3 +1,16 @@
+# GRID2VR 0.2.15 — Experimental
+
+Changes since 0.2.14:
+
+- **Faster stereo rendering, on by default.** Reduce the rendering work while driving in VR. Turn it off under **Advanced → VR presentation → Faster stereo (experimental)** if you notice visual problems. An existing saved Off choice is kept.
+- **Graphics recommendations for your PC.** **Graphics** now shows your **Last VR session** and offers **Recommend for this PC**, using comparable session measurements or an estimate from your graphics card and headset. Includes **VR Balanced**: High quality, Medium crowd and VR anti-aliasing off. **Undo preset** restores your previous choices; changes are kept only after **Save settings** or launching.
+- **Complete driving-control wizard.** Bind steering, pedals and essential buttons first, then optional groups for H-pattern shifting, replays, menus and extra controls. Skipping a group preserves its bindings; cancelling the wizard keeps completed groups.
+- **Help with OpenXR startup failures.** When a supported add-on blocks VR startup, the launcher names it and offers **Disable and retry** for GRID2VR. You can remember a successful retry and undo it under **Settings → VR compatibility**. Failed headset queries now show more useful errors.
+
+This is an Experimental pre-release. Faster stereo improved performance in the tested Quest 3/VDXR scenes on an RTX 4080 SUPER. Other PCs, SteamVR, night lighting, cockpit details and replays still need checking. OpenXR recovery awaits confirmation on an affected setup. The reported Desktop Alt+F4 shutdown fault remains under investigation.
+
+For experimental updates, enable **Include experimental releases** under **Help / About**.
+
 # GRID2VR 0.2.14 — Experimental
 
 Changes since 0.2.13:
