@@ -64,6 +64,8 @@ internal sealed partial class MainForm : LauncherForm
     private readonly CheckBox keepHorizonLevel = new() { Name = "KeepHorizonLevel", Text = "Keep horizon level when recentering", Checked = true, AutoSize = true };
     private readonly Label requestedSession = TextLabel("");
     private readonly Button defaults = Button("Restore defaults", "LauncherDefaults");
+    private readonly Label layerBypassSummary = TextLabel("");
+    private readonly Button manageLayers = Button("Manage layer bypasses…", "ManageVrCompatibility");
     private readonly ToolTip tips = new() { InitialDelay = 450, ReshowDelay = 150, AutoPopDelay = 15000, ShowAlways = true };
     private int recenterKey = 121, recenterModifiers;
     private bool capturingRecenter;
@@ -238,6 +240,11 @@ internal sealed partial class MainForm : LauncherForm
         Field(settings, "OpenXR runtime", runtime);
         settings.Controls.Add(TextLabel("VDXR: connect through Virtual Desktop and keep SteamVR closed. SteamVR: connect the headset through SteamVR. The choice applies only to this session."));
         settings.Controls.Add(TextLabel("Uses your installed GRID 2. Settings and careers are kept when updating."));
+        Section(settings, "VR compatibility");
+        layerBypassSummary.Name = "VrCompatibilitySummary";
+        settings.Controls.Add(layerBypassSummary); settings.Controls.Add(manageLayers);
+        settings.Controls.Add(TextLabel("If an OpenXR add-on such as ReShade or OBS Mirror stops VR from starting, Launch VR names it and offers to disable it for GRID2VR only. Other applications keep their settings."));
+        UpdateLayerBypassSummary();
         Section(settings, "Startup & diagnostics");
         Field(settings, "Skip intro / logos", skipIntro);
         Field(settings, "Diagnostic logging", diagnosticLogging);
@@ -314,6 +321,8 @@ internal sealed partial class MainForm : LauncherForm
         vr.Click += async (_, _) => await Act(() => Launch(true));
         save.Click += async (_, _) => await Act(() => { if (EnsureCockpitTextures()) { seatAlignment.Save(client.Root); client.Save(Current()); notice.Text = "Settings saved. Changes apply to the next session."; } return Task.CompletedTask; });
         drivingControls.Click += async (_, _) => await Act(() => { using var dialog = new DrivingControlsForm(client.Root); dialog.ShowDialog(this); return Task.CompletedTask; });
+        manageLayers.Click += async (_, _) => await Act(() => { using var dialog = new VrCompatibilityForm(client.Artifacts); dialog.ShowDialog(this); UpdateLayerBypassSummary(); return Task.CompletedTask; });
+        Activated += (_, _) => UpdateLayerBypassSummary();
         recenter.Click += (_, _) => { capturingRecenter = true; recenter.Text = "Press a key…"; EnableActions(); };
         bindRecenterDevice.Click += (_, _) =>
         {
@@ -559,14 +568,40 @@ internal sealed partial class MainForm : LauncherForm
         try
         {
             seatAlignment.Save(client.Root);
-            launchWorker = client.Launch(Current(), inVr); launchingVr = inVr;
+            var choices = Current();
+            IReadOnlyList<VrLayerBypass> layers = [];
+            var layerWarning = "";
+            if (inVr)
+            {
+                launchProgress.DisplayProgress(new("Checking the VR headset…"));
+                if (await CheckVrLayers(choices.Runtime) is not { } checkedLayers)
+                {
+                    if (!IsDisposed) { launchProgress?.Close(); notice.Text = "VR launch cancelled. No OpenXR layer was disabled."; }
+                    return;
+                }
+                (layers, layerWarning) = checkedLayers;
+                if (IsDisposed) return;
+            }
+            launchWorker = client.Launch(choices, inVr, layers); launchingVr = inVr;
             launchGrace = DateTime.UtcNow.AddSeconds(10);
             launchProgress.DisplayProgress(new("Starting the launch worker…"));
             state.Text = "Starting session…";
-            notice.Text = inVr ? $"Select GRID 2 while it loads. VR starts once the game and tracking are ready. Press {RecenterShortcut.Label(recenterKey, recenterModifiers)} in the game to recenter."
-                : "GRID 2 is starting. The progress window will close when the game window opens.";
+            notice.Text = (inVr ? $"Select GRID 2 while it loads. VR starts once the game and tracking are ready. Press {RecenterShortcut.Label(recenterKey, recenterModifiers)} in the game to recenter."
+                : "GRID 2 is starting. The progress window will close when the game window opens.") + (layerWarning.Length > 0 ? " " + layerWarning : "");
         }
         catch (Exception error) { launchProgress.DisplayProgress(new(error.Message, Failed: true)); throw; }
+    }
+
+    private Task<(IReadOnlyList<VrLayerBypass> Layers, string Warning)?> CheckVrLayers(string selectedRuntime) => VrLayerRecoveryFlow.Check(
+        VrApiLayers.Remembered(client.Artifacts), layers => client.HeadsetPreflight(selectedRuntime, layers),
+        request => IsDisposed ? null : VrLayerRecoveryForm.Confirm(this, request),
+        layers => { VrApiLayers.Remember(client.Artifacts, layers); UpdateLayerBypassSummary(); },
+        message => launchProgress?.DisplayProgress(new(message)));
+
+    private void UpdateLayerBypassSummary()
+    {
+        var count = VrApiLayers.Remembered(client.Artifacts).Count;
+        layerBypassSummary.Text = count switch { 0 => "No remembered OpenXR layer bypasses.", 1 => "1 remembered OpenXR layer bypass.", _ => $"{count} remembered OpenXR layer bypasses." };
     }
 
     private void UpdateLaunchProgress(JsonElement data)

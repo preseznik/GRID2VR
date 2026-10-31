@@ -99,6 +99,7 @@ param(
     [string]$PythonPath='',
     [string]$SessionDirectory='',
     [switch]$NormalLaunch,
+    [string[]]$XrLayerBypass=@(),
     [ValidateRange(1,300)][int]$CaptureAfterSeconds = 30,
     [ValidateRange(30,600)][int]$TimeoutSeconds = 90
 )
@@ -258,6 +259,11 @@ if ($DisableMotionBlur -and (!$ReplayStereo -or $ReplayEyeFrames -lt 2)) { throw
 if ($ProfileReplay -and !$CompactStereoTrace) { throw 'ProfileReplay requires CompactStereoTrace.' }
 if ($XrSessionProbe -and !$ReplayStereo) { throw 'OpenXR session probes require ReplayStereo.' }
 if ($XrSessionProbe) { $runtimeInfo=Resolve-Grid2VrRuntime $XrRuntimeManifest }
+if ($XrLayerBypass.Count) {
+    . (Join-Path $PSScriptRoot 'OpenXR-Layers.ps1')
+    if (!$XrSessionProbe -or $XrLayerBypass.Count -gt 16 -or @($XrLayerBypass | Where-Object { !(Test-Grid2VrLayerDisableVariable $_) }).Count -or
+        @($XrLayerBypass | Sort-Object -Unique).Count -ne $XrLayerBypass.Count) { throw 'Invalid OpenXR layer bypass request.' }
+}
 if ($ExpandVisibility -and (!$TraceVisibility -or $ReplayEyeFrames -lt 2)) { throw 'ExpandVisibility requires TraceVisibility and a bounded eye sequence.' }
 if ($RepeatAoDraw -and !$TraceReplayWork) { throw 'RepeatAoDraw requires TraceReplayWork.' }
 if ($RepeatShadowDraw -and !$TraceReplayWork) { throw 'RepeatShadowDraw requires TraceReplayWork.' }
@@ -394,6 +400,8 @@ if ($CompactStereoTrace) { [IO.File]::WriteAllText((Join-Path $run 'compact-ster
 if ($CompactStereoTrace -and !$RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'packed-snapshots.request'),'Pack unchanged bounded CPU snapshot bytes while rendering; unpack after recovery before independent analysis.') }
 if ($ProfileReplay) { [IO.File]::WriteAllText((Join-Path $run 'profile-replay.request'),'CPU wall-time buckets, inclusive of nested scopes; driver timing includes CPU waits and is not GPU time.') }
 if ($XrSessionProbe) { [IO.File]::WriteAllText((Join-Path $run 'xr-session.request'),$runtimeInfo.manifest,[Text.UTF8Encoding]::new($false)) }
+# Steam may start GRID 2 without launcher variables; the renderer sets these around xrCreateInstance.
+if ($XrLayerBypass.Count) { [IO.File]::WriteAllText((Join-Path $run 'xr-layer-bypass.request'),($XrLayerBypass -join "`n"),[Text.UTF8Encoding]::new($false)) }
 if ($RecordedViewsFile) { [IO.File]::Copy((Get-Item -LiteralPath $RecordedViewsFile).FullName,(Join-Path $run 'recorded-views.request'),$false) }
 if ($XrProjection) {
     . (Join-Path $PSScriptRoot 'Headset-Settings.ps1')
@@ -523,7 +531,7 @@ $receipt.disableMotionBlur=[bool]$DisableMotionBlur
 $receipt.screenUiStereo=[bool]$ScreenUiStereo
 $receipt.nativeLeftEye=$NativeLeftEye
 if ($RecordedViewsFile) { $receipt.recordedViewsSha256=(Get-FileHash -LiteralPath (Join-Path $run 'recorded-views.request')).Hash }
-if ($XrSessionProbe) { $receipt.xrRuntime=$runtimeInfo.name; $receipt.xrRuntimeManifest=$runtimeInfo.manifest }
+if ($XrSessionProbe) { $receipt.xrRuntime=$runtimeInfo.name; $receipt.xrRuntimeManifest=$runtimeInfo.manifest; $receipt.xrLayerBypass=$XrLayerBypass }
 if ($ReplayEyeOffset) { [IO.File]::WriteAllText((Join-Path $run 'eye-textures.request'),'Own two native geometry textures from one scene and verify their exact source hashes after restoration.') }
 $receipt.waitForClipTransition=[bool]$WaitForClipTransition
 $receipt.traceReplaySamples=[bool]$TraceReplaySamples

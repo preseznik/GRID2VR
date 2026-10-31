@@ -53,6 +53,7 @@ param(
     [switch]$FlickerDiagnostic,
     [switch]$HeadsetVisibilityCandidate,
     [string]$DiagnosticProxy='',
+    [ValidateLength(0,16384)][string]$XrLayerBypassBase64='',
     [switch]$Preflight
 )
 $ErrorActionPreference='Stop'
@@ -67,6 +68,7 @@ if($CockpitS2000 -ne 'Off' -and $LaunchMode -ne 'Normal' -and $Car -cne 's20') {
 if($PreviewVrFixes -and ($Mode -ne 'VR' -or $DiagnosticProxy -or $HeadsetVisibilityCandidate -or $FlickerDiagnostic)) { throw 'Preview VR fixes require VR and cannot be combined with diagnostic overrides.' }
 if($HeadsetVisibilityCandidate -and ($Mode -ne 'VR' -or !$DiagnosticProxy)) { throw 'Headset visibility candidate requires VR and an explicit isolated proxy.' }
 if($HeadsetVisibilityCandidate) { $FlickerDiagnostic=$true }
+if($XrLayerBypassBase64 -and $Mode -ne 'VR') { throw 'OpenXR layer bypasses require a VR launch.' }
 $root=Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'Paths.ps1')
 . (Join-Path $PSScriptRoot 'Recenter-Key.ps1')
@@ -98,12 +100,19 @@ try {
     Write-UserSessionStatus $root $receipt
     $headsetResolution=$null
     $sceneArguments=@()
+    $layerBypasses=@()
+    if($XrLayerBypassBase64) {
+        . (Join-Path $PSScriptRoot 'OpenXR-Layers.ps1')
+        # Approved in the launcher. A layer registration changed since then is not bypassed.
+        $layerBypasses=@(Select-Grid2VrLayerBypasses (ConvertFrom-Grid2VrLayerTransport $XrLayerBypassBase64) (Get-Grid2VrApiLayers))
+        $receipt.xrLayerBypasses=@($layerBypasses | ForEach-Object { $_.layerName })
+    }
     if($VrRenderScale) {
         if($Mode -ne 'VR') { throw 'Headset-relative resolution requires a VR launch.' }
         . (Join-Path $PSScriptRoot 'Headset-Resolution.ps1')
         $receipt.message='Reading connected headset resolution...'
         Write-UserSessionStatus $root $receipt
-        $headset=Get-ConnectedHeadsetResolution $root $XrRuntime
+        $headset=Get-ConnectedHeadsetResolution $root $XrRuntime $layerBypasses (Join-Path $runLogs 'headset-query.txt') -ReportSuccess:$DiagnosticLogging
         $headsetResolution=Get-HeadsetResolutionPlan $headset.width $headset.height $VrRenderScale
         $receipt.headsetResolution=$headsetResolution
         $receipt.headset=$headset
@@ -183,6 +192,7 @@ try {
         ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;DesktopBorderless=$DesktopBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
     if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection }
     $parameters.DeviceClaim=$DeviceClaim
+    if($layerBypasses.Count) { $parameters.XrLayerBypass=@($layerBypasses | ForEach-Object { $_.disableVariable }) }
     if($headsetResolution) {
         $parameters.HeadsetWidth=$headsetResolution.width; $parameters.HeadsetHeight=$headsetResolution.height; $parameters.VrRenderScale=$VrRenderScale
     }

@@ -362,6 +362,7 @@ internal static class SelfTests
             SectionCollapseTests.Run(client);
             SelectableStatusTests.Run(root, client);
             VrResolutionTests.Run(client);
+            VrLayerTests.Run(root, client);
             SaveLauncherPreviews(root, client);
             return 0;
         }

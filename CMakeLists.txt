@@ -16,6 +16,7 @@ if(GRID2VR_OPPONENT_LOD_SINGLE_ATTEMPT_DIAGNOSTIC AND GRID2VR_OPPONENT_LOD_CONTR
 endif()
 add_test(NAME release_native_lod_mode COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_release_native_mode.py")
 add_test(NAME headset_resolution_options COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-HeadsetResolution.ps1")
+add_test(NAME openxr_layer_recovery COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-OpenXRLayers.ps1")
 if(GRID2VR_BUILD_XR_PROBE OR GRID2VR_ENABLE_XR_SESSION)
   set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(BUILD_API_LAYERS OFF CACHE BOOL "" FORCE)
