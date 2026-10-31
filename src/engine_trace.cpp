@@ -427,7 +427,34 @@ ScenePose eyePose;
 bool dualEyes{};
 std::array<ScenePose,2> stereoPoses;
 constexpr EyeFrustum stereoRightFrustum{-.8f,1.f,-.7f,.6f};
+// Opt-in (native-left-eye.request): the native pass renders the left eye. The
+// left view replaces the center view from Prepare until the scene's eyes are
+// complete; replays are posed relative to it. Compare mode keeps the left
+// replay so its image can be checked against the native left image.
+bool nativeLeftEye{},nativeLeftReplace{};
+struct NativeEyeSwap {
+    uint64_t frame{};
+    bool active{},healthy{};
+    unsigned uploads{};
+    SceneView center{},left{};
+    std::array<ScenePose,2> replayPoses{};
+} nativeEye;
+uint64_t nativeEyeFrames{},nativeEyeRefusals{};
+const char* nativeEyeRefusal="none";
+// Only the posed camera fields (up, negative right, forward, position) are
+// swapped; any other SceneView bytes the game updates stay as it wrote them.
+constexpr std::array<size_t,4> viewPoseOffsets{0x10,0x20,0x30,0x40};
+bool SameViewPose(const SceneView& a,const SceneView& b) {
+    for (auto offset:viewPoseOffsets) if (memcmp(a.data()+offset,b.data()+offset,12)) return false;
+    return true;
+}
+bool WriteViewPose(uintptr_t view,const SceneView& pose) {
+    for (auto offset:viewPoseOffsets) memcpy(reinterpret_cast<void*>(view+offset),pose.data()+offset,12);
+    SceneView actual{};
+    return ReadMemory(reinterpret_cast<void*>(view),actual.data(),actual.size()) && SameViewPose(actual,pose);
+}
 const ScenePose& CurrentPose() {
+    if (nativeEye.active && nativeEye.frame==frame.load()) return nativeEye.replayPoses[replayPass==2?1:0];
     if (const auto* views=frozenViews.Get(frame.load())) return views->poses[replayPass==2?1:0];
     return dualEyes ? stereoPoses[replayPass==2?1:0] : eyePose;
 }
@@ -909,7 +936,12 @@ bool ClipInstructionsMatch(uintptr_t context) {
         MatchesInstructions(reinterpret_cast<void*>(gameBase+0x25c6d2),clipStores);
 }
 void ApplyReplayProjection(void* self,uintptr_t context,uintptr_t caller) {
-    if (!inReplay || !asymmetricEyeFov || !pendingScene.valid || context!=pendingScene.call.args[3]) return;
+    // Outside replays, only the main context of a native left-eye pass; its
+    // scene is not recorded until Stage5, after the first build.
+    const bool nativeScope=!inReplay && nativeEye.active && nativeEye.frame==frame.load() &&
+        GetCurrentThreadId()==renderThread && context==Read<uintptr_t>(mainObject+0x5e4);
+    if (!asymmetricEyeFov || (!inReplay && !nativeScope)) return;
+    if (inReplay && (!pendingScene.valid || context!=pendingScene.call.args[3])) return;
     constexpr uint8_t rebind[]{0x8b,0x4e,0x28,0x8b,0x11,0x8b,0x7b,0x08,0x8b,0x82,0x44,0x01,0,0,0x57,0xff,0xd0};
     // The alternate scene pass uploads the same context after both builders.
     // Guard the entire entry-to-upload path and verify; never rewrite it here.
@@ -920,22 +952,84 @@ void ApplyReplayProjection(void* self,uintptr_t context,uintptr_t caller) {
         (caller==0x4e469c && MatchesInstructions(reinterpret_cast<void*>(gameBase+0x4e4680),alternate));
     CameraContext candidate{},incoming{};
     bool valid=(build || rebindCall) && reinterpret_cast<uintptr_t>(self)==rendererObject &&
-        Read<void**>(rendererObject)==rendererShadow && pendingScene.frame==frame.load() &&
+        Read<void**>(rendererObject)==rendererShadow && (nativeScope || pendingScene.frame==frame.load()) &&
         WritableHeap(context,512) && ClipInstructionsMatch(context) &&
         ReadMemory(reinterpret_cast<void*>(context),incoming.data(),incoming.size());
     candidate=incoming;
-    valid=valid && ApplyEyeFrustum(candidate,CurrentFrustum());
-    if (rebindCall) valid=valid && eyeProjectionUploads>0 && candidate==incoming;
-    eyeProjectionHealthy&=valid;
+    // replayPass still names the last replayed eye after a pair; the native pass is the left eye.
+    valid=valid && ApplyEyeFrustum(candidate,nativeScope?CurrentFrusta()[0]:CurrentFrustum());
+    auto& uploads=nativeScope?nativeEye.uploads:eyeProjectionUploads;
+    if (rebindCall) valid=valid && uploads>0 && candidate==incoming;
+    (nativeScope?nativeEye.healthy:eyeProjectionHealthy)&=valid;
     if (valid && build) {
         // Only lateral projection terms and their derived VP. Preserve native
         // clip terms and let the existing guarded uploader bind the constants.
         for (size_t offset:{0x110u,0x124u,0x130u,0x134u})
             memcpy(reinterpret_cast<void*>(context+offset),candidate.data()+offset,4);
         memcpy(reinterpret_cast<void*>(context+0x190),candidate.data()+0x190,64);
-        ++eyeProjectionUploads;
+        ++uploads;
     }
-    Log("eye projection id=%llu applied=%u upload=%u caller_rva=0x%zx operation=%s",pendingScene.id,valid,eyeProjectionUploads,caller,build?"write":rebindCall?"verify":"unknown");
+    Log("eye projection id=%llu applied=%u upload=%u caller_rva=0x%zx operation=%s native=%u",pendingScene.id,valid,uploads,caller,
+        build?"write":rebindCall?"verify":"unknown",nativeScope);
+}
+// Starts a native left-eye pass at Prepare entry: after the visibility consumer
+// has fitted the volume to both eyes from the center view, before the game
+// prepares lights, LOD and the camera from main+0x680. Refusals leave the
+// center view untouched and the frame renders as before.
+void BeginNativeEye() {
+    if (!nativeLeftEye || nativeEye.active) return;
+    const auto current=frame.load();
+    const auto* views=frozenViews.Get(current);
+    const char* refusal=nullptr;
+    if (!views) refusal="views_not_frozen";
+    // A running epoch only: the previous frame was an accepted pair, so both
+    // eyes have owned history and no menu, playback or garage was presented.
+    else if (!replaySequence.Available() || !replaySequence.EpochCompleted() || replaySequence.LastFrame()+1!=current) refusal="epoch_not_running";
+    else if (!visibilityHealthy || !pendingVisibility.active || pendingVisibility.frame!=current || visibilityRefusedFrame==current) refusal="visibility_not_ready";
+    else if (menuScene || replaySceneBlocked || garageSceneBlocked) refusal="presentation";
+    else if (!asymmetricEyeFov || !fullEyePose || !dualEyes || !ownedEyeHistory) refusal="stereo_configuration";
+    SceneView center{},left{};ScenePose relative{};
+    const auto view=mainObject+0x680;
+    if (!refusal && (!WritableHeap(view,center.size()) || !ReadMemory(reinterpret_cast<void*>(view),center.data(),center.size()) || center[0x8c]!=1))
+        refusal="native_view";
+    if (!refusal && (!PoseSceneView(center,views->poses[0],left) || !RelativeScenePose(views->poses[0],views->poses[1],relative)))
+        refusal="eye_pose";
+    if (!refusal) {
+        if (WriteViewPose(view,left)) {
+            nativeEye={current,true,true,0,center,left,{ScenePose{},relative}};
+            if (++nativeEyeFrames<=8 || nativeEyeFrames%600==0)
+                Log("native_eye begin frame=%llu count=%llu relative_x=%.9g relative_y=%.9g relative_z=%.9g",
+                    current,nativeEyeFrames,relative.position[0],relative.position[1],relative.position[2]);
+            return;
+        }
+        WriteViewPose(view,center);
+        refusal="view_write";
+    }
+    nativeEyeRefusal=refusal;
+    if (++nativeEyeRefusals<=16 || nativeEyeRefusals%600==0)
+        Log("native_eye refused frame=%llu reason=%s count=%llu",current,refusal,nativeEyeRefusals);
+}
+// Ends the swap: projection off first, then the center view back and the
+// native camera rebuilt from it, as an unmodified native pass leaves them.
+void FinishNativeEye(const char* reason) {
+    if (!nativeEye.active) return;
+    nativeEye.active=false;
+    const auto context=Read<uintptr_t>(mainObject+0x5e4);
+    constexpr uint8_t cameraBuilder[]{0x53,0x8b,0xdc,0x83,0xec,0x08,0x83,0xe4,0xf0,0x83,0xc4,0x04,
+        0x55,0x8b,0x6b,0x04,0x89,0x6c,0x24,0x04,0x8b,0xec,0x81,0xec,0x78,0x01,0,0};
+    SceneView current{};
+    float farPlane{};
+    bool restored=WriteViewPose(mainObject+0x680,nativeEye.center) &&
+        ReadMemory(reinterpret_cast<void*>(mainObject+0x680),current.data(),current.size()) &&
+        WritableHeap(context,512) && ClipInstructionsMatch(context) &&
+        MatchesInstructions(reinterpret_cast<void*>(gameBase+0x25bf00),cameraBuilder) &&
+        ReadMemory(reinterpret_cast<void*>(context+0xec),&farPlane,sizeof(farPlane));
+    if (restored)
+        BuildNativeCamera(reinterpret_cast<NativeCameraFn>(gameBase+0x25bf00),reinterpret_cast<void*>(mainObject),context,current,farPlane);
+    if (nativeEyeFrames<=8 || nativeEyeFrames%600==0 || !restored)
+        Log("native_eye restore frame=%llu reason=%s restored=%u projection_uploads=%u projection_healthy=%u",
+            nativeEye.frame,reason,restored,nativeEye.uploads,nativeEye.healthy);
+    if (!restored) FailSession();
 }
 bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSaved,bool& gpuRestoredOutput) {
     profile::Scope measure(profile::Replay);
@@ -944,7 +1038,8 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
     replayedEmptyBuilder=false;
     // Every refusal below precedes ApplyReplayHistorySeed, the first game write.
     auto refuse=[&](const char* reason) {
-        if (runtimeSession && TransientReplayRefusal(reason,replayPass)) transientRefusal=reason;
+        // Without a left replay, the right eye is the first replayed eye.
+        if (runtimeSession && TransientReplayRefusal(reason,NativeLeftReplace() && replayPass==2?1u:replayPass)) transientRefusal=reason;
         Log("replay refused id=%llu reason=%s",scene.id,reason); return false;
     };
     auto& renderedEyeHistory=renderedEyeHistories[dualEyes && replayPass==2?1:0];
@@ -1179,9 +1274,11 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
 bool InvokeReplayPair(const PendingScene& scene,bool nativeStereo,bool firstImageSaved,
                       bool& allGpuRestored,bool& allEmptyBuilder) {
     bool accepted=true;
+    // A native left eye leaves only the right eye to replay.
+    const unsigned firstPass=dualEyes && NativeLeftReplace()?2u:1u;
     __try {
         opponentlod::runtime::SetEyeReplay(true);
-        for (unsigned pass=1;pass<=(dualEyes?2u:1u) && accepted;++pass) {
+        for (unsigned pass=firstPass;pass<=(dualEyes?2u:1u) && accepted;++pass) {
             replayPass=pass;
             bool restored{};
             accepted=RenderReplay(scene,nativeStereo,firstImageSaved,restored);
@@ -1365,8 +1462,15 @@ bool __fastcall Predicate(void* renderer,void*) {
     }
     if (!inReplay && caller==0x7a7cf4 && pendingScene.valid && pendingScene.frame==frame.load() &&
         reinterpret_cast<uintptr_t>(renderer)==rendererObject) {
+        // Every exit below, including cancels, restores the center view after the eyes.
+        struct NativeEyeRestore { ~NativeEyeRestore() { FinishNativeEye("scene_complete"); } } nativeEyeRestore;
         Log("scene complete id=%llu stage6_seen=%u native_stereo=%u caller_rva=0x%zx counter=%u",
             pendingScene.id,pendingScene.stage6Seen,result,caller,Read<uint32_t>(mainObject+0xc8));
+        if (nativeEye.active && nativeEye.frame==pendingScene.frame && (!nativeEye.healthy || !nativeEye.uploads)) {
+            // The game camera did not take the left projection: never present it as an eye.
+            Log("native_eye projection_failed frame=%llu uploads=%u healthy=%u",nativeEye.frame,nativeEye.uploads,nativeEye.healthy);
+            FailSession();
+        }
         if (runtimeSession && dynamicViews && expandVisibility && !frozenViews.Pending() &&
             CanSuspendWithoutVisibility(replaySequence,frozenViews,pendingScene.frame,visibilityConsumerFrame.load(),pendingVisibility.active,
                 visibilityHealthy && GetCurrentThreadId()==renderThread && !result && pendingScene.stage6Seen &&
@@ -1447,11 +1551,23 @@ void __fastcall Prepare(void* self,void*,uintptr_t arg) {
         pendingVisibility.frame==frame.load() && reinterpret_cast<uintptr_t>(self)==mainObject &&
         GetCurrentThreadId()==renderThread);
     if (visibility) SnapshotVisibility(currentStage.id,"prepare-before");
-    if (GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject) {
-        if (!inReplay) frametiming::Mark(frametiming::CenterBegin);
+    const bool nativeMain=!inReplay && GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject;
+    if (nativeMain) {frametiming::Mark(frametiming::CenterBegin);BeginNativeEye();}
+    if (GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject)
         signvisibility::Snapshot(frame.load(),currentStage.id,replayPass,"prepare-before",mainObject,0);
-    }
     realPrepare(self,arg);
+    if (nativeMain && nativeEye.active) {
+        // Prepare must read the left view, not replace it; otherwise this frame
+        // renders the center as before.
+        SceneView actual{};
+        if (!ReadMemory(reinterpret_cast<void*>(mainObject+0x680),actual.data(),actual.size()) || !SameViewPose(actual,nativeEye.left)) {
+            // Put the center back over whatever Prepare wrote, then render as before.
+            const bool restored=WriteViewPose(mainObject+0x680,nativeEye.center);
+            nativeEye.active=false;nativeEyeRefusal="prepare_rewrote_view";++nativeEyeRefusals;
+            Log("native_eye refused frame=%llu reason=prepare_rewrote_view restored=%u count=%llu",nativeEye.frame,restored,nativeEyeRefusals);
+            if (!restored) FailSession();
+        }
+    }
     if (visibility) SnapshotVisibility(currentStage.id,"prepare-after");
     if (GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject)
         signvisibility::Snapshot(frame.load(),currentStage.id,replayPass,"prepare-after",mainObject,0);
@@ -1686,6 +1802,14 @@ InstallResult Install(uintptr_t base,const std::filesystem::path& folder,Boundar
             !SeparateSceneEyes(eyePose,diagnosticEyeOffset,stereoPoses))) {
             replayEnabled=false; Log("sequence refused reason=invalid_stereo_pose");
         }
+        // Compare mode keeps both replays, so native and replayed left images can
+        // be checked; replace mode skips the left replay on native left-eye frames.
+        nativeLeftEye=runtimeSession && replayEnabled && dualEyes && std::filesystem::exists(folder/L"native-left-eye.request");
+        if (nativeLeftEye) {
+            std::ifstream request(folder/L"native-left-eye.request");std::string mode;request>>mode;
+            nativeLeftReplace=mode=="replace";
+            Log("native_eye requested=1 mode=%s",nativeLeftReplace?"replace":"compare");
+        }
         waitForClipTransition=replayEnabled && std::filesystem::exists(folder/L"wait-clip-transition.request");
         headsetProjection=std::filesystem::exists(folder/L"xr-projection.request");
         // A simulated UI-stereo run must exercise the same loading/pause
@@ -1744,11 +1868,16 @@ void WriteSessionStatus() {
         << ",\"instanceAllocationTelemetryPolicy\":\"" << (instanceObservationPolicy.Suppression()?instanceObservationPolicy.Suppression():"isolated_ai") << '"'
         << ",\"instanceAllocationEntryUnchanged\":" << (MatchesInstructions(reinterpret_cast<void*>(gameBase+0x185940),instanceAllocateEntry)?"true":"false")
         << ",\"instanceCapacityGuards\":" << (instancecapacity::Enabled()?"true":"false")
-        << ",\"instanceRequests\":" << instanceRequests.load() << ",\"instanceFailures\":" << instanceFailures.load();
+        << ",\"instanceRequests\":" << instanceRequests.load() << ",\"instanceFailures\":" << instanceFailures.load()
+        << ",\"nativeLeftEye\":" << (nativeLeftEye?"true":"false") << ",\"nativeLeftReplace\":" << (nativeLeftReplace?"true":"false")
+        << ",\"nativeEyeFrames\":" << nativeEyeFrames
+        << ",\"nativeEyeRefusals\":" << nativeEyeRefusals << ",\"lastNativeEyeRefusal\":\"" << nativeEyeRefusal << '"';
     instancecapacity::Status(status);status << "}\n";
 }
 void Frame(uint64_t nextFrame) {
     if (sessionFailureRequested.exchange(false)) FailSession();
+    // A swapped native pass whose scene never completed still gets its center view back.
+    if (nativeEye.active) FinishNativeEye("present_fallback");
     if (pendingVisibility.active) RestoreVisibility("present_fallback");
     if (frozenViews.Pending()) {
         const auto dropped=frozenViews.Frame();frozenViews.Finish(dropped,false);visibilityHealthy=false;
@@ -1918,6 +2047,11 @@ SceneStamp CurrentScene() {
     return pendingScene.valid && pendingScene.frame==frame.load() ? SceneStamp{pendingScene.id,inReplay,replayPass}:SceneStamp{};
 }
 bool ReplayingEye() { return inReplay; }
+bool NativeLeftEye() { return nativeEye.active && nativeEye.frame==frame.load(); }
+bool NativeLeftReplace() { return nativeLeftReplace && NativeLeftEye(); }
+const SceneViews* NativeEyeViews() {
+    return !inReplay && NativeLeftEye() && GetCurrentThreadId()==renderThread ? frozenViews.Get(frame.load()):nullptr;
+}
 const SceneViews* CurrentReplayViews() {
     return inReplay && dualEyes && fullEyePose && asymmetricEyeFov ? frozenViews.Get(frame.load()):nullptr;
 }

@@ -137,7 +137,13 @@ try {
     $runtime=@{storageBounded=$true;status=@{failed=$false;state=2;acceptedPairs=128;attemptedPairs=128};stopped=@{failed=$false};unexpectedFaults=@()}
     $capture=@{complete=$true;logTruncated=$false;malformedLines=$false;scenes=@(1..8 | ForEach-Object { @{completion=@{accepted=1;truncated=@(0,0,0)};drawCounts=@(100,100,100)} })}
     Assert-AutomatedFlickerResult $runtime $capture
-    foreach($fault in @('partial','truncated','unacknowledged','failed','missing_eye')) {
+    # Replace mode: the native pass is the left eye and only the right eye replays.
+    $replaceRuntime=$runtime | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+    $replaceRuntime.status | Add-Member -NotePropertyName nativeLeftReplace -NotePropertyValue $true
+    $replaceCapture=$capture | ConvertTo-Json -Depth 6 | ConvertFrom-Json
+    foreach($scene in $replaceCapture.scenes) { $scene.drawCounts=@(100,0,100) }
+    Assert-AutomatedFlickerResult $replaceRuntime $replaceCapture
+    foreach($fault in @('partial','truncated','unacknowledged','failed','missing_eye','left_without_replace','right_in_replace')) {
         $r=$runtime | ConvertTo-Json -Depth 6 | ConvertFrom-Json
         $c=$capture | ConvertTo-Json -Depth 6 | ConvertFrom-Json
         switch($fault) {
@@ -146,6 +152,8 @@ try {
             unacknowledged { $r.stopped=$null }
             failed { $r.status.failed=$true }
             missing_eye { $c.scenes[0].drawCounts=@(100,100,0) }
+            left_without_replace { $c.scenes[0].drawCounts=@(100,0,100) }
+            right_in_replace { $r.status | Add-Member -NotePropertyName nativeLeftReplace -NotePropertyValue $true; $c.scenes[0].drawCounts=@(100,0,0) }
         }
         $rejected=$false
         try { Assert-AutomatedFlickerResult $r $c } catch { $rejected=$true }

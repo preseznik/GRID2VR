@@ -53,6 +53,12 @@ bool ReplayingEye();
 bool CurrentCockpitCamera();
 // Borrow the immutable pair only during a fully posed asymmetric stereo replay.
 const SceneViews* CurrentReplayViews();
+// The native pass renders the left eye this frame (native-left-eye.request).
+bool NativeLeftEye();
+// Replace mode on such a frame: no left replay; eye images are native left, then right.
+bool NativeLeftReplace();
+// The immutable pair during the native left-eye pass only, for its screen UI.
+const SceneViews* NativeEyeViews();
 // Immutable original/main-eye contexts, never an auxiliary camera or live pointer.
 bool CurrentLightCameras(std::array<uint8_t,512>& center,std::array<uint8_t,512>& eye);
 }

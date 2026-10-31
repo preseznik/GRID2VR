@@ -882,25 +882,29 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
             }
         }
     }
-    if (screenUiEnabled && scene.replay && pass>0 && pass<3 && stage.slot==0 && kind[0]!='C') {
+    // Replays place the UI for their own eye; a native pass rendering the left
+    // eye places it for eye 0, exactly as the left replay would.
+    const auto* nativeEyeViews=scene.replay?nullptr:engine::NativeEyeViews();
+    const unsigned uiEye=scene.replay?pass-1:0;
+    if (screenUiEnabled && ((scene.replay && pass>0 && pass<3) || nativeEyeViews) && stage.slot==0 && kind[0]!='C') {
         ComPtr<ID3D11VertexShader> vs;context->VSGetShader(&vs,nullptr,nullptr);
         const auto shader=ShaderHash(vs.Get());
-        if (pass==1 && !ScreenUiVertexShader(shader)) screenUi.Observe(context,shader,engine::NativeCameraFrame());
+        if (uiEye==0 && !ScreenUiVertexShader(shader)) screenUi.Observe(context,shader,engine::NativeCameraFrame());
         const auto shaderIndex=ScreenUiShaderIndex(shader);
         if (shaderIndex<uiShaderCounts.size()) {
             auto& counts=uiShaderCounts[shaderIndex];
             if (!counts.firstScene) {
                 counts.firstScene=scene.id;counts.firstNativeFrame=engine::NativeCameraFrame();uiProofChanged=true;
             }
-            const auto* views=engine::CurrentReplayViews();
-            const auto result=views ? screenUi.Apply(context,shader,*views,pass-1):ScreenUi::Result::Skipped;
+            const auto* views=scene.replay?engine::CurrentReplayViews():nativeEyeViews;
+            const auto result=views ? screenUi.Apply(context,shader,*views,uiEye):ScreenUi::Result::Skipped;
             if (result==ScreenUi::Result::Applied) {
-                uiPendingShader=shaderIndex;++counts.applied[pass-1];
+                uiPendingShader=shaderIndex;++counts.applied[uiEye];
                 if (!counts.firstAppliedScene) {
                     counts.firstAppliedScene=scene.id;counts.firstAppliedNativeFrame=engine::NativeCameraFrame();uiProofChanged=true;
                 }
-                ++uiApplied[pass-1];if (shader==0x6980d3e81754047dull) ++uiText[pass-1];
-            } else if (result==ScreenUi::Result::Skipped) { ++uiSkipped[pass-1];++counts.skipped[pass-1]; }
+                ++uiApplied[uiEye];if (shader==0x6980d3e81754047dull) ++uiText[uiEye];
+            } else if (result==ScreenUi::Result::Skipped) { ++uiSkipped[uiEye];++counts.skipped[uiEye]; }
             else { pairHealthy=false;log << "screen_ui apply_failed=1 pass=" << pass << '\n';log.FlushNow(); }
         }
     }

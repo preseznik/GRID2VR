@@ -90,6 +90,10 @@ bool diagnosticLogging{true};
 StopReceipt stopReceipt;
 FocusCockpit focusCockpit;
 EyeTextures eyeTextures;
+// Center, left, right; or left, right when the native pass rendered the left
+// eye and its replay was skipped. A single offset diagnostic eye has two images.
+unsigned LeftEyeImage() { return engine::DualEyes() && eyeTextures.Target()==3 ? 1 : 0; }
+unsigned RightEyeImage() { return LeftEyeImage()+1; }
 EyeMirror eyeMirror;
 PreviewFrame previewFrame;
 LateScreenUi lateUi;
@@ -508,13 +512,13 @@ void CompleteViews(uint64_t frameId,uint64_t scene,bool accepted) {
         engineContext->OMGetRenderTargets(1,&target,nullptr);
         if (target) target->GetResource(&resource);
         if (resource && SUCCEEDED(resource.As(&native)) &&
-            lateUi.Begin(engineContext.Get(),frameId,acquiredViews,native.Get(),eyeTextures.Get(scene,1),eyeTextures.Get(scene,2))) {
+            lateUi.Begin(engineContext.Get(),frameId,acquiredViews,native.Get(),eyeTextures.Get(scene,LeftEyeImage()),eyeTextures.Get(scene,RightEyeImage()))) {
             lateUiScene=scene;return;
         }
     }
 #ifdef GRID2VR_ENABLE_XR_SESSION
     if (xrProjection && !xrStopped && xrSession.Views()) {
-        const bool ended=xrSession.FinishFrame(frameId,ready,eyeTextures.Get(scene,1),eyeTextures.Get(scene,2));
+        const bool ended=xrSession.FinishFrame(frameId,ready,eyeTextures.Get(scene,LeftEyeImage()),eyeTextures.Get(scene,RightEyeImage()));
         completed=ready && ended;
         if (runtimeSession && !ended) engine::FailSession();
         Log("openxr pair frame=%llu scene=%llu accepted=%u ended=%u",frameId,scene,ready,ended);
@@ -531,7 +535,7 @@ void FinishLateUi(bool present) {
         eyeTextures.Ready(lateUiScene) && replaytrace::PairHealthy();
 #ifdef GRID2VR_ENABLE_XR_SESSION
     if (xrProjection && !xrStopped && xrSession.Views()) {
-        const bool ended=xrSession.FinishFrame(frameId,ready,eyeTextures.Get(lateUiScene,1),eyeTextures.Get(lateUiScene,2));
+        const bool ended=xrSession.FinishFrame(frameId,ready,eyeTextures.Get(lateUiScene,LeftEyeImage()),eyeTextures.Get(lateUiScene,RightEyeImage()));
         if (!ended && runtimeSession) engine::FailSession();
         ready&=ended;
     }
@@ -547,7 +551,7 @@ void MirrorPreview(IDXGISwapChain* chain,uint64_t frameId) {
     if(!pending.scene)return;
     // GetBuffer is local: ResizeBuffers must never inherit a retained reference.
     ComPtr<ID3D11Texture2D> back;
-    auto* source=eyeTextures.Get(pending.scene,1);
+    auto* source=eyeTextures.Get(pending.scene,LeftEyeImage());
     const bool copied=SUCCEEDED(chain->GetBuffer(0,IID_PPV_ARGS(&back))) &&
         eyeMirror.Copy(engineContext.Get(),source,back.Get());
     static unsigned rows{};
@@ -596,12 +600,12 @@ bool StageBoundary(engine::StageStamp stage,const char* phase) {
         return !strcmp(digest.status,"ok") && digest.subresources.size()==1 ? digest.subresources[0].sha256:std::string("unavailable");
     };
     if (eyePair && !strcmp(phase,"scene-entry")) {
-        eyeTextureScene=eyeTextures.Begin(stage.id,engine::DualEyes()?3:2)?stage.id:0;
+        eyeTextureScene=eyeTextures.Begin(stage.id,engine::DualEyes() && !engine::NativeLeftReplace()?3:2)?stage.id:0;
     }
     if (eyePair && !strcmp(phase,"replay-restored") && (!engine::DualEyes() || engine::CurrentScene().pass==2)) {
         const bool ready=eyeTextures.Ready(stage.id);
-        const auto left=auditImages?imageHash(eyeTextures.Get(stage.id,engine::DualEyes()?1:0)):"not_read_back";
-        const auto right=auditImages?imageHash(eyeTextures.Get(stage.id,engine::DualEyes()?2:1)):"not_read_back";
+        const auto left=auditImages?imageHash(eyeTextures.Get(stage.id,LeftEyeImage())):"not_read_back";
+        const auto right=auditImages?imageHash(eyeTextures.Get(stage.id,RightEyeImage())):"not_read_back";
         Log("eye pair id=%llu ready=%u left=%s right=%s",stage.id,ready,left.c_str(),right.c_str());
     }
     if (detailed && stage.slot==100 && (!strcmp(phase,"scene-complete") || !strcmp(phase,"replay-restored"))) {
@@ -641,7 +645,8 @@ bool StageBoundary(engine::StageStamp stage,const char* phase) {
                 if (complete && i==0) {D3D11_TEXTURE2D_DESC desc{};texture->GetDesc(&desc);sceneresolution::ObserveScene(desc.Width,desc.Height);}
                 if(complete)flicker::FinishPass(context,stage.id,!strcmp(phase,"replay-complete")?engine::CurrentScene().pass:0,texture.Get());
                 if (eyePair && complete) {
-                    const unsigned eye=!strcmp(phase,"replay-complete")?engine::CurrentScene().pass:0;
+                    // With no left replay, the right replay (pass 2) follows the native left image.
+                    const unsigned eye=!strcmp(phase,"replay-complete")?engine::CurrentScene().pass-(engine::NativeLeftReplace()?1:0):0;
                     const auto hash=auditImages?imageHash(texture.Get()):"not_read_back";
                     const bool copied=eyeTextureScene==stage.id && eyeTextures.Capture(context,stage.id,eye,texture.Get());
                     if (engine::RepeatingEyes()) captured=copied && replaytrace::PairHealthy();
@@ -664,7 +669,7 @@ bool StageBoundary(engine::StageStamp stage,const char* phase) {
         if (SUCCEEDED(resource.As(&texture))) CaptureTexture(texture.Get(),"stage-"+std::to_string(stage.id)+"-slot5-depth");
     }
     if (eyePair && !strcmp(phase,"replay-restored"))
-        return eyeTextures.Captured(stage.id,engine::CurrentScene().pass+1) && replaytrace::PairHealthy();
+        return eyeTextures.Captured(stage.id,engine::CurrentScene().pass+(engine::NativeLeftReplace()?0:1)) && replaytrace::PairHealthy();
     return captured;
 }
 

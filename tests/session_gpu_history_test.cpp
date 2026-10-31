@@ -11,6 +11,7 @@ SceneStamp CurrentScene() { return testScene; }
 bool CurrentCockpitCamera() { return false; }
 uint64_t NativeCameraFrame() { return testScene.id; }
 const SceneViews* CurrentReplayViews() { return nullptr; }
+const SceneViews* NativeEyeViews() { return nullptr; }
 bool CurrentLightCameras(std::array<uint8_t,512>&,std::array<uint8_t,512>&) { return false; }
 StageStamp CurrentStage() { return {}; }
 bool RepeatingEyes() { return true; }

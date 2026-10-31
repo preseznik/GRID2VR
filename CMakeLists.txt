@@ -520,6 +520,9 @@ add_test(NAME headset_projection_preserves_native_depth COMMAND projection_depth
   "${CMAKE_SOURCE_DIR}/tests/fixtures/native-transition-context.bin"
   "${CMAKE_SOURCE_DIR}/tests/fixtures/native-moving-center-context.bin"
   "${CMAKE_SOURCE_DIR}/tests/fixtures/native-moving-right-context.bin")
+add_executable(native_left_eye_test tests/native_left_eye_test.cpp)
+target_include_directories(native_left_eye_test PRIVATE src)
+add_test(NAME native_left_eye_pose COMMAND native_left_eye_test)
 add_executable(full_pose_test tests/full_pose_test.cpp)
 target_include_directories(full_pose_test PRIVATE src)
 add_test(NAME full_camera_pose COMMAND full_pose_test

@@ -46,6 +46,7 @@ param(
     [ValidateSet(0,1)][int]$HudFollowView=0,
     [ValidateSet(0,1)][int]$VrReplayCameras=1,
     [ValidateSet(0,1)][int]$VrGarageMenus=1,
+    [switch]$NativeLeftEye,
     [ValidateRange(0,31)][int]$HudHiddenElements=1,
     [switch]$PerformanceDisplay,
     [ValidateSet(0,1)][int]$PerformanceFollowView=1,
@@ -118,6 +119,7 @@ try {
     $receipt.hideImpactGlitch=($Mode -eq 'VR' -and !$NativeImpactEffect)
     $receipt.vrReplayCameras=[bool]$VrReplayCameras
     $receipt.vrGarageMenus=[bool]$VrGarageMenus
+    $receipt.nativeLeftEye=($Mode -eq 'VR' -and [bool]$NativeLeftEye)
     $receipt.performanceDisplay=($Mode -eq 'VR' -and [bool]$PerformanceDisplay)
     $receipt.performanceFollowView=[bool]$PerformanceFollowView
     $receipt.removeCinemaMatte=($Mode -eq 'VR')
@@ -190,6 +192,7 @@ try {
     $parameters.HudDistance=$HudDistance; $parameters.HudFollowView=$HudFollowView; $parameters.HudHiddenElements=$HudHiddenElements
     $parameters.VrReplayCameras=$VrReplayCameras
     $parameters.VrGarageMenus=$VrGarageMenus
+    $parameters.NativeLeftEye=$(if($Mode -eq 'VR' -and $NativeLeftEye){'Replace'}else{'Off'})
     $parameters.PerformanceDisplay=($Mode -eq 'VR' -and [bool]$PerformanceDisplay)
     $parameters.PerformanceFollowView=$PerformanceFollowView
     $parameters.RemoveCinemaMatte=($Mode -eq 'VR')

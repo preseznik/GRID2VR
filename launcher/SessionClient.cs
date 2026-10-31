@@ -18,6 +18,8 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public string OpponentCars { get; init; } = "same";
     public bool VrReplayCameras { get; init; } = true;
     public bool VrGarageMenus { get; init; } = true;
+    // Experimental: the game's own render is the left eye; only the right eye is replayed.
+    public bool NativeLeftEye { get; init; }
     public bool VrCockpit { get; init; } = true;
     public string CockpitDriver { get; init; } = "HeadOnly";
     public bool CockpitExposureLimit { get; init; } = true;
@@ -243,6 +245,7 @@ internal sealed class SessionClient(string root)
             command.ArgumentList.Add(value.PerformanceFollowView ? "1" : "0");
         }
         if (vr && !value.KeepHorizonLevel) command.ArgumentList.Add("-RecenterTilt");
+        if (vr && value.NativeLeftEye) command.ArgumentList.Add("-NativeLeftEye");
         if (vr && !value.CockpitExposureLimit) command.ArgumentList.Add("-NativeCockpitExposure");
         if (vr && !value.HideImpactGlitch) command.ArgumentList.Add("-NativeImpactEffect");
         if (vr && value.RecenterDevice is not null) { command.ArgumentList.Add("-RecenterDeviceBase64"); command.ArgumentList.Add(DeviceRecenter.Encode(value.RecenterDevice)); }

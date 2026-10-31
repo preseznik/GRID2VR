@@ -58,10 +58,13 @@ function Assert-AutomatedFlickerResult($Runtime, $Capture) {
         !$Runtime.stopped -or $Runtime.stopped.failed -ne $false -or @($Runtime.unexpectedFaults).Count -gt 0 -or
         $Capture.complete -ne $true -or $Capture.logTruncated -ne $false -or $Capture.malformedLines -ne $false -or
         @($Capture.scenes).Count -ne 8) { throw 'Incomplete or unhealthy automatic stereo capture.' }
+    # A native left-eye replace run has no left replay: its pass 1 draws nothing.
+    $replace=$Runtime.status.nativeLeftReplace -eq $true
     foreach($scene in $Capture.scenes) {
+        $draws=@($scene.drawCounts)
         if(!$scene.completion -or $scene.completion.accepted -ne 1 -or @($scene.completion.truncated).Count -ne 3 -or
             @($scene.completion.truncated | Where-Object { $_ -ne 0 }).Count -gt 0 -or
-            @($scene.drawCounts).Count -ne 3 -or @($scene.drawCounts | Where-Object { $_ -le 0 }).Count -gt 0) {
+            $draws.Count -ne 3 -or $draws[0] -le 0 -or $draws[2] -le 0 -or ($draws[1] -le 0 -and !$replace)) {
             throw 'Automatic capture contains an incomplete or truncated eye scene.'
         }
     }

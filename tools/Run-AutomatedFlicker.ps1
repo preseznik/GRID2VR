@@ -18,6 +18,7 @@ param(
     [switch]$MirrorPreview,
     [switch]$VisibilityCapture,
     [switch]$ScreenUiStereo,
+    [ValidateSet('Off','Compare','Replace')][string]$NativeLeftEye='Off',
     [ValidateSet('Off','Observe','Expand')][string]$InstanceCapacity='Off',
     [string]$RecordedViewsFile='',
     [switch]$Preflight,
@@ -57,6 +58,7 @@ $parameters=@{
     MirrorPreview=[bool]$MirrorPreview
     VisibilityCapture=[bool]$VisibilityCapture
     ScreenUiStereo=[bool]$ScreenUiStereo
+    NativeLeftEye=$NativeLeftEye
     InstanceCapacity=$InstanceCapacity
     DiagnosticProxy=$DiagnosticProxy;BackgroundPlay='Suppress';SessionDirectory=$selection;PythonPath=$python
     HardwareSettingsFile=(Join-Path $PSScriptRoot 'practice-settings.xml')
@@ -66,6 +68,8 @@ Write-Output "Automatic flicker diagnostic: $Mode; native AI driving; eight-scen
 if($CaptureSignTransition) { Write-Output 'Capture is requested after the first stereo pair; the renderer waits for the verified sign placement before starting the eight-scene burst.' }
 if($NativeVisibilityControl) { Write-Output 'Diagnostic control: retain the native visibility volume while replaying both eyes. This is not a launcher setting or a headset visibility test.' }
 if($TrackedVisibility) { Write-Output 'Diagnostic candidate: fit a perspective visibility volume to the current eye pair; other VR settings remain unchanged.' }
+if($NativeLeftEye -eq 'Compare') { Write-Output 'Diagnostic candidate: the native pass renders the left eye; both replays still run so the native and replayed left images can be compared.' }
+if($NativeLeftEye -eq 'Replace') { Write-Output 'Diagnostic candidate: the native pass renders the left eye and only the right eye is replayed.' }
 if($VisibilityCapture) { Write-Output 'Reduced capture: visibility geometry, draw totals and eight completed image triples; no per-draw payloads. The bounded 180-scene watch remains enabled.' }
 if($Mode -eq 'Simulated') { Write-Output 'Recorded poses exercise scene stereo. OpenXR and headset texture scaling are not exercised in this mode.' }
 & (Join-Path $PSScriptRoot 'Run-StereoProbe.ps1') @parameters

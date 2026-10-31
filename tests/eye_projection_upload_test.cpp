@@ -1,19 +1,24 @@
 #include "eye_projection.h"
 #include "guarded_hooks.h"
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <fstream>
 
 using namespace grid2vr;
 namespace {
-uintptr_t gameBase{},rendererObject{},ownedContext{};
+uintptr_t gameBase{},rendererObject{},ownedContext{},mainObject{};
 void** rendererShadow{};
+DWORD renderThread{};
 bool inReplay=true,asymmetricEyeFov=true,eyeProjectionHealthy=true,clipHealthy=true;
 unsigned eyeProjectionUploads{};
 std::atomic<uint64_t> frame{100};
 struct { bool valid=true;uint64_t id=1,frame=100;struct {uintptr_t args[4]{};} call; } pendingScene;
+struct { uint64_t frame=100;bool active{},healthy=true;unsigned uploads{}; } nativeEye;
 EyeFrustum eye{-1.2f,.9f,-1.f,.8f};
 const EyeFrustum& CurrentFrustum() {return eye;}
+// The native left-eye pass must take frusta[0] even though replayPass names the right eye.
+std::array<EyeFrustum,2> CurrentFrusta() {return {eye,EyeFrustum{-.5f,.5f,-.5f,.5f}};}
 template<class T>T Read(uintptr_t address) {T value{};ReadMemory(reinterpret_cast<void*>(address),&value,sizeof(value));return value;}
 // Other native clip/ownership guards remain unchanged. This test isolates the
 // production uploader's caller classification, projection and refusal behavior.
@@ -72,6 +77,27 @@ int main(int argc,char** argv) {
                 CHECK(!eyeProjectionHealthy && camera==projected && eyeProjectionUploads==1);
                 image[0x4e4680+byte]^=1;
             }
+            // The native left-eye pass: outside a replay, only the main context
+            // (main+0x5e4) on the render thread, with its own upload count.
+            std::array<uint8_t,0x600> main{};memcpy(main.data()+0x5e4,&ownedContext,sizeof(uint32_t));
+            mainObject=reinterpret_cast<uintptr_t>(main.data());renderThread=GetCurrentThreadId();
+            inReplay=false;eyeProjectionHealthy=true;eyeProjectionUploads=7;
+            camera=native;nativeEye={100,true,true,0};
+            ApplyReplayProjection(&renderer,ownedContext,0x25cccd);
+            CHECK(nativeEye.healthy && nativeEye.uploads==1 && eyeProjectionUploads==7 && camera==projected);
+            ApplyReplayProjection(&renderer,ownedContext,0x32c2ec);
+            CHECK(nativeEye.healthy && nativeEye.uploads==1 && camera==projected);
+            for(unsigned refusal=0;refusal<4;++refusal) {
+                camera=native;nativeEye={100,true,true,0};
+                if(refusal==0)nativeEye.active=false;
+                if(refusal==1)nativeEye.frame=99;
+                if(refusal==2)renderThread=GetCurrentThreadId()+1;
+                if(refusal==3)memset(main.data()+0x5e4,0,4);
+                ApplyReplayProjection(&renderer,ownedContext,0x25cccd);
+                CHECK(camera==native && nativeEye.uploads==0 && eyeProjectionUploads==7);
+                renderThread=GetCurrentThreadId();memcpy(main.data()+0x5e4,&ownedContext,sizeof(uint32_t));
+            }
+            inReplay=true;nativeEye={};mainObject=0;
         }
     }
     CHECK(VirtualFree(image,0,MEM_RELEASE));

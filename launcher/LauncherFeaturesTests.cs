@@ -44,6 +44,13 @@ internal static class LauncherFeaturesTests
         client.Save(tilted); Check(!client.Load().KeepHorizonLevel); client.Save(settings);
         Check(client.LaunchCommand(tilted,true).ArgumentList.Contains("-RecenterTilt"));
         Check(!client.LaunchCommand(tilted,false).ArgumentList.Contains("-RecenterTilt"));
+        // Experimental native left eye: off by default and for older settings; VR launches only.
+        Check(!new Choices().NativeLeftEye && !JsonSerializer.Deserialize<Choices>("{}")!.NativeLeftEye);
+        Check(!client.LaunchCommand(settings with { NativeLeftEye = false }, true).ArgumentList.Contains("-NativeLeftEye"));
+        var fasterStereo = settings with { NativeLeftEye = true };
+        client.Save(fasterStereo); Check(client.Load().NativeLeftEye); client.Save(settings);
+        Check(client.LaunchCommand(fasterStereo, true).ArgumentList.Contains("-NativeLeftEye"));
+        Check(!client.LaunchCommand(fasterStereo, false).ArgumentList.Contains("-NativeLeftEye"));
         var seats = new SeatAlignment { Cars = new() { ["s20"] = new(-10, 2, 3), ["pag"] = new(-5, 0, 0) } }; seats.Save(fixture);
         Check(SeatAlignment.Load(fixture).Cars["s20"] == new SeatOffset(-10,2,3));
         Check(JsonSerializer.Serialize(client.Load()) == before);

@@ -51,6 +51,7 @@ param(
     [switch]$MirrorPreview,
     [switch]$VisibilityCapture,
     [switch]$ScreenUiStereo,
+    [ValidateSet('Off','Compare','Replace')][string]$NativeLeftEye='Off',
     [switch]$FrontendSceneAudit,
     [ValidateSet('Off','Observe','Expand')][string]$InstanceCapacity='Off',
     [ValidateRange(1,600)][int]$FlickerCaptureAfterPairs=120,
@@ -271,6 +272,7 @@ $preflight.headsetVisibilityCandidate=[bool]$HeadsetVisibilityCandidate
 $preflight.mirrorPreview=[bool]$MirrorPreview
 $preflight.visibilityCapture=[bool]$VisibilityCapture
 $preflight.screenUiStereo=[bool]$ScreenUiStereo
+$preflight.nativeLeftEye=$NativeLeftEye
 $preflight.instanceCapacity=$InstanceCapacity
 $preflight.flickerCaptureAfterPairs=$FlickerCaptureAfterPairs
 $preflight.flickerObservationSeconds=$FlickerObservationSeconds
@@ -381,6 +383,7 @@ try {
         MirrorPreview=[bool]$MirrorPreview
         VisibilityCapture=[bool]$VisibilityCapture
         ScreenUiStereo=[bool]$ScreenUiStereo
+        NativeLeftEye=$NativeLeftEye
         InstanceCapacity=$InstanceCapacity
         RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers;RecenterDeviceBase64=$RecenterDeviceBase64;RecenterTilt=[bool]$RecenterTilt
         UntilExit=[bool]$UntilExit

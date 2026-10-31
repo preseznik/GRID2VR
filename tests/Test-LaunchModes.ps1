@@ -27,6 +27,21 @@ foreach($invalid in @(@{LaunchMode='Replay'},@{Opponents=0},@{Opponents=8},@{Opp
     if(!$rejected) { throw 'Invalid launch option accepted.' }
 }
 
+# Experimental native left eye: an off-by-default switch, forwarded as Replace for VR only.
+$nativeBind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n[bool]`$NativeLeftEye")
+if((& $nativeBind) -or !(& $nativeBind -NativeLeftEye)) { throw 'Native left-eye switch binding changed.' }
+$nativeForward=$start.Find({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$parameters.NativeLeftEye'},$true)
+if(!$nativeForward) { throw 'Native left-eye switch is not forwarded.' }
+foreach($case in @(@('VR',$true,'Replace'),@('VR',$false,'Off'),@('Desktop',$true,'Off'))) {
+    $Mode=$case[0];$NativeLeftEye=$case[1];$parameters=@{}
+    . ([scriptblock]::Create($nativeForward.Extent.Text))
+    if($parameters.NativeLeftEye -cne $case[2]) { throw "Native left-eye forwarding wrong for $($case[0])/$($case[1])." }
+}
+foreach($script in @('Run-StereoProbe.ps1','Run-Diagnostic.ps1')) {
+    $attribute=(Read-TestAst $script).ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'NativeLeftEye' }
+    if(!$attribute -or $attribute.Extent.Text -notmatch "ValidateSet\('Off','Compare','Replace'\)") { throw "$script lacks the native left-eye modes." }
+}
+
 # Execute the actual preparation/routing branches in an owned fixture. External
 # Python is replaced with a recorder; no game, Steam or hardware files are read.
 $fixture=Join-Path $root ('build/launch-mode-test-'+[guid]::NewGuid().ToString('N'))

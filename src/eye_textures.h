@@ -17,6 +17,7 @@ public:
     bool Capture(ID3D11DeviceContext* context,uint64_t frame,unsigned eye,ID3D11Texture2D* source);
     bool Captured(uint64_t frame,unsigned count) const { return frame==frame_ && count>0 && count_==count; }
     bool Ready(uint64_t frame) const { return Captured(frame,target_); }
+    unsigned Target() const { return target_; }
     // Invalidate publication and release owned images between restored sessions.
     // Keep frame_ monotonic so an old scene can never become current again.
     void Reset() { count_=allocated_=0;collecting_=false;images_={};device_.Reset();description_={};resolveContext_.Reset();resolveState_.Reset(); }

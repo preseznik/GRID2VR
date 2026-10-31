@@ -51,13 +51,103 @@ inline bool PoseAxes(const ScenePose& pose,PoseRotation& axes) {
            {2*(x*z+y*w),2*(y*z-x*w),1-2*(x*x+y*y)}}};
     return true;
 }
+// Inverse of PoseAxes for a proper rotation in the same rows-are-axes convention.
+inline bool AxesPose(const PoseRotation& a,std::array<float,4>& orientation) {
+    double x{},y{},z{},w{};
+    const double trace=a[0][0]+a[1][1]+a[2][2];
+    if (trace>0) {
+        const double s=std::sqrt(trace+1)*2;
+        w=s/4;x=(a[1][2]-a[2][1])/s;y=(a[2][0]-a[0][2])/s;z=(a[0][1]-a[1][0])/s;
+    } else if (a[0][0]>a[1][1] && a[0][0]>a[2][2]) {
+        const double s=std::sqrt(1+a[0][0]-a[1][1]-a[2][2])*2;
+        x=s/4;w=(a[1][2]-a[2][1])/s;y=(a[0][1]+a[1][0])/s;z=(a[2][0]+a[0][2])/s;
+    } else if (a[1][1]>a[2][2]) {
+        const double s=std::sqrt(1+a[1][1]-a[0][0]-a[2][2])*2;
+        y=s/4;w=(a[2][0]-a[0][2])/s;x=(a[0][1]+a[1][0])/s;z=(a[1][2]+a[2][1])/s;
+    } else {
+        const double s=std::sqrt(1+a[2][2]-a[0][0]-a[1][1])*2;
+        z=s/4;w=(a[0][1]-a[1][0])/s;x=(a[2][0]+a[0][2])/s;y=(a[1][2]+a[2][1])/s;
+    }
+    const double norm=std::sqrt(x*x+y*y+z*z+w*w);
+    if (!std::isfinite(norm) || norm<.5) return false;
+    orientation={static_cast<float>(x/norm),static_cast<float>(y/norm),static_cast<float>(z/norm),static_cast<float>(w/norm)};
+    return true;
+}
+// The target eye expressed in the camera of the reference eye; both poses are
+// relative to the same head camera. Posing the reference eye's camera with the
+// result reproduces the target eye's camera.
+inline bool RelativeScenePose(const ScenePose& reference,const ScenePose& target,ScenePose& result) {
+    PoseRotation from{},to{};
+    if (!PoseAxes(reference,from) || !PoseAxes(target,to)) return false;
+    PoseRotation relative{};
+    for (size_t i=0;i<3;++i) for (size_t j=0;j<3;++j)
+        for (size_t k=0;k<3;++k) relative[i][j]+=to[i][k]*from[j][k];
+    ScenePose candidate{};
+    if (!AxesPose(relative,candidate.orientation)) return false;
+    for (size_t k=0;k<3;++k) {
+        double value{};
+        for (size_t i=0;i<3;++i) value+=(double(target.position[i])-reference.position[i])*from[k][i];
+        candidate.position[k]=static_cast<float>(value);
+    }
+    PoseRotation checked{};
+    if (!PoseAxes(candidate,checked)) return false;
+    result=candidate;return true;
+}
+// SceneView rows as world-space right/up/back, as the native camera stores them.
+inline constexpr size_t sceneViewAxisOffsets[]{0x20,0x10,0x30};
+inline constexpr float sceneViewAxisSigns[]{-1,1,-1};
+// Right-handed and within the native contraction/expansion bounds; never normalized.
+inline bool SceneBasisSupported(const std::array<std::array<float,3>,3>& basis) {
+    if (!NativeBasisScaleSupported(basis)) return false;
+    const auto& r=basis[0];const auto& u=basis[1];const auto& b=basis[2];
+    const double handedness=(double(r[1])*u[2]-double(r[2])*u[1])*b[0]+
+        (double(r[2])*u[0]-double(r[0])*u[2])*b[1]+(double(r[0])*u[1]-double(r[1])*u[0])*b[2];
+    return handedness>0;
+}
+inline void ComposeSceneView(const SceneView& source,const std::array<std::array<float,3>,3>& basis,
+                             std::array<float,3> position,const PoseRotation& rotation,const ScenePose& pose,SceneView& result) {
+    auto candidate=source;
+    for (size_t row=0;row<3;++row) {
+        std::array<float,3> axis{};
+        for (size_t i=0;i<3;++i) {
+            double value{};
+            for (size_t k=0;k<3;++k) value+=rotation[row][k]*basis[k][i];
+            axis[i]=static_cast<float>(sceneViewAxisSigns[row]*value);
+        }
+        memcpy(candidate.data()+sceneViewAxisOffsets[row],axis.data(),12);
+    }
+    for (size_t i=0;i<3;++i) {
+        double value=position[i];
+        for (size_t k=0;k<3;++k) value+=double(pose.position[k])*basis[k][i];
+        position[i]=static_cast<float>(value);
+    }
+    memcpy(candidate.data()+0x40,position.data(),12);
+    result=candidate;
+}
+// Poses a SceneView from its own basis and position, before the native camera
+// has been built for this frame. The basis gets the same checks as
+// ApplyScenePose; agreement with a camera is checked later, against the camera
+// the game builds from the result.
+inline bool PoseSceneView(const SceneView& source,const ScenePose& pose,SceneView& result) {
+    PoseRotation rotation{};
+    if (!PoseAxes(pose,rotation)) return false;
+    std::array<std::array<float,3>,3> basis{};std::array<float,3> position{};
+    for (size_t row=0;row<3;++row) {
+        memcpy(basis[row].data(),source.data()+sceneViewAxisOffsets[row],12);
+        for (auto& value:basis[row]) {value*=sceneViewAxisSigns[row];if (!std::isfinite(value)) return false;}
+    }
+    memcpy(position.data(),source.data()+0x40,12);
+    for (float value:position) if (!std::isfinite(value) || std::abs(value)>100000) return false;
+    if (!SceneBasisSupported(basis)) return false;
+    ComposeSceneView(source,basis,position,rotation,pose,result);return true;
+}
 inline bool ApplyScenePose(const CameraContext& camera,const SceneView& source,
                            const ScenePose& pose,SceneView& result) {
     PoseRotation rotation{};
     if (!PoseAxes(pose,rotation)) return false;
     std::array<std::array<float,3>,3> basis{};
-    constexpr size_t offsets[]{0x20,0x10,0x30};
-    constexpr float signs[]{-1,1,-1};
+    constexpr auto& offsets=sceneViewAxisOffsets;
+    constexpr auto& signs=sceneViewAxisSigns;
     for (size_t row=0;row<3;++row) {
         std::array<float,3> native{};
         memcpy(basis[row].data(),source.data()+offsets[row],12);
@@ -70,11 +160,7 @@ inline bool ApplyScenePose(const CameraContext& camera,const SceneView& source,
     }
     // A bounded near-unit basis alone is insufficient; verify its handedness,
     // exact native/view agreement and native inverse too. Never normalize it.
-    if (!NativeBasisScaleSupported(basis)) return false;
-    const auto& r=basis[0];const auto& u=basis[1];const auto& b=basis[2];
-    const double handedness=(double(r[1])*u[2]-double(r[2])*u[1])*b[0]+
-        (double(r[2])*u[0]-double(r[0])*u[2])*b[1]+(double(r[0])*u[1]-double(r[1])*u[0])*b[2];
-    if (handedness<=0) return false;
+    if (!SceneBasisSupported(basis)) return false;
     std::array<float,16> world{},inverse{};
     memcpy(world.data(),camera.data()+0x70,64);memcpy(inverse.data(),camera.data()+0x150,64);
     for (size_t i=0;i<16;++i)
@@ -116,23 +202,7 @@ inline bool ApplyScenePose(const CameraContext& camera,const SceneView& source,
         const double tolerance=(std::max)(double(.001f),(std::min)(.01,2*ulp));
         if (std::abs(double(position[i])-nativePosition[i])>tolerance) return false;
     }
-    auto candidate=source;
-    for (size_t row=0;row<3;++row) {
-        std::array<float,3> axis{};
-        for (size_t i=0;i<3;++i) {
-            double value{};
-            for (size_t k=0;k<3;++k) value+=rotation[row][k]*basis[k][i];
-            axis[i]=static_cast<float>(signs[row]*value);
-        }
-        memcpy(candidate.data()+offsets[row],axis.data(),12);
-    }
-    for (size_t i=0;i<3;++i) {
-        double value=position[i];
-        for (size_t k=0;k<3;++k) value+=double(pose.position[k])*basis[k][i];
-        position[i]=static_cast<float>(value);
-    }
-    memcpy(candidate.data()+0x40,position.data(),12);
-    result=candidate;return true;
+    ComposeSceneView(source,basis,position,rotation,pose,result);return true;
 }
 inline bool SeparateSceneEyes(const ScenePose& center,float separation,std::array<ScenePose,2>& result) {
     PoseRotation axes{};
