@@ -4,7 +4,7 @@ $root=Split-Path $PSScriptRoot -Parent
 $fixture=[IO.Path]::GetFullPath((Join-Path $root ('build/cockpit-texture-install-test-'+[guid]::NewGuid().ToString('N'))))
 $script=Join-Path $root 'tools/Cockpit-TexturePack.ps1'
 $game=Join-Path $fixture 'game';$mod=Join-Path $game 'GRID2VR'
-$target=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.2'
+$target=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.3'
 $tests=[Collections.Generic.List[string]]::new()
 function Refuses([scriptblock]$Body,[string]$Name) {
     $failed=$false;try { & $Body | Out-Null } catch { $failed=$true }
@@ -15,7 +15,7 @@ try {
     [IO.File]::Copy((Join-Path $GameRoot 'grid2_avx.exe'),(Join-Path $game 'grid2_avx.exe'))
     Refuses { & $script -Action Install -GameRoot $game -ZipPath $ZipPath } 'requires_core'
     [IO.Directory]::CreateDirectory($mod)|Out-Null;[IO.File]::WriteAllText((Join-Path $mod 'package.json'),'{}')
-    $previous=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.1'
+    $previous=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.2'
     [IO.Directory]::CreateDirectory($previous)|Out-Null
     $retained=Join-Path $previous 'retain.txt';[IO.File]::WriteAllText($retained,'previous pack retained')
     $badZip=Join-Path $fixture 'bad.zip';[IO.File]::WriteAllText($badZip,'invalid')
@@ -26,6 +26,13 @@ try {
     & $script -Action Install -GameRoot $game -ZipPath $ZipPath | Out-Null
     & $script -Action Verify -GameRoot $game | Out-Null
     $tests.Add('install_and_verify')
+    $reference=Join-Path $target 'CARS.txt'
+    $text=[IO.File]::ReadAllText($reference)
+    if($text -notmatch 'Ford Focus ST\s+\| foc\s+\| foc.dds' -or $text -notmatch 'Volkswagen Golf R \(Performance\)\s+\| go2\s+\| gol.dds') { throw 'Readable car reference is missing or incomplete.' }
+    $tests.Add('readable_names_and_shared_texture_installed')
+    $referenceBytes=[IO.File]::ReadAllBytes($reference);[IO.File]::WriteAllText($reference,'changed')
+    Refuses { & $script -Action Verify -GameRoot $game } 'changed_car_reference_rejected'
+    [IO.File]::WriteAllBytes($reference,$referenceBytes)
     Refuses { & $script -Action Install -GameRoot $game -ZipPath $ZipPath } 'existing_version_preserved'
     $extra=Join-Path $target 'foreign.txt';[IO.File]::WriteAllText($extra,'retain')
     Refuses { & $script -Action Remove -GameRoot $game } 'foreign_content_preserved'
