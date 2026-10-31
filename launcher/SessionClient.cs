@@ -18,8 +18,8 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public string OpponentCars { get; init; } = "same";
     public bool VrReplayCameras { get; init; } = true;
     public bool VrGarageMenus { get; init; } = true;
-    // Experimental: the game's own render is the left eye; only the right eye is replayed.
-    public bool NativeLeftEye { get; init; }
+    // Faster stereo, on by default: the game's own render is the left eye; only the right eye is replayed.
+    public bool NativeLeftEye { get; init; } = true;
     public bool VrCockpit { get; init; } = true;
     public string CockpitDriver { get; init; } = "HeadOnly";
     public bool CockpitExposureLimit { get; init; } = true;

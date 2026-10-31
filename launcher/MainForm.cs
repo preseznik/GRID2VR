@@ -42,7 +42,7 @@ internal sealed partial class MainForm : LauncherForm
     private readonly CheckBox performanceFollowView = new() { Name = "PerformanceFollowView", AccessibleName = "Performance display follows view", Text = "Follow view", AutoSize = true };
     private readonly CheckBox performanceDisplay = new() { Name = "PerformanceDisplay", AccessibleName = "Performance display", Text = "FPS + GPU usage (VR)", AutoSize = true };
     private readonly CheckBox replay3d = new() { Name = "VrReplayCameras", AccessibleName = "3D replays", Text = "On", Checked = true, AutoSize = true };
-    private readonly CheckBox nativeLeftEye = new() { Name = "NativeLeftEye", AccessibleName = "Faster stereo rendering (experimental)", Text = "On", AutoSize = true };
+    private readonly CheckBox nativeLeftEye = new() { Name = "NativeLeftEye", AccessibleName = "Faster stereo rendering (experimental)", Text = "On", Checked = true, AutoSize = true };
     private readonly CheckBox garage3d = new() { Name = "VrGarageMenus", AccessibleName = "3D menus", Text = "On", Checked = true, AutoSize = true };
     private readonly CheckBox vrCockpit = new() { Name = "VrCockpit", AccessibleName = "Cockpit view in VR", Text = "On (default)", Checked = true, AutoSize = true };
     private readonly ComboBox cockpitDriver = Choice("CockpitDriver");
@@ -273,7 +273,7 @@ internal sealed partial class MainForm : LauncherForm
         Field(advancedLayout, "3D replays", replay3d);
         Field(advancedLayout, "3D menus", garage3d);
         Field(advancedLayout, "Faster stereo (experimental)", nativeLeftEye);
-        advancedLayout.Controls.Add(TextLabel("Render the left eye in the game's own pass and replay only the right eye: two scene renders per frame instead of three. Experimental and off by default; applies on the next VR launch."));
+        advancedLayout.Controls.Add(TextLabel("Render the left eye in the game's own pass and replay only the right eye: two scene renders per frame instead of three. On by default; turn off to use the original three-render path. Applies on the next VR launch."));
         advancedLayout = advancedColumns.Second;
         Section(advancedLayout, "Session details");
         details.Height = 190;
@@ -712,7 +712,7 @@ internal sealed partial class MainForm : LauncherForm
         tips.SetToolTip(previewVrFixes, "Use the latest VR fixes with your selected car, track and settings. Off retains the previous VR build. This option does not change your settings.");
         tips.SetToolTip(skipIntro, "Skip startup logos and the pre-race flythrough in Practice and Race. Normal keeps the original startup sequence for career saving; this preference is retained.");
         tips.SetToolTip(diagnosticLogging, "Save extra diagnostic details for troubleshooting the next launch. Leave off for normal play to reduce disk usage. Essential status and recovery receipts are always kept.");
-        tips.SetToolTip(nativeLeftEye, "Experimental. The game renders the left eye itself and only the right eye is replayed, saving one full scene render per frame. Off keeps the tested three-render path. Applies on the next VR launch; Desktop Launch ignores it.");
+        tips.SetToolTip(nativeLeftEye, "Experimental. The game renders the left eye itself and only the right eye is replayed, saving one full scene render per frame. On by default; Off uses the original three-render path. Applies on the next VR launch; Desktop Launch ignores it.");
         tips.SetToolTip(performanceDisplay, "Show app FPS and GPU usage in the headset on the next VR launch. FPS counts submitted app frames, not headset refresh or reprojection. GPU usage is the busiest engine on the game's adapter, including other applications; N/A means unavailable. Desktop Launch ignores this option.");
         tips.SetToolTip(hudDistance, "HUD and results text stereo depth from 1–20 metres in 0.5 m steps. Apparent text size stays the same. Default: 1 m. Applies to the next VR launch.");
         tips.SetToolTip(hudFollow, "Off keeps HUD and results text relative to the seated reference; On follows your head. Recenter resets the seated reference.");
