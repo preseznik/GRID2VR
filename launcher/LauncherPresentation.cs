@@ -119,6 +119,6 @@ internal static class LauncherPresentation
             "Restore defaults changes only these launcher choices. Save settings or launch to keep the reset. It does not edit your installed game's settings or driving bindings.\n\n" +
             "Use Quit in the game to finish, then wait for recovery. End session stops VR, closes this session's game process and restores original files.\n\n" +
             "If recovery is pending, close GRID 2 and choose Restore original files. Save progress is retained. Open logs opens the active session's diagnostic directory, or the latest saved session when idle. Advanced shows the latest session status.\n\n" +
-            "Installed settings, managed careers, logs and recovery backups are kept under LocalAppData → GRID2VR, separately for each game installation. Upgrading or uninstalling preserves them. Help / About shows the build, release notes and update controls; Experimental builds also offer Return to stable.")
+            "Installed settings, managed careers, logs and recovery backups are kept under LocalAppData → GRID2VR, separately for each game installation. Upgrading or uninstalling preserves them. Help / About shows the build, release notes and update controls; Experimental builds also offer Return to stable. Features added since the last release carry a red " + NewFeatures.Mark + " mark in Experimental builds; Stable releases don't show it, and the next version drops it.")
     ];
 }

@@ -360,6 +360,7 @@ internal static class SelfTests
             ChaseCameraTests.Run(root, client);
             ResponsiveLayoutTests.Run(root, client);
             SectionCollapseTests.Run(client);
+            NewFeaturesTests.Run(root, client);
             SelectableStatusTests.Run(root, client);
             VrResolutionTests.Run(client);
             VrLayerTests.Run(root, client);

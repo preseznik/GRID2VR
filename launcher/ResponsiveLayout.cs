@@ -5,11 +5,12 @@ namespace GRID2VR;
 // up to the next heading; rows are never removed, recreated or reordered.
 internal sealed class SectionHeader : Button
 {
-    private bool collapsed;
+    private bool collapsed, isNew;
     public SectionHeader(string title)
     {
         Title = title; Name = "Section" + new string(title.Where(char.IsLetterOrDigit).ToArray());
-        Tag = "section"; AutoSize = true; TextAlign = ContentAlignment.MiddleLeft; UseMnemonic = false;
+        // GrowAndShrink: GrowOnly would fold the current width, including any mark, into the preferred size.
+        Tag = "section"; AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink; TextAlign = ContentAlignment.MiddleLeft; UseMnemonic = false;
         FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0; AccessibleName = title;
         UpdateText(); Click += (_, _) => Collapsed = !Collapsed;
     }
@@ -25,6 +26,28 @@ internal sealed class SectionHeader : Button
             collapsed = value; UpdateText(); Parent?.PerformLayout();
             CollapsedChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+    // Added since the last release: "*new*" follows the title (NewFeatures).
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool IsNew
+    {
+        get => isNew;
+        set { isNew = value; Invalidate(); Parent?.PerformLayout(); }
+    }
+    private int TitleWidth => TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix).Width;
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        var preferred = base.GetPreferredSize(proposedSize);
+        if (isNew) preferred.Width += NewFeatures.Gap(this) + NewFeatures.Width(Font);
+        return preferred;
+    }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        if (!isNew) return;
+        // The title sits inside the button's own symmetric inset.
+        var inset = Math.Max(0, (base.GetPreferredSize(Size.Empty).Width - TitleWidth) / 2);
+        NewFeatures.Draw(e.Graphics, Font, inset + TitleWidth + NewFeatures.Gap(this), 0, Height);
     }
     private void UpdateText()
     {
@@ -105,7 +128,7 @@ internal class SettingRow : Panel
 {
     private readonly Label caption;
     private readonly Control editor;
-    private bool arranging;
+    private bool arranging, isNew;
     protected virtual int LayoutDpi => DeviceDpi;
     public SettingRow(string title, Control value)
     {
@@ -117,6 +140,20 @@ internal class SettingRow : Panel
         Controls.Add(caption); Controls.Add(editor);
         editor.SizeChanged += (_, _) => PerformLayout();
         editor.TextChanged += (_, _) => PerformLayout();
+        caption.Paint += PaintNewMark;
+    }
+    // Added since the last release: "*new*" follows the label, in room the label keeps free (NewFeatures).
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool IsNew
+    {
+        get => isNew;
+        set { isNew = value; PerformLayout(); caption.Invalidate(); }
+    }
+    private void PaintNewMark(object? sender, PaintEventArgs e)
+    {
+        if (!isNew) return;
+        var textWidth = Math.Min(TextRenderer.MeasureText(caption.Text, caption.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix).Width, caption.Width - caption.Padding.Horizontal);
+        NewFeatures.Draw(e.Graphics, caption.Font, textWidth + NewFeatures.Gap(this), 0, caption.Height);
     }
     protected override void OnLayout(LayoutEventArgs e)
     {
@@ -136,8 +173,9 @@ internal class SettingRow : Panel
                 RenderScaleSlider or HudDistanceSlider => Px(42),
                 _ => Math.Max(Px(28), editor.GetPreferredSize(new Size(editorWidth, 0)).Height)
             };
+            caption.Padding = isNew ? new Padding(0, 0, NewFeatures.Gap(this) + NewFeatures.Width(Font), 0) : Padding.Empty;
             var labelHeight = string.IsNullOrEmpty(caption.Text) ? 0 : TextRenderer.MeasureText(caption.Text, Font,
-                new Size(stacked ? width : labelWidth, 0), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height;
+                new Size(Math.Max(1, (stacked ? width : labelWidth) - caption.Padding.Horizontal), 0), TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix).Height;
             var rowHeight = stacked ? labelHeight + editorHeight + gap : Math.Max(labelHeight, editorHeight);
             caption.SetBounds(0, padding, stacked ? width : labelWidth, stacked ? labelHeight : rowHeight);
             editor.SetBounds(stacked ? 0 : labelWidth + gap, padding + (stacked ? labelHeight + gap : (rowHeight - editorHeight) / 2), editorWidth, editorHeight);

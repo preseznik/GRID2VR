@@ -290,6 +290,7 @@ internal sealed partial class MainForm : LauncherForm
         var logs = Button("Open logs", "OpenLogs");
         layout.Controls.Add(new LauncherFooter(desktop, vr, save, recover, logs)); Controls.Add(layout);
         InitializeViews(tabs);
+        NewFeatures.Apply(this);
         void FitStatusLabels()
         {
             var width = Math.Max(1, layout.ClientSize.Width - layout.Padding.Horizontal);
