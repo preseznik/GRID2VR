@@ -80,7 +80,7 @@ void Open(LONGLONG now) {
 }
 }
 LONGLONG Now() {LARGE_INTEGER value{};QueryPerformanceCounter(&value);return value.QuadPart;}
-bool Start(ID3D11Device* device,const std::filesystem::path& output,unsigned headsetWidth,unsigned headsetHeight,unsigned scale) {
+bool Start(ID3D11Device* device,const std::filesystem::path& output,unsigned headsetWidth,unsigned headsetHeight,unsigned scale,unsigned fovX,unsigned fovY) {
     if (state || !device) return false;
     auto created=std::make_unique<State>();
     LARGE_INTEGER frequency{};
@@ -98,7 +98,7 @@ bool Start(ID3D11Device* device,const std::filesystem::path& output,unsigned hea
         if (WideCharToMultiByte(CP_UTF8,0,desc.Description,-1,name,sizeof(name),nullptr,nullptr)) identity.adapter=name;
         identity.vendorId=desc.VendorId;identity.deviceId=desc.DeviceId;identity.dedicatedMb=desc.DedicatedVideoMemory/(1024*1024);
     }
-    identity.headsetWidth=headsetWidth;identity.headsetHeight=headsetHeight;identity.scale=scale;
+    identity.headsetWidth=headsetWidth;identity.headsetHeight=headsetHeight;identity.scale=scale;identity.fovX=fovX;identity.fovY=fovY;
     created->thread=GetCurrentThreadId();created->output=output;
     device->GetImmediateContext(&created->context);
     created->gpu.Start(device);

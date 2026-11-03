@@ -11,7 +11,7 @@ namespace grid2vr::frametiming {
 // call is ignored unless made on the thread that started the summary.
 enum Point : unsigned {FrameBegin,CenterBegin,CenterEnd,RightBegin,RightEnd,FrameEnd,PointCount};
 #ifdef GRID2VR_ENABLE_XR_SESSION
-bool Start(ID3D11Device* device,const std::filesystem::path& output,unsigned headsetWidth,unsigned headsetHeight,unsigned scale);
+bool Start(ID3D11Device* device,const std::filesystem::path& output,unsigned headsetWidth,unsigned headsetHeight,unsigned scale,unsigned fovX=100,unsigned fovY=100);
 LONGLONG Now();
 void Mark(Point point);
 void Wait(LONGLONG started,LONGLONG periodNanoseconds);

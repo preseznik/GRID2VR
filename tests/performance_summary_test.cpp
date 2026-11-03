@@ -104,7 +104,7 @@ int main(int argc,char** argv) {
     namespace timing=grid2vr::frametiming;
     timing::Mark(timing::CenterBegin);timing::Present(timing::Now());timing::Stop();
     if (std::filesystem::exists(path/L"performance-summary.json")) return 11;
-    if (!timing::Start(device.Get(),path,3072,3264,70) || timing::Start(device.Get(),path,1,1,100)) return 12;
+    if (!timing::Start(device.Get(),path,3072,3264,70,100,85) || timing::Start(device.Get(),path,1,1,100)) return 12;
     for (unsigned frame=0;frame<60;++frame) {
         timing::Wait(timing::Now(),11111111);
         timing::Mark(timing::CenterBegin);context->ClearState();timing::Mark(timing::CenterEnd);
@@ -116,7 +116,7 @@ int main(int argc,char** argv) {
     std::thread foreign([] {timing::Mark(timing::CenterBegin);timing::Submitted(false);timing::Stop();});foreign.join();
     timing::Stop();timing::Stop();
     const auto receipt=Read(path/L"performance-summary.json");
-    if (receipt.find("\"final\":true")==std::string::npos || receipt.find("\"headset\":{\"width\":3072,\"height\":3264,\"scale\":70}")==std::string::npos ||
+    if (receipt.find("\"final\":true")==std::string::npos || receipt.find("\"headset\":{\"width\":3072,\"height\":3264,\"scale\":70,\"fovX\":100,\"fovY\":85}")==std::string::npos ||
         Field(receipt,"\"stereoFrames\":")!=60 || Field(receipt,"\"gpuMs\":{\"frames\":")<=0 ||
         receipt.find("\"cpuViewMs\":{\"center\":{\"count\":60")==std::string::npos || std::filesystem::exists(path/L"performance-summary.json.tmp")) {
         std::fputs(receipt.c_str(),stderr);return 13;

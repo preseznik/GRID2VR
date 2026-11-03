@@ -6,7 +6,10 @@ internal sealed record HeadsetResolution(string Runtime, string Headset, int Wid
 {
     private static bool SceneSupported(int width, int height) => width > 0 && height > 0 && width <= 8192 && height <= 8192 && (long)width * height <= 64 * 1024 * 1024;
     private static bool OutputSupported(int width, int height) => SceneSupported(width, height) && (long)width * height <= 16 * 1024 * 1024;
-    internal int MaximumRenderScale => Enumerable.Range(50, 251).LastOrDefault(scale => SceneSupported(Width * scale / 100, Height * scale / 100));
+    internal int MaximumRenderScale => MaximumRenderScaleAt(100, 100);
+    // The scene shrinks with the field of view, matching the renderer's integer arithmetic.
+    private static int Scene(int size, int scale, int fov) => (int)((long)size * scale * fov / 10000);
+    internal int MaximumRenderScaleAt(int fovX, int fovY) => Enumerable.Range(50, 251).LastOrDefault(scale => SceneSupported(Scene(Width, scale, fovX), Scene(Height, scale, fovY)));
     internal static HeadsetResolution Parse(string json, string runtime)
     {
         var value = JsonSerializer.Deserialize<HeadsetResolution>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -14,12 +17,15 @@ internal sealed record HeadsetResolution(string Runtime, string Headset, int Wid
             throw new IOException("Headset query returned an invalid resolution.");
         return value;
     }
-    internal string Summary(int scale)
+    internal string Summary(int scale, int fovX = 100, int fovY = 100)
     {
-        var width = Width * scale / 100; var height = Height * scale / 100;
+        var width = Scene(Width, scale, fovX); var height = Scene(Height, scale, fovY);
         var output = $"{Headset} · {Runtime}\nOutput: {Width} × {Height} per eye (100% baseline).";
-        var render = $"Render: {width} × {height} per eye at {scale}%.";
-        return output + "\n" + render + $"\nMaximum supported at this headset resolution: {MaximumRenderScale}%." +
-            (SceneSupported(width, height) && width >= 320 && height >= 180 ? "" : "\nExceeds renderer limits. Lower VR render scale before launching.");
+        var crop = fovX == fovY ? $"{fovY}% field of view" : fovX == 100 ? $"{fovY}% field of view, top and bottom" : $"{fovX}% × {fovY}% field of view";
+        var render = $"Render: {width} × {height} per eye at {scale}%" + (fovY < 100 || fovX < 100 ? $", {crop}." : ".");
+        return output + "\n" + render + $"\nMaximum supported at this headset resolution: {MaximumRenderScaleAt(fovX, fovY)}%." +
+            (SceneSupported(width, height) && width >= 320 && height >= 180 ? "" : width < 320 || height < 180
+                ? "\nBelow the renderer minimum. Raise VR render scale or field of view before launching."
+                : "\nExceeds renderer limits. Lower VR render scale before launching.");
     }
 }

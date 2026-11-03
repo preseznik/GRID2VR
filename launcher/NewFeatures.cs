@@ -18,7 +18,7 @@ internal static class NewFeatures
     private static readonly Dictionary<string, string> Since = new(StringComparer.Ordinal)
     {
         ["NativeLeftEye"] = NextVersion, ["LastVrPerformance"] = NextVersion, ["RecommendGraphics"] = NextVersion,
-        ["SectionVRcompatibility"] = NextVersion, ["DrivingControls"] = NextVersion,
+        ["SectionVRcompatibility"] = NextVersion, ["DrivingControls"] = NextVersion, ["VrFieldOfView"] = NextVersion, ["VrFieldOfViewCrop"] = NextVersion,
     };
     private static readonly ConditionalWeakTable<Control, object> marked = new(), painting = new();
 

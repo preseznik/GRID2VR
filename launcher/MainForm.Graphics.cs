@@ -76,9 +76,10 @@ internal sealed partial class MainForm
 
     private void InitializeGraphicsEditTracking()
     {
-        foreach (var editor in new[] { vrMsaa, desktopMsaa }) editor.SelectedIndexChanged += (_, _) => GraphicsEdited();
+        foreach (var editor in new[] { vrMsaa, desktopMsaa, vrFieldOfViewCrop }) editor.SelectedIndexChanged += (_, _) => GraphicsEdited();
         foreach (var editor in new[] { desktopVSync, desktopBorderless, vrMirrorBorderless, hudFollow }) editor.CheckedChanged += (_, _) => GraphicsEdited();
         renderScale.ValueChanged += (_, _) => GraphicsEdited();
+        vrFieldOfView.ValueChanged += (_, _) => GraphicsEdited();
         desktopRenderScale.ValueChanged += (_, _) => GraphicsEdited();
         hudDistance.ValueChanged += (_, _) => GraphicsEdited();
     }

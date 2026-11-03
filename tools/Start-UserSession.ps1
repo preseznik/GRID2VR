@@ -9,6 +9,8 @@ param(
     [ValidateSet('same','mixed','class')][string]$OpponentCars='same',
     [ValidateRange(50,300)][int]$RenderScale=100,
     [int]$VrRenderScale=0,
+    [ValidateRange(70,100)][int]$VrFieldOfView=100,
+    [ValidateSet('All','Vertical')][string]$VrFieldOfViewCrop='All',
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [switch]$VrMirrorBorderless,
     [ValidateSet(0,1)][int]$DesktopBorderless=1,
@@ -113,7 +115,7 @@ try {
         $receipt.message='Reading connected headset resolution...'
         Write-UserSessionStatus $root $receipt
         $headset=Get-ConnectedHeadsetResolution $root $XrRuntime $layerBypasses (Join-Path $runLogs 'headset-query.txt') -ReportSuccess:$DiagnosticLogging
-        $headsetResolution=Get-HeadsetResolutionPlan $headset.width $headset.height $VrRenderScale
+        $headsetResolution=Get-HeadsetResolutionPlan $headset.width $headset.height $VrRenderScale $VrFieldOfView $VrFieldOfViewCrop
         $receipt.headsetResolution=$headsetResolution
         $receipt.headset=$headset
         $sceneArguments=@('--scene-width',$headsetResolution.sceneWidth,'--scene-height',$headsetResolution.sceneHeight)
@@ -194,7 +196,7 @@ try {
     $parameters.DeviceClaim=$DeviceClaim
     if($layerBypasses.Count) { $parameters.XrLayerBypass=@($layerBypasses | ForEach-Object { $_.disableVariable }) }
     if($headsetResolution) {
-        $parameters.HeadsetWidth=$headsetResolution.width; $parameters.HeadsetHeight=$headsetResolution.height; $parameters.VrRenderScale=$VrRenderScale
+        $parameters.HeadsetWidth=$headsetResolution.width; $parameters.HeadsetHeight=$headsetResolution.height; $parameters.VrRenderScale=$VrRenderScale; $parameters.VrFieldOfView=$VrFieldOfView; $parameters.VrFieldOfViewCrop=$VrFieldOfViewCrop
     }
     $parameters.ChaseFreeLook=$ChaseFreeLook; $parameters.ChaseKeepAngle=$ChaseKeepAngle; $parameters.ChaseMouseMode=$ChaseMouseMode
     $parameters.ChaseMaxZoomOut=$ChaseMaxZoomOut; $parameters.ChaseMouseSensitivity=$ChaseMouseSensitivity

@@ -107,6 +107,11 @@ internal static class GraphicsRecommendationTests
             Recommend(Quest3, null, dipping, HighMsaa).Reason.Contains("CPU was the limit"));
         Check(MeasuredPerformance.Parse(JsonSerializer.SerializeToElement(new { schema = 1, limit = "at_target" }), Graphics(HighMsaa)) is { DipShare: null, DipLimit: "unknown", BlockedMedian: null });
         Check(measured.SameSettings(HighMsaa with { VrRenderScale = 63 }) && !measured.SameSettings(HighMsaa with { VrMsaa = "off" }) && !measured.SameSettings(Balanced));
+        // Receipts without a field of view ran the full view; another field of view is not comparable.
+        Check(measured is { FovX: 100, FovY: 100 } && !measured.SameSettings(HighMsaa with { VrFieldOfView = 80 }));
+        var helmet = MeasuredPerformance.Parse(JsonSerializer.SerializeToElement(new { schema = 1, limit = "gpu", headset = new { width = 3072, height = 3264, scale = 80, fovX = 100, fovY = 80 } }), Graphics(HighMsaa))!;
+        Check(helmet is { FovX: 100, FovY: 80 } && helmet.SameSettings(HighMsaa with { VrFieldOfView = 80, VrFieldOfViewCrop = "vertical" }) &&
+            !helmet.SameSettings(HighMsaa with { VrFieldOfView = 80 }) && !helmet.SameSettings(HighMsaa));
         Check(!MeasuredPerformance.Parse(Summary("gpu", 74, 97, 80), JsonSerializer.SerializeToElement(new { }))!.SameSettings(HighMsaa));
         Check(MeasuredPerformance.Parse(JsonSerializer.SerializeToElement(new { }), Graphics(HighMsaa)) is null);
         Check(!MeasuredPerformance.Parse(JsonSerializer.SerializeToElement(new { schema = 1, limit = "insufficient" }), Graphics(HighMsaa))!.Usable);

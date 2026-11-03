@@ -11,8 +11,10 @@ internal sealed class RenderScaleSlider : UserControl
     private readonly Label valueText = new() { Name = "RenderScaleValue", AutoSize = true, Anchor = AnchorStyles.Right, Margin = new Padding(8, 0, 0, 0) };
     public event EventHandler? ValueChanged;
 
-    public RenderScaleSlider()
+    public RenderScaleSlider() : this(MinimumScale, MaximumScale) { }
+    public RenderScaleSlider(int minimum, int maximum)
     {
+        track.Minimum = minimum; track.Maximum = maximum;
         Name = "RenderScale"; Dock = DockStyle.Top; Height = 42; Width = 280; MinimumSize = new Size(150, 42); TabStop = false;
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
         layout.ColumnStyles.Add(new(SizeType.Percent, 100)); layout.ColumnStyles.Add(new(SizeType.AutoSize));

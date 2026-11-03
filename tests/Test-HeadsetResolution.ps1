@@ -22,6 +22,18 @@ foreach($dimensions in @(@(150,4608,4896),@(200,6144,6528),@(251,7710,8192))) {
     Assert ($quest.sceneWidth -eq $dimensions[1] -and $quest.sceneHeight -eq $dimensions[2] -and $quest.width -eq 3072 -and $quest.height -eq 3264) 'Quest 3 supersampling and fixed output'
 }
 Reject { Get-HeadsetResolutionPlan 3072 3264 252 }
+# Field of view crops evenly: output stays fixed, the scene shrinks by the same factor.
+$cropped=Get-HeadsetResolutionPlan 3072 3264 150 80
+Assert ($cropped.sceneWidth -eq 3686 -and $cropped.sceneHeight -eq 3916 -and $cropped.width -eq 3072 -and $cropped.height -eq 3264 -and $cropped.fov -eq 80 -and $cropped.resolutionRequest -ceq '3072 3264 150 80') 'Cropped field of view'
+Assert ((Get-HeadsetResolutionPlan 3072 3264 150 100).resolutionRequest -ceq '3072 3264 150') 'Full field of view keeps the three-value request'
+Assert ((Get-HeadsetResolutionPlan 3072 3264 300 80).sceneWidth -eq 7372) 'A cropped field of view leaves room for a higher render scale'
+foreach($fov in 69,101) { Reject { Get-HeadsetResolutionPlan 3072 3264 100 $fov } }
+# A helmet crop trims only top and bottom: width keeps the full field of view.
+$helmet=Get-HeadsetResolutionPlan 3072 3264 150 80 Vertical
+Assert ($helmet.sceneWidth -eq 4608 -and $helmet.sceneHeight -eq 3916 -and $helmet.fovCrop -ceq 'Vertical' -and $helmet.resolutionRequest -ceq '3072 3264 150 100 80') 'Helmet crop'
+Assert ((Get-HeadsetResolutionPlan 3072 3264 150 100 Vertical).resolutionRequest -ceq '3072 3264 150') 'A full helmet view keeps the three-value request'
+Reject { Get-HeadsetResolutionPlan 3072 3264 150 80 Sideways }
+Reject { Get-HeadsetResolutionPlan 640 640 50 70 }
 $fixture=Join-Path (Split-Path $PSScriptRoot -Parent) ('build/headset-resolution-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixture | Out-Null
 try {
@@ -35,6 +47,13 @@ try {
     Reject { Assert-HeadsetResolutionProxy $proxy }
     [IO.File]::WriteAllText($proxy,'headset_resolution verified=1')
     Assert-HeadsetResolutionProxy $proxy
+    foreach($name in 'xr-projection.request','headset-resolution.request') { Remove-Item -LiteralPath (Join-Path $fixture $name) }
+    Write-HeadsetResolutionRequests $fixture 2400 2600 137 85
+    Assert ([IO.File]::ReadAllText((Join-Path $fixture 'xr-projection.request')) -ceq '2400 2600 1') 'Cropped native output request'
+    Assert ([IO.File]::ReadAllText((Join-Path $fixture 'headset-resolution.request')) -ceq '2400 2600 137 85') 'Cropped verification request'
+    foreach($name in 'xr-projection.request','headset-resolution.request') { Remove-Item -LiteralPath (Join-Path $fixture $name) }
+    Write-HeadsetResolutionRequests $fixture 2400 2600 137 85 Vertical
+    Assert ([IO.File]::ReadAllText((Join-Path $fixture 'headset-resolution.request')) -ceq '2400 2600 137 100 85') 'Helmet verification request'
 } finally {
     # Only the three files created above; no recursive deletion or linked trees.
     foreach($name in 'xr-projection.request','headset-resolution.request','renderer-fixture.dll') {
@@ -43,4 +62,4 @@ try {
     }
     Remove-Item -LiteralPath $fixture
 }
-Write-Output 'Headset resolution: runtime identity, both eyes, fixed output, scene scaling and bounds passed.'
+Write-Output 'Headset resolution: runtime identity, both eyes, fixed output, scene scaling, field of view and bounds passed.'

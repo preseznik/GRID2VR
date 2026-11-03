@@ -161,7 +161,7 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
         if (!valid) {
             failed_=true;Log("session refused reason=headset_resolution_changed_or_invalid relaunch_required=1");Shutdown();return false;
         }
-        Log("headset_resolution verified=1 output=%ux%u scene=%ux%u scale=%u",resolution_.width,resolution_.height,width,height,resolution_.scale);
+        Log("headset_resolution verified=1 output=%ux%u scene=%ux%u scale=%u fov=%ux%u",resolution_.width,resolution_.height,width,height,resolution_.scale,resolution_.fovX,resolution_.fovY);
     }
     std::vector<XrEnvironmentBlendMode> blend;
     if (!Check(xrEnumerateEnvironmentBlendModes(instance_,system,XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,0,&count,nullptr),"blend_count")) {Shutdown();return false;}
@@ -178,7 +178,7 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
     space.referenceSpaceType=XR_REFERENCE_SPACE_TYPE_VIEW;
     if (!Check(xrCreateReferenceSpace(session_,&space,&head_),"create_head_space")) {Shutdown();return false;}
     const bool performance=performance_.Initialize(session_,head_,local_,device,output);
-    const bool summary=frametiming::Start(device,output,resolution_.width,resolution_.height,resolution_.scale);
+    const bool summary=frametiming::Start(device,output,resolution_.width,resolution_.height,resolution_.scale,resolution_.fovX,resolution_.fovY);
     Log("session initialized=1 images_submitted=0 performance_display=%u performance_summary=%u",performance,summary);return true;
 }
 bool XrSessionProbe::Poll() {
@@ -245,6 +245,12 @@ bool XrSessionProbe::BeginFrame(uint64_t frame) {
     constexpr XrViewStateFlags viewFlags=XR_VIEW_STATE_ORIENTATION_VALID_BIT|XR_VIEW_STATE_POSITION_VALID_BIT|XR_VIEW_STATE_ORIENTATION_TRACKED_BIT|XR_VIEW_STATE_POSITION_TRACKED_BIT;
     constexpr XrSpaceLocationFlags headFlags=XR_SPACE_LOCATION_ORIENTATION_VALID_BIT|XR_SPACE_LOCATION_POSITION_VALID_BIT|XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT|XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
     valid=valid && (viewState.viewStateFlags&viewFlags)==viewFlags && (head.locationFlags&headFlags)==headFlags;
+    // The game projection and the submitted layer read these same cropped views.
+    if (valid && (resolution_.fovX<100 || resolution_.fovY<100)) for (auto& view:views) {
+        auto& f=view.fov;const auto x=resolution_.fovX,y=resolution_.fovY;
+        f={resolution::CropAngle(f.angleLeft,x),resolution::CropAngle(f.angleRight,x),
+           resolution::CropAngle(f.angleUp,y),resolution::CropAngle(f.angleDown,y)};
+    }
     located_.tracked=valid;located_.head=head.pose;
     Log("sample tracked=%u should_render=%u display_time=%lld period=%lld view_flags=%llu head_flags=%llu",
         valid,state.shouldRender,displayTime_,state.predictedDisplayPeriod,viewState.viewStateFlags,head.locationFlags);

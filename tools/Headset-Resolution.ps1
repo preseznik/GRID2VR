@@ -6,28 +6,34 @@ function Assert-HeadsetResolutionProxy([string]$Path) {
     }
 }
 
-function Get-HeadsetResolutionPlan([int]$Width,[int]$Height,[int]$Scale=100) {
+# Field of view below 100% crops each eye: every edge, or only top and bottom
+# (Vertical, a helmet view). The scene shrinks with it (renderer resolution_limits.h).
+function Get-HeadsetResolutionPlan([int]$Width,[int]$Height,[int]$Scale=100,[int]$Fov=100,[ValidateSet('All','Vertical')][string]$Crop='All') {
     if($Width -le 0 -or $Height -le 0 -or $Width -gt 8192 -or $Height -gt 8192 -or [long]$Width*$Height -gt 16MB) {
         throw 'The headset recommended resolution exceeds the renderer limit (8192 per dimension, 16,777,216 pixels per eye).'
     }
     if($Scale -lt 50 -or $Scale -gt 300) { throw 'VR render scale must be 50-300%.' }
-    $sceneWidth=[int][Math]::Floor($Width*$Scale/100.0)
-    $sceneHeight=[int][Math]::Floor($Height*$Scale/100.0)
+    if($Fov -lt 70 -or $Fov -gt 100) { throw 'VR field of view must be 70-100%.' }
+    $fovX=if($Crop -eq 'Vertical'){100}else{$Fov}
+    $sceneWidth=[int][Math]::Floor([long]$Width*$Scale*$fovX/10000.0)
+    $sceneHeight=[int][Math]::Floor([long]$Height*$Scale*$Fov/10000.0)
     if($sceneWidth -lt 320 -or $sceneHeight -lt 180 -or $sceneWidth -gt 8192 -or $sceneHeight -gt 8192 -or [long]$sceneWidth*$sceneHeight -gt 64MB) {
+        if($sceneWidth -lt 320 -or $sceneHeight -lt 180) { throw "VR render scale $Scale% at $Fov% field of view requests only $sceneWidth x $sceneHeight per eye. Raise VR render scale or field of view." }
         $maximum=300
         while($maximum -ge 50) {
-            $w=[long][Math]::Floor($Width*$maximum/100.0); $h=[long][Math]::Floor($Height*$maximum/100.0)
+            $w=[long][Math]::Floor([long]$Width*$maximum*$fovX/10000.0); $h=[long][Math]::Floor([long]$Height*$maximum*$Fov/10000.0)
             if($w -le 8192 -and $h -le 8192 -and $w*$h -le 64MB) { break }
             $maximum--
         }
         throw "VR render scale $Scale% requests $sceneWidth x $sceneHeight per eye, exceeding renderer limits. Maximum at this headset resolution: $maximum%. Lower VR render scale."
     }
-    return [ordered]@{width=$Width;height=$Height;scale=$Scale;sceneWidth=$sceneWidth;sceneHeight=$sceneHeight;unitsPerMetre=1;request="$Width $Height 1";basis='connected headset OpenXR recommendation'}
+    $resolution=if($fovX -ne $Fov) { "$Width $Height $Scale $fovX $Fov" } elseif($Fov -lt 100) { "$Width $Height $Scale $Fov" } else { "$Width $Height $Scale" }
+    return [ordered]@{width=$Width;height=$Height;scale=$Scale;fov=$Fov;fovCrop=$Crop;sceneWidth=$sceneWidth;sceneHeight=$sceneHeight;unitsPerMetre=1;request="$Width $Height 1";resolutionRequest=$resolution;basis='connected headset OpenXR recommendation'}
 }
 
-function Write-HeadsetResolutionRequests([string]$Run,[int]$Width,[int]$Height,[int]$Scale) {
-    $plan=Get-HeadsetResolutionPlan $Width $Height $Scale
-    foreach($entry in @(@('xr-projection.request',$plan.request),@('headset-resolution.request',"$Width $Height $Scale"))) {
+function Write-HeadsetResolutionRequests([string]$Run,[int]$Width,[int]$Height,[int]$Scale,[int]$Fov=100,[string]$Crop='All') {
+    $plan=Get-HeadsetResolutionPlan $Width $Height $Scale $Fov $Crop
+    foreach($entry in @(@('xr-projection.request',$plan.request),@('headset-resolution.request',$plan.resolutionRequest))) {
         $stream=[IO.File]::Open((Join-Path $Run $entry[0]),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
         try {
             $bytes=[Text.Encoding]::ASCII.GetBytes($entry[1]);$stream.Write($bytes,0,$bytes.Length)

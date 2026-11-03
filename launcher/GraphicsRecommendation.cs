@@ -19,10 +19,13 @@ internal sealed record MeasuredPerformance(double TargetFps, double FpsMedian, d
     // Receipts from before dip tracking have neither; their 5th percentile decides.
     internal double? DipShare { get; init; }
     internal string DipLimit { get; init; } = "unknown";
+    // Receipts from before the field-of-view setting ran the full view.
+    internal int FovX { get; init; } = 100;
+    internal int FovY { get; init; } = 100;
     internal bool Dips => DipShare is { } share ? share >= .05 : FpsLow < TargetFps * .95;
     internal string DipText => (DipShare is { } share ? $"{share * 100:0}% of seconds" : "some seconds") + $" dropped (low {FpsLow:0} FPS)";
 
-    internal bool SameSettings(GraphicsOptions current) => Msaa == current.VrMsaa &&
+    internal bool SameSettings(GraphicsOptions current) => Msaa == current.VrMsaa && FovX == current.VrFieldOfViewX && FovY == current.VrFieldOfViewY &&
         GraphicsCatalog.Categories.All(c => Quality.TryGetValue(c.Field, out var choice) && choice == GraphicsCatalog.Get(current, c.Field));
 
     internal static MeasuredPerformance? Parse(JsonElement summary, JsonElement graphics)
@@ -42,6 +45,8 @@ internal sealed record MeasuredPerformance(double TargetFps, double FpsMedian, d
             BlockedMedian = Number(MainForm.Child(summary, "blockedMs"), "p50"),
             DipShare = Number(dips, "share"),
             DipLimit = MainForm.TextValue(dips, "limit", "unknown"),
+            FovX = (int)(Number(headset, "fovX") ?? 100),
+            FovY = (int)(Number(headset, "fovY") ?? 100),
         };
     }
 

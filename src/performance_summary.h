@@ -137,7 +137,7 @@ public:
 
     struct Identity {
         std::string adapter;unsigned vendorId{},deviceId{};uint64_t dedicatedMb{};
-        unsigned headsetWidth{},headsetHeight{},scale{};
+        unsigned headsetWidth{},headsetHeight{},scale{},fovX{100},fovY{100};
     } identity;
 
     std::string Json(bool final) const {
@@ -146,7 +146,7 @@ public:
         out+=",\"vendorId\":"+std::to_string(identity.vendorId)+",\"deviceId\":"+std::to_string(identity.deviceId);
         out+=",\"dedicatedMb\":"+std::to_string(identity.dedicatedMb)+"}";
         out+=",\"headset\":{\"width\":"+std::to_string(identity.headsetWidth)+",\"height\":"+std::to_string(identity.headsetHeight);
-        out+=",\"scale\":"+std::to_string(identity.scale)+"}";
+        out+=",\"scale\":"+std::to_string(identity.scale)+",\"fovX\":"+std::to_string(identity.fovX)+",\"fovY\":"+std::to_string(identity.fovY)+"}";
         out+=",\"displayPeriodMs\":"+Number(periodMs_)+",\"targetFps\":"+Number(TargetFps());
         out+=",\"stereoFrames\":"+std::to_string(stereoFrames_)+",\"screenFrames\":"+std::to_string(screenFrames_);
         out+=",\"fps\":{\"windows\":"+std::to_string(fps_.Count())+",\"p5\":"+Number(fps_.Percentile(.05));

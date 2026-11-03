@@ -221,6 +221,28 @@ int main(int argc,char** argv) {
         probe.Shutdown();
         if(instances || sessions || spaces || protocolError) return 103;
     }
+    // An optional field of view crops both eyes in tangent space: one value for
+    // every edge, or horizontal and vertical (a helmet crop keeps 100 across).
+    // The scene request must match the cropped size; out-of-range values refuse.
+    struct CropCase { const char* request; const char* scene; float x,y; };
+    for(const auto crop:{CropCase{"800 900 50 80","320 360",.8f,.8f},CropCase{"800 900 50 100 80","400 360",1,.8f},
+            CropCase{"800 900 50 69","320 360",0,0},CropCase{"800 900 50 101","320 360",0,0},CropCase{"800 900 50 100 69","400 355",0,0},
+            CropCase{"800 900 50 80 80 1","320 360",0,0},CropCase{"800 900 50 100 80","320 360",0,0}}) {
+        Reset();grid2vr::XrSessionProbe probe;const bool accepted=crop.x>0;
+        std::ofstream(resolutionRequest)<<crop.request;std::ofstream(sceneRequest)<<crop.scene;
+        if(probe.Initialize(device.Get(),manifest,folder)!=accepted) return 106;
+        if(accepted) {
+            if(!probe.Poll() || !probe.BeginFrame(1) || !probe.Views()) return 107;
+            for(const auto& eye:probe.Views()->eyes) {
+                const auto& f=eye.fov;
+                if(!Near(f.angleLeft,std::atan(std::tan(-.8f)*crop.x)) || !Near(f.angleRight,std::atan(std::tan(.8f)*crop.x)) ||
+                   !Near(f.angleUp,std::atan(std::tan(.7f)*crop.y)) || !Near(f.angleDown,std::atan(std::tan(-.7f)*crop.y))) return 108;
+            }
+            if(!probe.FinishFrame(1,false)) return 109;
+        }
+        probe.Shutdown();
+        if(instances || sessions || spaces || protocolError) return 103;
+    }
     std::filesystem::remove(resolutionRequest);std::filesystem::remove(sceneRequest);
     recommendedWidth=100;recommendedHeight=120;
     for(unsigned test=0;test<6;++test) {

@@ -37,6 +37,29 @@ internal static class VrResolutionTests
         var quest = new HeadsetResolution("VDXR", "Meta Quest 3", 3072, 3264);
         Check(quest.Summary(150).Contains("Render: 4608 × 4896 per eye") && quest.Summary(200).Contains("Render: 6144 × 6528 per eye"));
         Check(quest.MaximumRenderScale == 251 && !quest.Summary(251).Contains("Exceeds renderer limits") && quest.Summary(252).Contains("Exceeds renderer limits"));
+        // Field of view shrinks the scene with the renderer's arithmetic; output stays fixed.
+        Check(quest.Summary(150, 80, 80).Contains("Render: 3686 × 3916 per eye at 150%, 80% field of view.") && quest.Summary(150, 80, 80).Contains("Output: 3072 × 3264 per eye"));
+        Check(quest.MaximumRenderScaleAt(80, 80) == 300 && !quest.Summary(300, 80, 80).Contains("Exceeds renderer limits"));
+        Check(quest.Summary(150, 100, 80).Contains("Render: 4608 × 3916 per eye at 150%, 80% field of view, top and bottom."));
+        Check(new HeadsetResolution("VDXR", "Small", 640, 640).Summary(50, 70, 70).Contains("Below the renderer minimum"));
+        foreach (var (fov, crop) in new[] { (100, "all"), (85, "all"), (70, "all"), (80, "vertical"), (100, "vertical") })
+        {
+            var selected = original with { Graphics = original.Graphics with { VrFieldOfView = fov, VrFieldOfViewCrop = crop } };
+            client.Save(selected); Check(client.Load() == selected);
+            var vrArgs = client.LaunchCommand(selected, true).ArgumentList; var desktopArgs = client.LaunchCommand(selected, false).ArgumentList;
+            Check(!desktopArgs.Contains("-VrFieldOfView") && vrArgs.Contains("-VrFieldOfView") == fov < 100);
+            Check(vrArgs.Contains("-VrFieldOfViewCrop") == (fov < 100 && crop == "vertical"));
+            if (fov < 100) Check(vrArgs[vrArgs.IndexOf("-VrFieldOfView") + 1] == fov.ToString());
+            if (fov < 100 && crop == "vertical") Check(vrArgs[vrArgs.IndexOf("-VrFieldOfViewCrop") + 1] == "Vertical");
+            Check(selected.Graphics.VrFieldOfViewX == (crop == "vertical" ? 100 : fov) && selected.Graphics.VrFieldOfViewY == fov);
+        }
+        foreach (var (fov, crop) in new[] { (69, "all"), (101, "all"), (80, "sideways") })
+        {
+            var rejected = false;
+            try { client.Save(original with { Graphics = original.Graphics with { VrFieldOfView = fov, VrFieldOfViewCrop = crop } }); }
+            catch (ArgumentException) { rejected = true; }
+            Check(rejected);
+        }
         foreach (var scale in new[] { 49, 301 })
         {
             var rejected = false;
@@ -68,6 +91,11 @@ internal static class VrResolutionTests
         var original = client.Load();
         var legacy = new GraphicsOptions(237, HeadsetScale: 175) { VrMsaa = "4xmsaa", HudDistance = 3m };
         Apply(legacy); Check(Current() == legacy && render.Value == 100 && desktop.Value == 237);
+        var fieldOfView = (RenderScaleSlider)form.Controls.Find("VrFieldOfView", true).Single();
+        var fieldOfViewCrop = (ComboBox)form.Controls.Find("VrFieldOfViewCrop", true).Single();
+        Apply(legacy with { VrFieldOfView = 80, VrFieldOfViewCrop = "vertical" });
+        Check(Current() is { VrFieldOfView: 80, VrFieldOfViewCrop: "vertical" } && fieldOfView.Value == 80 && fieldOfViewCrop.SelectedIndex == 1);
+        Apply(legacy); Check(Current() == legacy && fieldOfView.Value == 100 && fieldOfViewCrop.SelectedIndex == 0);
         var runtime = (ComboBox)typeof(MainForm).GetField("runtime", flags)!.GetValue(form)!;
         typeof(MainForm).GetField("headsetResolution", flags)!.SetValue(form, new HeadsetResolution((string)runtime.SelectedItem!, "Test headset", 2400, 2600));
         foreach (var scale in new[] { 50, 100, 137, 150 })

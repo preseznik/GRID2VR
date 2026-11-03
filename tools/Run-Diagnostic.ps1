@@ -27,6 +27,8 @@ param(
     [switch]$XrProjection,
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [int]$HeadsetWidth=0,[int]$HeadsetHeight=0,[int]$VrRenderScale=0,
+    [ValidateRange(70,100)][int]$VrFieldOfView=100,
+    [ValidateSet('All','Vertical')][string]$VrFieldOfViewCrop='All',
     [switch]$DisableMotionBlur,
     [switch]$ScreenUiStereo,
     [ValidateSet('Off','Compare','Replace')][string]$NativeLeftEye='Off',
@@ -115,7 +117,7 @@ if($Action -eq 'Run' -and ($SceneWidth -or $SceneHeight) -and (!$RuntimeSession 
 $headsetResolution=$null
 if($HeadsetWidth -or $HeadsetHeight -or $VrRenderScale) {
     . (Join-Path $PSScriptRoot 'Headset-Resolution.ps1')
-    $headsetResolution=Get-HeadsetResolutionPlan $HeadsetWidth $HeadsetHeight $VrRenderScale
+    $headsetResolution=Get-HeadsetResolutionPlan $HeadsetWidth $HeadsetHeight $VrRenderScale $VrFieldOfView $VrFieldOfViewCrop
     if(!$XrProjection -or !$RuntimeSession -or $PlayerControlOnly -or $SceneWidth -ne $headsetResolution.sceneWidth -or $SceneHeight -ne $headsetResolution.sceneHeight) { throw 'Headset and scene resolution requests do not match.' }
 }
 if($Action -eq 'Run' -and $VrMirrorBorderless -and (!$RuntimeSession -or !$UntilExit -or !$XrProjection -or $PlayerControlOnly -or !$SceneWidth -or !$SceneHeight)) { throw 'Borderless VR mirror requires a user VR session with scene resolution enforcement.' }
@@ -406,7 +408,7 @@ if ($RecordedViewsFile) { [IO.File]::Copy((Get-Item -LiteralPath $RecordedViewsF
 if ($XrProjection) {
     . (Join-Path $PSScriptRoot 'Headset-Settings.ps1')
     if($headsetResolution) {
-        Write-HeadsetResolutionRequests $run $HeadsetWidth $HeadsetHeight $VrRenderScale
+        Write-HeadsetResolutionRequests $run $HeadsetWidth $HeadsetHeight $VrRenderScale $VrFieldOfView $VrFieldOfViewCrop
     } else { Write-HeadsetRequest (Join-Path $run 'xr-projection.request') $HeadsetScale }
 }
 if ($WaitForStereoStart) { [IO.File]::WriteAllText((Join-Path $run 'wait-stereo-start.request'),'Initialize and warm up first. Require a fresh stereo-start.request after manual unpaused-game confirmation before arming stereo. No input or focus automation.') }

@@ -231,6 +231,12 @@ internal sealed class SessionClient(string root)
         if (vr) {
             command.ArgumentList.Add("-VrRenderScale");
             command.ArgumentList.Add(value.Graphics.VrRenderScale.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (value.Graphics.VrFieldOfView < 100)
+            {
+                command.ArgumentList.Add("-VrFieldOfView");
+                command.ArgumentList.Add(value.Graphics.VrFieldOfView.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                if (value.Graphics.VrFieldOfViewCrop == "vertical") { command.ArgumentList.Add("-VrFieldOfViewCrop"); command.ArgumentList.Add("Vertical"); }
+            }
         }
         if (vr && value.Graphics.VrMirrorBorderless) command.ArgumentList.Add("-VrMirrorBorderless");
         if (!vr)
