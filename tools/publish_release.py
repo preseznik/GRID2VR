@@ -10,7 +10,9 @@ from release_assets import REPOSITORY, WEB, publishable_native, require, sha, va
 class Github:
     def api(self, endpoint, missing=False):
         run = subprocess.run(['gh', 'api', endpoint], capture_output=True, encoding='utf-8')
-        if missing and run.returncode and 'HTTP 404' in run.stderr:
+        # GitHub's commits endpoint answers an unknown ref, such as a tag not
+        # created yet, with HTTP 422 "No commit found" rather than 404.
+        if missing and run.returncode and ('HTTP 404' in run.stderr or ('HTTP 422' in run.stderr and 'No commit found' in run.stderr)):
             return None
         if run.returncode:
             raise RuntimeError(run.stderr.strip() or 'GitHub API request failed.')

@@ -15,6 +15,7 @@ if(GRID2VR_OPPONENT_LOD_SINGLE_ATTEMPT_DIAGNOSTIC AND GRID2VR_OPPONENT_LOD_CONTR
   message(FATAL_ERROR "Opponent LOD diagnostic and controlled activation are mutually exclusive; add -DGRID2VR_OPPONENT_LOD_CONTROLLED_ACTIVATION=OFF to build the diagnostic")
 endif()
 add_test(NAME release_native_lod_mode COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_release_native_mode.py")
+add_test(NAME release_missing_tag_lookup COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_publish_release_lookup.py")
 add_test(NAME headset_resolution_options COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-HeadsetResolution.ps1")
 add_test(NAME openxr_layer_recovery COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-OpenXRLayers.ps1")
 if(GRID2VR_BUILD_XR_PROBE OR GRID2VR_ENABLE_XR_SESSION)
