@@ -32,7 +32,7 @@ internal static class LaunchModeTests
         var hint = (Label)form.Controls.Find("OpponentHint", true).Single();
         Check(opponents.Items.Cast<ContentItem>().Select(c => c.Label).SequenceEqual(new[] { "Same car", "Mixed", "Same class" }));
         Check(opponents.Enabled && opponents.Text == "Same class" && hint.Text.Contains("Class: Hot hatches"));
-        foreach (var id in new[] { "Practice", "Normal", "Race" })
+        foreach (var id in new[] { "Practice", "Normal", "Online", "Race" })
         {
             mode.SelectedItem = mode.Items.Cast<ContentItem>().Single(c => c.Id == id);
             Check(opponents.Enabled == (id == "Race") && ((ContentItem)opponents.SelectedItem!).Id == "class");
@@ -57,7 +57,7 @@ internal static class LaunchModeTests
         static void Check(bool value) { if (!value) throw new InvalidOperationException("Launch mode regression."); }
         var original = client.Load();
         Check(new Choices().LaunchMode == "Practice" && new Choices().Opponents == 7 && new Choices().VrGarageMenus && new Choices().OpponentCars == "same");
-        foreach (var mode in new[] { "Normal", "Practice", "Race" })
+        foreach (var mode in new[] { "Normal", "Online", "Practice", "Race" })
             foreach (var vr in new[] { false, true })
             foreach (var opponentCars in new[] { "same", "mixed", "class" })
             {
@@ -80,6 +80,8 @@ internal static class LaunchModeTests
         }
         var normal = LauncherPresentation.RequestedSession(null, null, "VDXR", 121, 0, 20, "Normal");
         Check(normal.Contains("choose your event in the game") && normal.Contains("VDXR") && !normal.Contains("laps"));
+        var online = LauncherPresentation.RequestedSession(null, null, "VDXR", 121, 0, 20, "Online");
+        Check(online.StartsWith("Online launch") && online.Contains("without the game's force feedback") && online.Contains("VDXR") && !online.Contains("laps"));
         var race = LauncherPresentation.RequestedSession(new("pag", "Pagani"), new("cities/chicago/route_0", "Chicago"), "VDXR", 121, 0, 20, "Race", 3);
         Check(race.Contains("3 AI opponents") && race.Contains("20 laps"));
         var focus = new ContentItem("foc", "Ford Focus ST", "hot_hatches", "Hot hatches");

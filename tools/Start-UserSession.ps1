@@ -1,6 +1,6 @@
 param(
     [ValidateSet('VR','Desktop')][string]$Mode='VR',
-    [ValidateSet('Practice','Race','Normal')][string]$LaunchMode='Practice',
+    [ValidateSet('Practice','Race','Normal','Online')][string]$LaunchMode='Practice',
     [ValidateSet('VDXR','SteamVR')][string]$XrRuntime='VDXR',
     [string]$Car='pag',
     [string]$Track='p2p/okutama/route_1',
@@ -59,6 +59,9 @@ param(
     [switch]$Preflight
 )
 $ErrorActionPreference='Stop'
+# Online is Normal (native menus) without the session wheel preset, which GRID 2's
+# race-start check rejects (ProJict 1d47bf5c).
+$nativeMenus=$LaunchMode -in @('Normal','Online')
 if($GraphicsQualityBase64.Length -gt 4096) { throw 'Graphics quality transport is too large.' }
 if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
 . (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
@@ -66,7 +69,7 @@ $chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle
 if($VrMirrorBorderless -and $Mode -ne 'VR') { throw 'Borderless VR mirror requires a VR launch.' }
 if($ChaseCameraObserver -and ($Mode -ne 'Desktop' -or !$DiagnosticProxy)) { throw 'Chase observation requires Desktop and an explicit diagnostic proxy; camera writes are unavailable.' }
 if($CockpitMode -ne 'Off' -and ($Mode -ne 'VR' -or $CockpitS2000 -ne 'Off')) { throw 'Launcher cockpit mode requires VR and cannot be combined with the legacy S2000 diagnostic.' }
-if($CockpitS2000 -ne 'Off' -and $LaunchMode -ne 'Normal' -and $Car -cne 's20') { throw 'The cockpit prototype is for the Honda S2000 only.' }
+if($CockpitS2000 -ne 'Off' -and !$nativeMenus -and $Car -cne 's20') { throw 'The cockpit prototype is for the Honda S2000 only.' }
 if($PreviewVrFixes -and ($Mode -ne 'VR' -or $DiagnosticProxy -or $HeadsetVisibilityCandidate -or $FlickerDiagnostic)) { throw 'Preview VR fixes require VR and cannot be combined with diagnostic overrides.' }
 if($HeadsetVisibilityCandidate -and ($Mode -ne 'VR' -or !$DiagnosticProxy)) { throw 'Headset visibility candidate requires VR and an explicit isolated proxy.' }
 if($HeadsetVisibilityCandidate) { $FlickerDiagnostic=$true }
@@ -92,7 +95,7 @@ try {
     $log=Join-Path $runLogs 'user-session.log'
     $receipt=@{schema=1;workerId=$PID;workerStartedUtc=$worker.StartTime.ToUniversalTime().ToString('o');
         mode=$Mode;launchMode=$LaunchMode;runtime=$XrRuntime;car=$Car;track=$Track;laps=$sessionLaps;opponents=$(if($LaunchMode -eq 'Race'){$Opponents}else{0});headsetScale=$HeadsetScale;previewVrFixes=[bool]$PreviewVrFixes;skipIntro=[bool]$SkipIntro;diagnosticLogging=[bool]$DiagnosticLogging;recenterKey=$RecenterKey;recenterModifiers=$RecenterModifiers;state='starting';message="Preparing $LaunchMode session";log=$log;logDirectory=$runLogs}
-    if($LaunchMode -eq 'Normal') { $receipt.car=$null; $receipt.track=$null; $receipt.laps=$null }
+    if($nativeMenus) { $receipt.car=$null; $receipt.track=$null; $receipt.laps=$null }
     $receipt.opponentCars=if($LaunchMode -eq 'Race'){$OpponentCars.ToLowerInvariant()}else{$null}
     $receipt.desktopBorderlessRequested=($Mode -eq 'Desktop' -and [bool]$DesktopBorderless)
     $receipt.chaseCameraObserver=[bool]$ChaseCameraObserver
@@ -155,10 +158,10 @@ try {
     }
     $python=Get-SessionPython $root
     $selection=Join-Path $runLogs 'selection'
-    $receipt.message=if($LaunchMode -eq 'Normal'){'Preparing the game menus...'}else{'Preparing the selected car, track and race options...'}
+    $receipt.message=if($nativeMenus){'Preparing the game menus...'}else{'Preparing the selected car, track and race options...'}
     Write-UserSessionStatus $root $receipt
-    if($LaunchMode -eq 'Normal') {
-        # Own only graphics files; Normal uses native menus and no selected flow.
+    if($nativeMenus) {
+        # Normal and Online use native menus and no selected flow.
         New-Item -ItemType Directory -Path $selection -ErrorAction Stop | Out-Null
     } else {
         $bundle=Join-Path (Get-Grid2DataRoot $root) 'practice-flow-20261014'
@@ -192,7 +195,7 @@ try {
         HardwareSettingsFile=$hardware;HeadsetScale=$HeadsetScale;CaptureAfterSeconds=1;TimeoutSeconds=150;PythonPath=$python;
         FlickerDiagnostic=[bool]$FlickerDiagnostic;DiagnosticProxy=$DiagnosticProxy;ChaseCameraObserver=[bool]$ChaseCameraObserver;
         ForceSceneResolution=($Mode -eq 'VR');VrMirrorBorderless=[bool]$VrMirrorBorderless;DesktopBorderless=$DesktopBorderless;SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls}
-    if($LaunchMode -eq 'Normal') { $parameters.NormalLaunch=$true } else { $parameters.SessionDirectory=$selection }
+    if($nativeMenus) { $parameters.NormalLaunch=$true; $parameters.OnlineLaunch=($LaunchMode -eq 'Online') } else { $parameters.SessionDirectory=$selection }
     $parameters.DeviceClaim=$DeviceClaim
     if($layerBypasses.Count) { $parameters.XrLayerBypass=@($layerBypasses | ForEach-Object { $_.disableVariable }) }
     if($headsetResolution) {

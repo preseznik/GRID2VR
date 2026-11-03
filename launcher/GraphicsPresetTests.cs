@@ -52,7 +52,7 @@ internal static class GraphicsPresetTests
             Check(graphics.VrRenderScale == legacy.VrRenderScale && graphics.EffectiveDesktopRenderScale == legacy.EffectiveDesktopRenderScale && graphics.VrMsaa == legacy.VrMsaa && graphics.DesktopMsaa == legacy.DesktopMsaa);
             Check(graphics.IntelAOIT == "off" && graphics.IntelAVSM == "off");
             client.Save(choices with { Graphics = graphics }); Check(client.Load().Graphics == graphics);
-            foreach (var mode in new[] { "Normal", "Practice", "Race" })
+            foreach (var mode in new[] { "Normal", "Online", "Practice", "Race" })
             foreach (var vr in new[] { false, true })
             {
                 var args = client.LaunchCommand(choices with { Graphics = graphics, LaunchMode = mode }, vr).ArgumentList;
@@ -181,7 +181,7 @@ internal static class GraphicsPresetTests
             typeof(MainForm).GetField("windowLoaded", Flags)!.SetValue(form, true);
             picker.Advanced = false;
             Check(client.LoadWindow().AdvancedView == false && File.ReadAllBytes(Path.Combine(client.Artifacts, "launcher-settings.json")).SequenceEqual(settings));
-            foreach (var id in new[] { "Normal", "Practice", "Race" })
+            foreach (var id in new[] { "Normal", "Online", "Practice", "Race" })
             {
                 mode.SelectedItem = mode.Items.Cast<ContentItem>().Single(c => c.Id == id);
                 Check(Current() == custom);

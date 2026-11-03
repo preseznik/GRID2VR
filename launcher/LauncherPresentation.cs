@@ -35,6 +35,7 @@ internal static class LauncherPresentation
     {
         var vr = $"VR: {runtime} · Recenter: {RecenterShortcut.Label(key, modifiers)}";
         if (mode == "Normal") return $"Normal launch · choose your event in the game\n{vr}";
+        if (mode == "Online") return $"Online launch · race online from the game menus\nNewer wheels drive through the launcher bindings, without the game's force feedback\n{vr}";
         if (car == null || track == null || runtime == null) return "Select a car, track and runtime.";
         var length = SessionClient.IsPointToPoint(track.Id) ? "point-to-point" : $"{laps} {(laps == 1 ? "lap" : "laps")}";
         var eventMode = mode == "Race" ? $"race · {opponents} AI {(opponents == 1 ? "opponent" : "opponents")} · {OpponentSelection(car, opponentCars)}" : "solo practice";
@@ -67,7 +68,7 @@ internal static class LauncherPresentation
 
     public static HelpTopic[] Instructions(int key, int modifiers) =>
     [
-        new("Getting started", "1. Choose a launch mode. Normal opens GRID 2's own menus so you can choose an event in the game. Practice starts a solo session using the selected car and track. Race adds 1–7 AI opponents. Opponent cars offers Same car, Mixed (any installed selectable model), and Same class (your car's vehicle category, without tier restrictions). Mixed and Same class prefer other models and repeat small pools; if none are available, opponents use your car. Unknown classes also use your car. The Laps slider offers 1–20 laps for circuits; point-to-point routes use one run and retain your circuit lap preference.\n\n" +
+        new("Getting started", "1. Choose a launch mode. Normal opens GRID 2's own menus so you can choose an event in the game. Online does the same for online races: it leaves out GRID2VR's session wheel preset, which online races reject, so a wheel GRID 2 has no preset for (such as a Logitech G920) drives through the launcher bindings without the game's force feedback. Practice starts a solo session using the selected car and track. Race adds 1–7 AI opponents. Opponent cars offers Same car, Mixed (any installed selectable model), and Same class (your car's vehicle category, without tier restrictions). Mixed and Same class prefer other models and repeat small pools; if none are available, opponents use your car. Unknown classes also use your car. The Laps slider offers 1–20 laps for circuits; point-to-point routes use one run and retain your circuit lap preference.\n\n" +
             "2. For VR, choose the OpenXR runtime in Simple view or under Settings in Advanced view. For VDXR, connect the headset through Virtual Desktop and keep SteamVR closed. For SteamVR, connect through SteamVR. This choice applies only to GRID2VR's session.\n\n" +
             "3. Choose Launch for desktop play or Launch VR for the headset. Both save your choices. Select GRID 2 while it loads; VR begins when the game and tracking are ready.\n\n" +
             "4. Car and track selection has been confirmed working. Not every installed combination has been driven; circuit lap counts still need an in-game completion check.\n\n" +

@@ -15,7 +15,7 @@ $start=Read-TestAst 'Start-UserSession.ps1'
 $bind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n@{mode=`$LaunchMode;opponents=`$Opponents;opponentCars=`$OpponentCars;laps=`$Laps;replays=`$VrReplayCameras;garage=`$VrGarageMenus}")
 $defaults=& $bind
 if($defaults.mode -ne 'Practice' -or $defaults.opponents -ne 7 -or $defaults.opponentCars -cne 'same' -or $defaults.laps -ne 1 -or $defaults.replays -ne 1 -or $defaults.garage -ne 1) { throw 'Launch defaults changed.' }
-foreach($mode in @('Normal','Practice','Race')) {
+foreach($mode in @('Normal','Online','Practice','Race')) {
     foreach($choice in @('same','mixed','class')) {
         $bound=& $bind -LaunchMode $mode -Opponents 1 -OpponentCars $choice -Laps 20 -VrReplayCameras 0 -VrGarageMenus 0
         if($bound.mode -ne $mode -or $bound.opponents -ne 1 -or $bound.opponentCars -cne $choice -or $bound.laps -ne 20 -or $bound.replays -or $bound.garage) { throw 'Launch options lost during binding.' }
@@ -143,6 +143,9 @@ try {
     $prepare=Find-TestStatement $start '$selectionArguments=@('
     $prepare=[scriptblock]::Create('param([string]$PSScriptRoot)'+[Environment]::NewLine+$prepare.ToString())
     $route=Find-TestStatement $start '$parameters.NormalLaunch=$true'
+    $menus=$start.Find({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$nativeMenus'},$true)
+    if(!$menus) { throw 'Missing native-menu launch mode statement.' }
+    $menus=[scriptblock]::Create($menus.Extent.Text)
     function Invoke-ModeTestPython {
         $script:pythonArguments=@($args)
         $global:LASTEXITCODE=0
@@ -150,17 +153,19 @@ try {
     }
     $python='Invoke-ModeTestPython'; $Car='z06'; $Track='cities/chicago/route_0'; $sessionLaps=20; $Opponents=7
     foreach($OpponentCars in @('same','mixed','class')) {
-    foreach($LaunchMode in @('Normal','Practice','Race')) {
+    foreach($LaunchMode in @('Normal','Online','Practice','Race')) {
         $selection=Join-Path $fixture ($LaunchMode+'-'+$OpponentCars)
         $script:pythonArguments=@(); $parameters=@{}
+        . $menus
         . $prepare (Join-Path $root 'tools')
         . $route
-        if($LaunchMode -eq 'Normal') {
+        if($LaunchMode -in @('Normal','Online')) {
             if($script:pythonArguments.Count -or !(Test-Path -LiteralPath $selection -PathType Container) -or
                !$parameters.NormalLaunch -or $parameters.ContainsKey('SessionDirectory') -or
                @(Get-ChildItem -LiteralPath $selection -Force).Count) { throw 'Normal launch prepared or routed a selected session.' }
+            if($parameters.OnlineLaunch -ne ($LaunchMode -eq 'Online')) { throw 'Online launch lost its no-preset route.' }
         } else {
-            if($parameters.NormalLaunch -or $parameters.SessionDirectory -ne $selection) { throw 'Selected session was routed to Normal.' }
+            if($parameters.NormalLaunch -or $parameters.OnlineLaunch -or $parameters.SessionDirectory -ne $selection) { throw 'Selected session was routed to Normal.' }
             $captured=$script:pythonArguments
             $modeIndex=[Array]::IndexOf($captured,'--mode'); $opponentIndex=[Array]::IndexOf($captured,'--opponents')
             if($modeIndex -lt 0 -or $captured[$modeIndex+1] -cne $LaunchMode.ToLowerInvariant() -or
@@ -259,6 +264,22 @@ try {
         . $flow
     }
     if($script:flowCalls -ne 2) { throw 'Selected human mode lost its flow transaction.' }
+
+    # Online is a Normal launch that never deploys the session wheel preset, which GRID 2's
+    # online race-start check rejects (ProJict 1d47bf5c).
+    $onlineGuard=Find-TestStatement $diagnostic 'Online launch uses the native menus'
+    $preset=Find-TestStatement $diagnostic 'New-DevicePresetDeployment'
+    function New-DevicePresetDeployment { $script:presetCalls++; return @{fixture=$true} }
+    foreach($case in @(@{normal=$true;online=$false;claim=$true;preset=1},@{normal=$true;online=$true;claim=$true;preset=0},
+                       @{normal=$false;online=$false;claim=$true;preset=1},@{normal=$true;online=$false;claim=$false;preset=0})) {
+        $NormalLaunch=$case.normal; $OnlineLaunch=$case.online; $deviceClaimWritten=$case.claim; $script:presetCalls=0
+        & $onlineGuard
+        $result=& $preset
+        if($script:presetCalls -ne $case.preset -or [bool]$result -ne [bool]$case.preset) { throw "Device preset routing changed: normal=$($case.normal) online=$($case.online)" }
+    }
+    $NormalLaunch=$false; $OnlineLaunch=$true; $rejected=$false
+    try { & $onlineGuard } catch { $rejected=$true }
+    if(!$rejected) { throw 'Online launch accepted a selected session.' }
 
     $normalRequest=Find-TestStatement $diagnostic "'normal-launch.request'"
     $raceRequest=Find-TestStatement $diagnostic "'race-launch.request'"

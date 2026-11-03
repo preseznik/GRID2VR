@@ -113,8 +113,8 @@ internal sealed partial class MainForm : LauncherForm
         layout.Controls.Add(tabs);
         var selectionColumns = Columns(Page(tabs, "Launcher")); var selection = selectionColumns.First;
         Section(selection, "Event selection");
-        launchMode.Items.AddRange(new ContentItem[] { new("Normal", "Normal"), new("Practice", "Practice"), new("Race", "Race") });
-        launchMode.SelectedIndex = 1;
+        launchMode.Items.AddRange(new ContentItem[] { new("Normal", "Normal"), new("Online", "Online"), new("Practice", "Practice"), new("Race", "Race") });
+        launchMode.SelectedIndex = 2;
         Field(selection, "Launch mode", launchMode);
         Field(selection, "Event", eventChoice); Field(selection, "Track", track);
         Field(selection, "Find car", carSearch); Field(selection, "Car", car); selection.Controls.Add(carCount);
@@ -688,13 +688,13 @@ internal sealed partial class MainForm : LauncherForm
         vr.Enabled &= !queryingHeadset;
         save.Enabled = selected && !busy && !capturingRecenter;
         launchMode.Enabled = runtime.Enabled = !busy && !active && !pending;
-        var normal = ChoiceId(launchMode) == "Normal";
+        var normal = ChoiceId(launchMode) is "Normal" or "Online";
         UpdateSimpleContext(normal, ChoiceId(launchMode) == "Race");
         carSearch.Enabled = car.Enabled = track.Enabled = eventChoice.Enabled = !normal && !busy && !active && !pending;
         var pointToPoint = track.SelectedItem is ContentItem route && SessionClient.IsPointToPoint(route.Id);
         laps.Enabled = loaded && idle && !normal && !pointToPoint && !capturingRecenter;
         opponentCars.Enabled = opponents.Enabled = loaded && idle && ChoiceId(launchMode) == "Race" && !capturingRecenter;
-        lapsHint.Text = normal ? "Normal uses the event options you choose in the game." : pointToPoint ? "Point-to-point route: one run. Your circuit lap setting is kept." : "Choose 1–20 laps for circuit and city routes.";
+        lapsHint.Text = normal ? $"{ChoiceId(launchMode)} uses the event options you choose in the game." : pointToPoint ? "Point-to-point route: one run. Your circuit lap setting is kept." : "Choose 1–20 laps for circuit and city routes.";
         recover.Enabled = known && pending && !active && !busy;
         recenter.Enabled = drivingControls.Enabled = loaded && idle;
         bindRecenterDevice.Enabled = clearRecenterDevice.Enabled = loaded && idle && !capturingRecenter;
@@ -739,7 +739,7 @@ internal sealed partial class MainForm : LauncherForm
     private void ConfigureTooltips(Control help, Control logs)
     {
         tips.SetToolTip(help, "Help / About and instructions. You can also press F1.");
-        tips.SetToolTip(launchMode, "Normal opens the game menus. Practice starts a selected solo event. Race adds computer-controlled opponents.");
+        tips.SetToolTip(launchMode, "Normal opens the game menus. Online opens them for online races, without GRID2VR's wheel preset. Practice starts a selected solo event. Race adds computer-controlled opponents.");
         tips.SetToolTip(opponents, "Race mode: 1–7 computer-controlled opponents. Practice stays solo.");
         tips.SetToolTip(opponentCars, "Same car matches your car. Mixed uses any installed selectable model. Same class uses your car's vehicle category, without tier restrictions. Race mode only.");
         tips.SetToolTip(replay3d, "Keep recorded replays in tracked 3D when supported. Off shows them on the existing VR screen. Driving stays in 3D; apply on the next VR launch.");

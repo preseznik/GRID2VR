@@ -21,7 +21,7 @@ GitHub's **Latest** link selects Stable. Choose **0.2.15 Experimental** above fo
 2. Close GRID 2 and the GRID2VR launcher, then run the installer. Select your existing GRID 2 game folder.
 3. Open **GRID2VR** using its shortcut. Let the first-time preparation finish.
 4. Connect your headset and select the matching VR runtime in the launcher. For direct VDXR, keep SteamVR closed.
-5. Choose **Normal** to use the game's menus, or **Practice / Race** to pick a car and track in the launcher. Click **Launch VR**.
+5. Choose **Normal** to use the game's menus, **Online** to race online from them, or **Practice / Race** to pick a car and track in the launcher. Click **Launch VR**.
 
 Supported installed DLC appears in the Practice / Race car and track lists. Stable 0.2.0 includes cockpit views and per-car seat adjustment for the **25 supported DLC cars**, introduced in Experimental 0.1.9. Enable **VR cockpit** to start VR Practice / Race in cockpit view, and adjust each car under **Controls → Seat**. Cockpit preparation requires supported, unchanged DLC sources; if preparation fails, original cameras are retained. The game's DLC ownership requirements still apply. These implemented views do not imply completed headset validation: DLC startup, cockpit placement and per-car headset checks remain pending.
 

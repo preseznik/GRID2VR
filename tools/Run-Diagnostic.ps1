@@ -101,6 +101,7 @@ param(
     [string]$PythonPath='',
     [string]$SessionDirectory='',
     [switch]$NormalLaunch,
+    [switch]$OnlineLaunch,
     [string[]]$XrLayerBypass=@(),
     [ValidateRange(1,300)][int]$CaptureAfterSeconds = 30,
     [ValidateRange(30,600)][int]$TimeoutSeconds = 90
@@ -111,6 +112,7 @@ if($ChaseFreeLook -and (!$RuntimeSession -or $ProxyMode -ne 'Active')) { throw '
 . (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
 $chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
 if($Action -eq 'Run' -and $NormalLaunch -and ($SessionDirectory -or !$RuntimeSession -or $PlayerControlProbe -ne 'Off' -or $RunKind -ne 'Probe')) { throw 'Normal launch requires the guarded runtime without a selected session or input probe.' }
+if($OnlineLaunch -and !$NormalLaunch) { throw 'Online launch uses the native menus of a Normal launch.' }
 if($MsaaAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe)) { throw 'MSAA audit requires an isolated bounded desktop diagnostic.' }
 if($Action -eq 'Run' -and $ExposureAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$AutoCaptureFlicker -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe -or $XrProjection -or $NormalLaunch)) { throw 'Exposure audit requires an isolated bounded unattended desktop diagnostic.' }
 if($Action -eq 'Run' -and ($SceneWidth -or $SceneHeight) -and (!$RuntimeSession -or $PlayerControlOnly -or $SceneWidth -lt 320 -or $SceneWidth -gt 8192 -or $SceneHeight -lt 180 -or $SceneHeight -gt 8192 -or [long]$SceneWidth*$SceneHeight -gt 64MB)) { throw 'Invalid native VR scene-size request.' }
@@ -447,7 +449,9 @@ if ($selectedSession) {
 $practiceFlow=$null
 if($selectedSession -and $selectedSession.control -eq 'human') { $practiceFlow=New-PracticeFlowDeployment $game $run }
 # Only a claimed DirectInput wheel without a shipped preset gets a session preset.
-$devicePreset=if($deviceClaimWritten){New-DevicePresetDeployment $game $run $deviceClaimRequest $validatedDrivingControls}else{$null}
+# Online launches never do: GRID 2 drops an online race when its loaded presets
+# differ from stock (ProJict 1d47bf5c). The launcher bindings still drive.
+$devicePreset=if($deviceClaimWritten -and !$OnlineLaunch){New-DevicePresetDeployment $game $run $deviceClaimRequest $validatedDrivingControls}else{$null}
 $startupMovies=$null # Retain the journal field for recovery of older deployments.
 $nativeStartup=if($SkipIntro) { Write-NativeStartupRequest $game $run } else { $null }
 $cinemaMatte=$null
@@ -505,6 +509,7 @@ $receipt.recenterModifiers=$RecenterModifiers
 $receipt.keepHorizonLevel=!$RecenterTilt
 $receipt.untilExit=[bool]$UntilExit
 $receipt.normalLaunch=[bool]$NormalLaunch
+$receipt.onlineLaunch=[bool]$OnlineLaunch
 $receipt.launch=$launchPlan
 $receipt.vrReplayCameras=[bool]$VrReplayCameras
 $receipt.vrGarageMenus=[bool]$VrGarageMenus

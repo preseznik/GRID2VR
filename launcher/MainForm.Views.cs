@@ -120,7 +120,7 @@ internal sealed partial class MainForm
                 mainTabs.TabPages.Clear(); mainTabs.TabPages.AddRange(fullPages);
                 mainTabs.SelectedTab = lastFullPage ?? fullPages[0];
             }
-            UpdateSimpleContext(ChoiceId(launchMode) == "Normal", ChoiceId(launchMode) == "Race");
+            UpdateSimpleContext(ChoiceId(launchMode) is "Normal" or "Online", ChoiceId(launchMode) == "Race");
             EnableActions();
         }
         finally { mainTabs.ResumeLayout(true); }

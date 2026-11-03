@@ -98,10 +98,13 @@ try {
         if($name -eq 'Start-UserSession.ps1') {
             $guard=$ast.Find({param($n) $n -is [Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.Contains('prototype is for the Honda S2000 only')},$false)
             $guard=[scriptblock]::Create($guard.Extent.Text)
-            foreach($LaunchMode in @('Practice','Race','Normal')) {
+            $menus=$ast.Find({param($n) $n -is [Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$nativeMenus'},$true)
+            $menus=[scriptblock]::Create($menus.Extent.Text)
+            foreach($LaunchMode in @('Practice','Race','Normal','Online')) {
+                . $menus
                 $CockpitS2000='HeadOnly';$Car='s20'; & $guard
                 $Car='pag';$failure=$false;try { & $guard } catch {$failure=$true}
-                if($failure -ne ($LaunchMode -ne 'Normal')) { throw 'Unsupported selected car was misrouted.' }
+                if($failure -ne ($LaunchMode -notin @('Normal','Online'))) { throw 'Unsupported selected car was misrouted.' }
                 $CockpitS2000='Off'; & $guard
             }
         } else {
