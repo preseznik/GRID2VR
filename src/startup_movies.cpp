@@ -2,6 +2,7 @@
 #include "game_executable.h"
 #include <windows.h>
 #include <bcrypt.h>
+#include <algorithm>
 #include <cstring>
 #include <cwchar>
 #include <cstdio>
@@ -131,14 +132,25 @@ std::uint32_t opened{},matched{},seeked{},failures{},closed{};
 struct Entry{void* handle{};Movie movie{};bool attempted{};};
 Entry entries[8]{};
 std::uint32_t movieCounts[4]{};
+// GRID 2 drops an online race at load while these imports still point here
+// (ProJict 1d47bf5c). Put the three native imports back once both startup
+// logos closed, or as soon as another movie opens after the first logo; a
+// later attract movie then plays normally.
+bool importsRestored{};
+void** importSlots[3]{};
+std::uint32_t closedCounts[4]{};
+constexpr ULONGLONG startupWindowMs=60000;
+ULONGLONG attachedAt{};
 void Receipt(const char* phase){
     if(!outputFolder[0])return;
     wchar_t path[1200]{},temporary[1200]{};
     swprintf_s(path,L"%s\\startup-skip.json",outputFolder);swprintf_s(temporary,L"%s\\startup-skip.tmp",outputFolder);
     char json[1024]{};const auto bytes=sprintf_s(json,
-        "{\"schema\":1,\"phase\":\"%s\",\"pid\":%lu,\"verified\":%s,\"opened\":%u,\"matched\":%u,\"seeked\":%u,\"closed\":%u,\"failures\":%u,\"reason\":\"%s\",\"sting\":%u,\"intelSting\":%u,\"attract\":%u,\"attractJapanese\":%u}\n",
+        "{\"schema\":1,\"phase\":\"%s\",\"pid\":%lu,\"verified\":%s,\"opened\":%u,\"matched\":%u,\"seeked\":%u,\"closed\":%u,\"failures\":%u,\"reason\":\"%s\",\"sting\":%u,\"intelSting\":%u,\"attract\":%u,\"attractJapanese\":%u,"
+        "\"restoreAfterLogos\":%s,\"importsRestored\":%s}\n",
         phase,GetCurrentProcessId(),verified?"true":"false",opened,matched,seeked,closed,failures,failure,
-        movieCounts[0],movieCounts[1],movieCounts[2],movieCounts[3]);
+        movieCounts[0],movieCounts[1],movieCounts[2],movieCounts[3],
+        importSlots[0]?"true":"false",importsRestored?"true":"false");
     HANDLE file=CreateFileW(temporary,GENERIC_WRITE,FILE_SHARE_READ,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE)return;DWORD written{};
     const bool saved=bytes>0&&WriteFile(file,json,static_cast<DWORD>(bytes),&written,nullptr)&&written==static_cast<DWORD>(bytes);
@@ -197,6 +209,19 @@ Movie Classify(const char* source,std::uint32_t flags){
         if(!path[i])return MovieForPath(std::string_view(path,i),gameFolder);}
     return Movie::None;
 }
+void* __stdcall OpenMovie(const char* source,std::uint32_t flags);
+std::int32_t __stdcall WaitMovie(void* handle);
+void __stdcall CloseMovie(void* handle);
+bool restoreAttempted{};
+// Caller holds the lock. One attempt: a failed exchange is reported, never retried.
+void RestoreImports(){
+    if(restoreAttempted||!importSlots[0])return;
+    restoreAttempted=true;
+    void* replacements[]{reinterpret_cast<void*>(OpenMovie),reinterpret_cast<void*>(WaitMovie),reinterpret_cast<void*>(CloseMovie)};
+    void* originals[]{reinterpret_cast<void*>(originalOpen),reinterpret_cast<void*>(originalWait),reinterpret_cast<void*>(originalClose)};
+    bool restored=true;for(std::size_t i=0;i<3;++i)restored=Exchange(importSlots[i],replacements[i],originals[i])&&restored;
+    importsRestored=restored;if(!restored)Failed("import_restore_failed");Receipt(restored?"restored":"active");
+}
 void* __stdcall OpenMovie(const char* source,std::uint32_t flags){
     const auto incomingError=GetLastError();
 #ifndef GRID2VR_STARTUP_MOVIES_TEST
@@ -210,6 +235,8 @@ void* __stdcall OpenMovie(const char* source,std::uint32_t flags){
         for(auto& entry:entries)if(!entry.handle){entry={handle,movie,false};tracked=true;break;}
         if(!tracked)Failed("movie_capacity");Receipt(verified?"active":"refused");
     }
+    // Another movie after the first logo: the startup sequence has ended.
+    if(movie==Movie::None&&closedCounts[0])RestoreImports();
     ReleaseSRWLockExclusive(&lock);SetLastError(error);return handle;
 }
 std::int32_t __stdcall WaitMovie(void* handle){
@@ -224,7 +251,9 @@ std::int32_t __stdcall WaitMovie(void* handle){
 }
 void __stdcall CloseMovie(void* handle){
     const auto error=GetLastError();AcquireSRWLockExclusive(&lock);
-    for(auto& entry:entries)if(entry.handle==handle){entry={};++closed;Receipt("active");break;}
+    for(auto& entry:entries)if(entry.handle==handle){++closedCounts[static_cast<std::uint32_t>(entry.movie)-1];entry={};++closed;Receipt("active");break;}
+    if(closedCounts[0]&&closedCounts[1]&&std::none_of(std::begin(entries),std::end(entries),[](const Entry& entry){return entry.handle!=nullptr;}))
+        RestoreImports();
     ReleaseSRWLockExclusive(&lock);SetLastError(error);originalClose(handle);
 }
 std::size_t LoadedImageBytes(HMODULE module){
@@ -258,17 +287,33 @@ bool Attach(){
     if(!InstallImportRoutes(image,imageBytes,reinterpret_cast<std::uintptr_t>(host),reinterpret_cast<void*>(originalOpen),
         reinterpret_cast<void*>(originalWait),reinterpret_cast<void*>(originalClose),reinterpret_cast<void*>(OpenMovie),reinterpret_cast<void*>(WaitMovie),reinterpret_cast<void*>(CloseMovie))){
         Failed("foreign_or_unwritable_import");Receipt("refused");return false;}
+    importSlots[0]=reinterpret_cast<void**>(image+hostLayout->openIat);importSlots[1]=reinterpret_cast<void**>(image+hostLayout->waitIat);
+    importSlots[2]=reinterpret_cast<void**>(image+hostLayout->closeIat);
+    attachedAt=GetTickCount64();
     Receipt("armed");return true;
+}
+void RestoreAfterStartup(){
+    if(importsRestored||restoreAttempted||!importSlots[0]||GetTickCount64()-attachedAt<startupWindowMs)return;
+    // Never wait on the render thread; a movie call holding the lock retries next frame.
+    if(!TryAcquireSRWLockExclusive(&lock))return;
+    if(std::none_of(std::begin(entries),std::end(entries),[](const Entry& entry){return entry.handle!=nullptr;}))RestoreImports();
+    ReleaseSRWLockExclusive(&lock);
 }
 #ifdef GRID2VR_STARTUP_MOVIES_TEST
 void TestConfigure(Open open,Wait wait,Close close,const SeekApi& api,const char* folder){
     originalOpen=open;originalWait=wait;originalClose=close;seek=api;verified=true;
-    strcpy_s(gameFolder,folder);std::memset(entries,0,sizeof(entries));std::memset(movieCounts,0,sizeof(movieCounts));
+    strcpy_s(gameFolder,folder);std::memset(entries,0,sizeof(entries));std::memset(movieCounts,0,sizeof(movieCounts));std::memset(closedCounts,0,sizeof(closedCounts));restoreAttempted=importsRestored=false;
     opened=matched=seeked=closed=failures=0;failure[0]=0;
 }
 void* TestOpen(const char* path,std::uint32_t flags){return OpenMovie(path,flags);}
 std::int32_t TestWait(void* handle){return WaitMovie(handle);}
 void TestClose(void* handle){CloseMovie(handle);}
 TestCounts TestReceipt(){return {opened,matched,seeked,closed,failures};}
+void TestRouteSlots(void* (&slots)[3]){
+    slots[0]=reinterpret_cast<void*>(OpenMovie);slots[1]=reinterpret_cast<void*>(WaitMovie);slots[2]=reinterpret_cast<void*>(CloseMovie);
+    for(std::size_t i=0;i<3;++i)importSlots[i]=&slots[i];
+    attachedAt=GetTickCount64();
+}
+void TestElapseStartup(){attachedAt=GetTickCount64()-startupWindowMs;}
 #endif
 }

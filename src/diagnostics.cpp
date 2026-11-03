@@ -39,6 +39,7 @@
 #include "stop_receipt.h"
 #include "scene_resolution.h"
 #include "frontend_video_resize.h"
+#include "startup_movies.h"
 #include "exposure_audit.h"
 #include "frame_timing.h"
 #ifdef GRID2VR_ENABLE_XR_SESSION
@@ -1024,6 +1025,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
 #endif
     FrontendPreview(chain,f);
     MirrorPreview(chain,f);
+    startupmovies::RestoreAfterStartup();
     // Polls, recenter/suspension, stop, shutdown and preview decisions are final.
     PublishOpponentWorld();
     const auto presentStarted=frametiming::Now();

@@ -103,5 +103,26 @@ int main(){try{
     Reset();Configure();failOpen=true;Check(!TestOpen("video/sting.bk2",0)&&TestReceipt().matched==0,"failed open not registered");
     Check(!SeekToLastFrame(nullptr,{GotoFake,AsyncFake}),"invalid handle rejected");
     handle[2]=200000;Check(!SeekToLastFrame(handle.data(),{GotoFake,AsyncFake}),"unreasonable header rejected");
+    // Online races drop while the imports point at the detours (ProJict 1d47bf5c):
+    // the originals return once both logos closed, or another movie follows a logo.
+    const auto original=[](void* (&slots)[3]){return slots[0]==reinterpret_cast<void*>(OpenFake)&&slots[1]==reinterpret_cast<void*>(WaitFake)&&slots[2]==reinterpret_cast<void*>(CloseFake);};
+    void* slots[3]{};
+    Reset();Configure();TestRouteSlots(slots);
+    TestOpen("video/sting.bk2",0);TestWait(handle.data());TestClose(handle.data());
+    Check(!original(slots)&&slots[0],"imports stay routed between the two logos");
+    Reset();TestOpen("video/intel_sting.bk2",0);TestWait(handle.data());
+    Check(!original(slots),"imports stay routed while a logo is open");
+    TestClose(handle.data());Check(original(slots)&&!TestReceipt().failures,"both logos closed restores all three imports");
+    Reset();Configure();TestRouteSlots(slots);
+    TestOpen("video/sc01.bk2",0);TestClose(handle.data());Check(!original(slots),"a movie before any logo keeps routing");
+    TestOpen("video/sting.bk2",0);TestWait(handle.data());TestClose(handle.data());TestOpen("video/sc01.bk2",0);
+    Check(original(slots),"another movie after the first logo restores the imports");
+    // Fallback for installs whose logos never play: restore after the startup
+    // window, but never while a startup movie is open.
+    Reset();Configure();TestRouteSlots(slots);
+    RestoreAfterStartup();Check(!original(slots),"no fallback restore inside the startup window");
+    TestElapseStartup();TestOpen("video/sting.bk2",0);
+    RestoreAfterStartup();Check(!original(slots),"no fallback restore while a logo is open");
+    TestClose(handle.data());RestoreAfterStartup();Check(original(slots),"fallback restores the imports after the startup window");
     std::cout<<"native startup movie routing tests passed\n";return 0;
 }catch(const std::exception& error){std::cerr<<error.what()<<'\n';return 1;}}

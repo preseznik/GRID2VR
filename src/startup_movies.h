@@ -25,8 +25,12 @@ bool SeekToLastFrame(void* handle, const SeekApi& api);
 
 // Called once from the proxy's DllMain. Missing request is completely inactive.
 // Only guarded IAT pointer replacement happens here; full file hashes are
-// checked lazily outside the loader lock before any movie is advanced.
+// checked lazily outside the loader lock before any movie is advanced. The
+// original imports return once the startup logos end, before online play.
 bool Attach();
+// Per-frame fallback: restores the original imports once the startup window
+// has passed with no startup movie open, for installs whose logos never play.
+void RestoreAfterStartup();
 #ifdef GRID2VR_STARTUP_MOVIES_TEST
 struct TestCounts { std::uint32_t opened,matched,seeked,closed,failures; };
 void TestConfigure(Open open,Wait wait,Close close,const SeekApi& api,const char* folder);
@@ -34,5 +38,8 @@ void* TestOpen(const char* path,std::uint32_t flags);
 std::int32_t TestWait(void* handle);
 void TestClose(void* handle);
 TestCounts TestReceipt();
+// Routes three test slots to the detours; restoration writes the originals back.
+void TestRouteSlots(void* (&slots)[3]);
+void TestElapseStartup();
 #endif
 }
