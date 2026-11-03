@@ -1,3 +1,15 @@
+# GRID2VR 0.2.16 — Experimental
+
+Changes since 0.2.15:
+
+- **VR field of view (experimental).** **Graphics → VR rendering → Field of view** trims the VR view from 100% down to 70% and renders a proportionally smaller scene, for more performance. **Crop** chooses **All edges** or **Top and bottom (helmet)**, which keeps the full width, like looking out of a helmet visor (GitHub #3).
+- **Fix online races disconnecting at race start** when **Skip intro / logos** is on.
+- **New launch mode: Online.** It opens the game's menus like **Normal**, for online races. It leaves out GRID2VR's session wheel preset, which GRID 2's online check rejects. A wheel GRID 2 has no preset for (such as a Logitech G920) drives through the launcher's driving bindings, without the game's force feedback, in Online for now.
+- **New features are marked \*new\*.** Experimental builds show a red \*new\* next to settings and buttons added since the last release. Stable releases don't show it.
+- The cockpit texture pack now includes **CARS.txt**, a readable list of the cars it covers.
+
+This is an Experimental pre-release. The online fix was tested on Steam with two PCs: GRID2VR in Desktop mode joining a plain GRID 2 host.
+
 # GRID2VR 0.2.15 — Experimental
 
 Changes since 0.2.14:
