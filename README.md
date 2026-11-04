@@ -13,9 +13,9 @@ Standalone installations launch directly and use **Current game career**. Manage
 | Channel | Published release | Downloads |
 | --- | --- | --- |
 | Stable | [0.2.0 Stable / Latest](https://github.com/preseznik/GRID2VR/releases/latest) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/GRID2VR-0.2.0-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/GRID2VR-0.2.0.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/SHA256SUMS.txt) |
-| Experimental | [0.2.16 Experimental](https://github.com/preseznik/GRID2VR/releases/tag/v0.2.16) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.2.16/GRID2VR-0.2.16-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.2.16/GRID2VR-0.2.16.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.2.16/SHA256SUMS.txt) |
+| Experimental | [0.2.17 Experimental](https://github.com/preseznik/GRID2VR/releases/tag/v0.2.17) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.2.17/GRID2VR-0.2.17-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.2.17/GRID2VR-0.2.17.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.2.17/SHA256SUMS.txt) |
 
-GitHub's **Latest** link selects Stable. Choose **0.2.16 Experimental** above for a VR field of view setting with a helmet crop, online races that no longer disconnect at race start, and the Online launch mode; see [all releases](https://github.com/preseznik/GRID2VR/releases) for future previews.
+GitHub's **Latest** link selects Stable. Choose **0.2.17 Experimental** above for the Online launch mode and online races that no longer disconnect at race start, and a VR field of view setting down to 10% with a helmet crop; see [all releases](https://github.com/preseznik/GRID2VR/releases) for future previews.
 
 1. Download the installer for your chosen channel above.
 2. Close GRID 2 and the GRID2VR launcher, then run the installer. Select your existing GRID 2 game folder.
