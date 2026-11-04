@@ -5,6 +5,8 @@ param(
     [string]$RunLogDirectory='',
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [int]$HeadsetWidth=0,[int]$HeadsetHeight=0,[int]$VrRenderScale=0,
+    [ValidateRange(50,100)][int]$VrFieldOfView=100,
+    [ValidateSet('All','Vertical')][string]$VrFieldOfViewCrop='All',
     [ValidateRange(2,900)][int]$Frames=900,
     [ValidateRange(1,300)][int]$CaptureAfterSeconds=75,
     [ValidateRange(30,600)][int]$TimeoutSeconds=180,
@@ -69,6 +71,7 @@ param(
     [string]$RecordedViewsFile='',
     [string]$SessionDirectory='',
     [switch]$NormalLaunch,
+    [switch]$OnlineLaunch,
     [string[]]$XrLayerBypass=@(),
     [string]$PythonPath=''
 )
@@ -296,7 +299,7 @@ $preflight.xrRuntime=$XrRuntime
 $preflight.headsetSettings=Get-HeadsetSettings $HeadsetScale
 if($HeadsetWidth -or $HeadsetHeight -or $VrRenderScale) {
     . (Join-Path $PSScriptRoot 'Headset-Resolution.ps1')
-    $plan=Get-HeadsetResolutionPlan $HeadsetWidth $HeadsetHeight $VrRenderScale
+    $plan=Get-HeadsetResolutionPlan $HeadsetWidth $HeadsetHeight $VrRenderScale $VrFieldOfView $VrFieldOfViewCrop
     if(!$ForceSceneResolution -or $Mode -eq 'Desktop' -or $sceneWidth -ne $plan.sceneWidth -or $sceneHeight -ne $plan.sceneHeight) { throw 'Headset and scene resolution requests do not match.' }
     $preflight.headsetSettings=$plan
     Assert-HeadsetResolutionProxy $proxy
@@ -360,13 +363,13 @@ try {
         RecordedViewsFile=$recordedViewsFile;XrSessionProbe=($Mode -eq 'Headset');XrProjection=($Mode -eq 'Headset')
         XrRuntimeManifest=$runtime;XrLayerBypass=$XrLayerBypass
         HeadsetScale=$HeadsetScale
-        HeadsetWidth=$HeadsetWidth;HeadsetHeight=$HeadsetHeight;VrRenderScale=$VrRenderScale
+        HeadsetWidth=$HeadsetWidth;HeadsetHeight=$HeadsetHeight;VrRenderScale=$VrRenderScale;VrFieldOfView=$VrFieldOfView;VrFieldOfViewCrop=$VrFieldOfViewCrop
         TraceVisibility=$true;ExpandVisibility=$true;RestoreReplayComputeState=$true
         SortReplayVpl=$true;IsolateReplayShadowSampler=$true;NormalizeShadowBindings=$true
         KeepCaptures=[bool]$KeepCaptures;DeferCaptureFinalization=$true
         CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;PythonPath=$PythonPath
         WaitForStereoStart=[bool]$WaitForStereoStart
-        SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch
+        SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch
         NativeCockpitExposure=[bool]$NativeCockpitExposure;NativeImpactEffect=[bool]$NativeImpactEffect
         RuntimeSession=[bool]$RuntimeSession
         SkipIntro=[bool]$SkipIntro;RemoveCinemaMatte=[bool]$RemoveCinemaMatte;DiagnosticLogging=[bool]$DiagnosticLogging;MsaaAudit=[bool]$MsaaAudit;ExposureAudit=[bool]$ExposureAudit;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000;CockpitMode=$CockpitMode
@@ -397,7 +400,7 @@ try {
             SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000
             RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers
             UntilExit=[bool]$UntilExit
-            SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;PythonPath=$PythonPath;DeferCaptureFinalization=$true
+            SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch;PythonPath=$PythonPath;DeferCaptureFinalization=$true
             CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds
             BackgroundPlay=$BackgroundPlay
         }

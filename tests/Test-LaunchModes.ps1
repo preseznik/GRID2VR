@@ -21,6 +21,40 @@ foreach($mode in @('Normal','Online','Practice','Race')) {
         if($bound.mode -ne $mode -or $bound.opponents -ne 1 -or $bound.opponentCars -cne $choice -or $bound.laps -ne 20 -or $bound.replays -or $bound.garage) { throw 'Launch options lost during binding.' }
     }
 }
+# Start-UserSession -> Run-StereoProbe -> Run-Diagnostic are plain scripts, not advanced
+# functions: a splatted name the next script does not declare vanishes into $args. That
+# dropped Online's no-preset switch in 0.2.16 (ProJict f61544b3), so every forwarded name
+# must be declared by the script it reaches.
+function Get-TestParameterNames($Ast) { @($Ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath }) }
+$probeAst=Read-TestAst 'Run-StereoProbe.ps1'; $diagnosticAst=Read-TestAst 'Run-Diagnostic.ps1'
+$probeNames=Get-TestParameterNames $probeAst; $diagnosticNames=Get-TestParameterNames $diagnosticAst
+$forwarded=@($start.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$parameters'},$true) |
+    ForEach-Object { $_.Right.Find({param($node) $node -is [Management.Automation.Language.HashtableAst]},$true).KeyValuePairs } | ForEach-Object { $_.Item1.Extent.Text })
+$forwarded+=@($start.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left -is [Management.Automation.Language.MemberExpressionAst] -and
+    $node.Left.Expression.Extent.Text -eq '$parameters'},$true) | ForEach-Object { $_.Left.Member.Extent.Text })
+if($forwarded.Count -lt 40 -or $forwarded -notcontains 'OnlineLaunch') { throw 'Session forwarding scan found too few options.' }
+$missing=@($forwarded | Where-Object { $_ -notin $probeNames } | Sort-Object -Unique)
+if($missing.Count) { throw "Run-StereoProbe.ps1 silently drops session options: $($missing -join ', ')" }
+$diagnosticCalls=@($probeAst.FindAll({param($node) $node -is [Management.Automation.Language.HashtableAst] -and @($node.KeyValuePairs | ForEach-Object { $_.Item1.Extent.Text }) -contains 'NormalLaunch'},$true))
+if($diagnosticCalls.Count -ne 2) { throw 'Run-StereoProbe.ps1 Run-Diagnostic calls changed.' }
+foreach($call in $diagnosticCalls) {
+    $names=@($call.KeyValuePairs | ForEach-Object { $_.Item1.Extent.Text })
+    $missing=@($names | Where-Object { $_ -notin $diagnosticNames })
+    if($missing.Count -or $names -notcontains 'OnlineLaunch') { throw "Run-Diagnostic.ps1 call drops options: $($missing -join ', ') OnlineLaunch=$($names -contains 'OnlineLaunch')" }
+}
+# Run-StereoProbe re-checks the scene size it was given against the headset plan, which must
+# include the field of view: 0.2.16 refused every VR launch below 100%.
+. (Join-Path $root 'tools/Headset-Resolution.ps1')
+$planStatement=$probeAst.Find({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$plan' -and $node.Extent.Text.Contains('Get-HeadsetResolutionPlan')},$true)
+$sceneCheck=@($probeAst.FindAll({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Extent.Text.Contains('Headset and scene resolution requests do not match')},$true) |
+    Sort-Object { $_.Extent.Text.Length } | Select-Object -First 1)[0]
+if(!$planStatement -or !$sceneCheck) { throw 'Run-StereoProbe.ps1 headset plan check moved.' }
+foreach($case in @(@{fov=100;crop='All'},@{fov=80;crop='All'},@{fov=55;crop='Vertical'})) {
+    $expected=Get-HeadsetResolutionPlan 3072 3264 150 $case.fov $case.crop
+    & { $HeadsetWidth=3072;$HeadsetHeight=3264;$VrRenderScale=150;$VrFieldOfView=$case.fov;$VrFieldOfViewCrop=$case.crop
+        $ForceSceneResolution=$true;$Mode='Headset';$sceneWidth=$expected.sceneWidth;$sceneHeight=$expected.sceneHeight
+        . ([scriptblock]::Create($planStatement.Extent.Text)); . ([scriptblock]::Create($sceneCheck.Extent.Text)) }
+}
 foreach($invalid in @(@{LaunchMode='Replay'},@{Opponents=0},@{Opponents=8},@{OpponentCars='unknown'},@{Laps=21},@{VrReplayCameras=2},@{VrGarageMenus=2})) {
     $rejected=$false
     try { $null=& $bind @invalid } catch [Management.Automation.ParameterBindingException] { $rejected=$true }
