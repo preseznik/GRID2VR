@@ -33,6 +33,11 @@ $helmet=Get-HeadsetResolutionPlan 3072 3264 150 80 Vertical
 Assert ($helmet.sceneWidth -eq 4608 -and $helmet.sceneHeight -eq 3916 -and $helmet.fovCrop -ceq 'Vertical' -and $helmet.resolutionRequest -ceq '3072 3264 150 100 80') 'Helmet crop'
 Assert ((Get-HeadsetResolutionPlan 3072 3264 150 100 Vertical).resolutionRequest -ceq '3072 3264 150') 'A full helmet view keeps the three-value request'
 Reject { Get-HeadsetResolutionPlan 3072 3264 150 80 Sideways }
+# Only the helmet crop goes below 70%, down to 50% vertically.
+$deep=Get-HeadsetResolutionPlan 3072 3264 150 50 Vertical
+Assert ($deep.sceneWidth -eq 4608 -and $deep.sceneHeight -eq 2448 -and $deep.resolutionRequest -ceq '3072 3264 150 100 50') 'A helmet crop reaches 50% vertically'
+foreach($fov in 49,101) { Reject { Get-HeadsetResolutionPlan 3072 3264 150 $fov Vertical } }
+foreach($fov in 50,69) { Reject { Get-HeadsetResolutionPlan 3072 3264 150 $fov All } }
 Reject { Get-HeadsetResolutionPlan 640 640 50 70 }
 $fixture=Join-Path (Split-Path $PSScriptRoot -Parent) ('build/headset-resolution-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixture | Out-Null

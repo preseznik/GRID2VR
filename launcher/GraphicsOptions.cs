@@ -15,6 +15,8 @@ internal sealed record GraphicsOptions(int RenderScale = 100, bool DesktopVSync 
     public int VrFieldOfViewX => VrFieldOfViewCrop == "vertical" ? 100 : VrFieldOfView;
     [System.Text.Json.Serialization.JsonIgnore]
     public int VrFieldOfViewY => VrFieldOfView;
+    // A helmet (top and bottom) crop may cut deeper than an even one (ProJict b48d88c5).
+    public static int MinimumFieldOfView(string crop) => crop == "vertical" ? 50 : 70;
     public int? DesktopRenderScale { get; init; }
     public static GraphicsOptions Defaults => new();
     [System.Text.Json.Serialization.JsonIgnore]
@@ -51,7 +53,8 @@ internal sealed record GraphicsOptions(int RenderScale = 100, bool DesktopVSync 
     public void Validate()
     {
         if (VrRenderScale is < 50 or > 300) throw new ArgumentException("VR render scale must be 50–300%.");
-        if (VrFieldOfView is < 70 or > 100 || VrFieldOfViewCrop is not ("all" or "vertical")) throw new ArgumentException("VR field of view must be 70–100%, cropping all edges or top and bottom.");
+        if (VrFieldOfViewCrop is not ("all" or "vertical") || VrFieldOfView < MinimumFieldOfView(VrFieldOfViewCrop) || VrFieldOfView > 100)
+            throw new ArgumentException("VR field of view must be 70–100% for all edges, or 50–100% for top and bottom.");
         if (RenderScale is < 50 or > 300 || DesktopRenderScale is < 50 or > 300 || HeadsetScale is < 25 or > 200 || HeadsetScale % 25 != 0 || DesktopMsaa is not ("off" or "2xmsaa" or "4xmsaa" or "8xmsaa") || VrMsaa is not ("off" or "2xmsaa" or "4xmsaa" or "8xmsaa") ||
             TreeDetail is not ("medium" or "high" or "ultra") || ObjectDetail is not ("medium" or "high" or "ultra") ||
             CrowdDetail is not ("off" or "low" or "medium" or "high" or "ultra") || TextureFiltering is not ("off" or "low" or "high" or "ultra"))

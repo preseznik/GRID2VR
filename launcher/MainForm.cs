@@ -202,7 +202,7 @@ internal sealed partial class MainForm : LauncherForm
         graphics.Controls.Add(TextLabel("VR defaults to 100% of the connected headset’s recommended resolution. Changes apply to the next launch; original game settings are restored afterward."));
         renderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
         vrFieldOfView.ValueChanged += (_, _) => UpdateResolutionLabels();
-        vrFieldOfViewCrop.SelectedIndexChanged += (_, _) => UpdateResolutionLabels();
+        vrFieldOfViewCrop.SelectedIndexChanged += (_, _) => { vrFieldOfView.Minimum = GraphicsOptions.MinimumFieldOfView(ChoiceId(vrFieldOfViewCrop)); UpdateResolutionLabels(); };
         refreshHeadset.Click += async (_, _) => await RefreshHeadsetResolution();
         desktopRenderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
         graphicsDefaults.Click += (_, _) => { ClearGraphicsPresetUndo(); ApplyGraphics(GraphicsOptions.Defaults); vrCockpit.Checked = true; cockpitExposure.Checked = true; impactGlitch.Checked = true; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
@@ -488,7 +488,8 @@ internal sealed partial class MainForm : LauncherForm
         {
             retainedGraphics = value;
             renderScale.Value = value.VrRenderScale;
-            vrFieldOfView.Value = value.VrFieldOfView; SelectChoice(vrFieldOfViewCrop, value.VrFieldOfViewCrop);
+            SelectChoice(vrFieldOfViewCrop, value.VrFieldOfViewCrop);
+            vrFieldOfView.Minimum = GraphicsOptions.MinimumFieldOfView(value.VrFieldOfViewCrop); vrFieldOfView.Value = value.VrFieldOfView;
             desktopRenderScale.Value = value.EffectiveDesktopRenderScale;
             vrMirrorBorderless.Checked = value.VrMirrorBorderless;
             desktopBorderless.Checked = value.DesktopBorderless;
@@ -751,8 +752,8 @@ internal sealed partial class MainForm : LauncherForm
         tips.SetToolTip(carSearch, "Filter by car name, manufacturer or game code. Clear the search to show all installed cars.");
         tips.SetToolTip(laps, "Requested lap count for circuit and city routes. Point-to-point routes always use one run.");
         tips.SetToolTip(renderScale, "100% uses the connected headset’s recommended per-eye resolution. Each percentage scales width and height: 200% is four times the pixels. Output stays at the recommended size. Arrow keys adjust by 1%.");
-        tips.SetToolTip(vrFieldOfView, "Experimental. Lower values trim the edges of your VR view and render a proportionally smaller scene, saving GPU work. 100% keeps the full view; objects keep their normal size.");
-        tips.SetToolTip(vrFieldOfViewCrop, "All edges trims the view evenly. Top and bottom keeps the full width, like looking out of a helmet visor. Applies when Field of view is below 100%.");
+        tips.SetToolTip(vrFieldOfView, "Experimental. Lower values trim the edges of your VR view and render a proportionally smaller scene, saving GPU work. 100% keeps the full view; objects keep their normal size. All edges goes down to 70%, Top and bottom to 50%.");
+        tips.SetToolTip(vrFieldOfViewCrop, "All edges trims the view evenly. Top and bottom keeps the full width, like looking out of a helmet visor, and goes down to 50%. Applies when Field of view is below 100%.");
         tips.SetToolTip(desktopRenderScale, "Desktop scene rendering from 50–300% of 1280 × 720. Applies on the next desktop Launch only; VR resolution is independent.");
         tips.SetToolTip(measuredScene, "Actual native scene dimensions from the current or last session, compared with that session's request. A requested size alone does not prove the game rendered it. No measurement means the scene has not been observed or the build did not report it.");
         tips.SetToolTip(modernInterface, "Preview Modern with red accents, or restore Classic. Save settings keeps the appearance; game and VR settings are unchanged.");

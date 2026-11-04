@@ -46,7 +46,7 @@ internal static class ResponsiveLayoutTests
             ((ProfilePanel)form.Controls.Find("ProfilePanel", true).Single()).Reload();
             LauncherAppearance.Modern = modern; LauncherAppearance.Apply(form);
             LaunchModeTests.RunForm(form);
-            VrResolutionTests.RunForm(form, fixture);
+            VrResolutionTests.RunForm(form, fixture, root);
             var tabs = (TabControl)form.Controls.Find("LauncherTabs", true).Single();
             var controlTabs = (TabControl)form.Controls.Find("ControlTabs", true).Single();
             Require(controlTabs.TabPages.Cast<TabPage>().Select(p => p.Text).SequenceEqual(new[] { "General", "VR", "Driving", "Seat" }), "Controls subtabs changed.");
