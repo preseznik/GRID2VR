@@ -253,6 +253,9 @@ int wmain(int argc,wchar_t** argv) {
         const auto claimInstalled=Claim(output);
         const bool claimArmed=Field(claimInstalled,"pending","true") && Field(claimInstalled,"reason","\"waiting_for_input_instance\"") &&
             Field(claimInstalled,"nativeCall","false") && Field(claimInstalled,"mode","\"auto\"");
+        // The stock generic preset fallback's own guards (473ce0, its menu call
+        // site, the entry builder and the "di_default" global) match too.
+        const bool genericArmed=Field(claimInstalled,"genericFallback","\"armed\"") && Field(claimInstalled,"genericResult","0");
         const auto afterInstall=Snapshot(image);
         const bool installReadOnly=image.ReadOnly();
         const bool installedReady=Field(installed,"failed","false") && Field(installed,"reason","\"waiting_for_input_instance\"") &&
@@ -298,7 +301,8 @@ int wmain(int argc,wchar_t** argv) {
         }
         const auto stopped=Status(output);
         const auto claimStopped=Claim(output);
-        const bool claimIdle=Field(claimStopped,"nativeCall","false") && Field(claimStopped,"updates","0");
+        const bool claimIdle=Field(claimStopped,"nativeCall","false") && Field(claimStopped,"updates","0") &&
+            Field(claimStopped,"genericFallback","\"armed\"");
         const auto afterStop=Snapshot(image);
         const bool stoppedReady=Field(stopped,"failed","false") && Field(stopped,"stopped","true");
         bool nativeIdle=true;
@@ -315,7 +319,7 @@ int wmain(int argc,wchar_t** argv) {
         const bool readOnly=installReadOnly && image.ReadOnly();
         const bool pass=installedReady && stoppedReady && nativeIdle && installUnchanged && attachUnchanged && stopUnchanged && slotUnchanged &&
             readOnly && attached && inputShadow && driverShadow && driverRestored && driverCounters &&
-            transmissionRestored && transmissionOutput && nativeEditPreserved && stoppedNative && updateUnchanged && claimArmed && claimIdle;
+            transmissionRestored && transmissionOutput && nativeEditPreserved && stoppedNative && updateUnchanged && claimArmed && claimIdle && genericArmed;
         const auto flag=[](bool value){return value?"true":"false";};
         const std::string receipt=std::string("{\"schema\":2,\"pass\":")+flag(pass)+",\"productionInstallReached\":"+flag(installedReady)+
             ",\"productionStopSucceeded\":"+flag(stoppedReady)+",\"installImageUnchanged\":"+flag(installUnchanged)+
@@ -325,7 +329,7 @@ int wmain(int argc,wchar_t** argv) {
             ",\"nativeGameCalls\":0,\"transmissionConfigurationRestored\":"+flag(transmissionRestored)+
             ",\"requestedTransmissionOutput\":"+flag(transmissionOutput)+",\"nativeTransmissionEditPreserved\":"+flag(nativeEditPreserved)+
             ",\"stoppedTransmissionNative\":"+flag(stoppedNative)+",\"updateImageUnchanged\":"+flag(updateUnchanged)+
-            ",\"deviceClaimGuardsArmed\":"+flag(claimArmed)+",\"deviceClaimNotCalled\":"+flag(claimIdle)+
+            ",\"deviceClaimGuardsArmed\":"+flag(claimArmed)+",\"deviceClaimNotCalled\":"+flag(claimIdle)+",\"genericPresetGuardsArmed\":"+flag(genericArmed)+
             ",\"attachmentImageUnchanged\":"+flag(attachUnchanged)+",\"privateInputShadow\":"+flag(inputShadow)+
             ",\"privateDriverShadow\":"+flag(driverShadow)+",\"driverHeapPointerRestored\":"+flag(driverRestored)+
             ",\"gameCodeExecuted\":false,\"imageBytes\":"+std::to_string(image.size)+",\"highLowRelocations\":"+std::to_string(image.relocations)+

@@ -94,6 +94,12 @@ struct Claim {
     uint32_t map{},saveMap{},activeMap{},result{};Device device{};std::vector<uint32_t> before,after,mapsSeen;
 } claim;
 std::array<uint32_t,2> claimActions{};
+// Stock generic preset fallback (device_claim_model.h): armed by GenericGuards,
+// then the bound wheel's own carriers are muted on the map it was bound to.
+struct Generic {
+    const char* state="not_requested";bool ready{},called{};uint32_t preset{},backend{},result{},family{},map{};uint64_t muted{};
+    std::vector<uint32_t> actions;
+} generic;
 template<class T> T Function(uintptr_t rva) { return reinterpret_cast<T>(base+rva); }
 // This reader is also used during the brief suspended-peer attachment interval.
 // It deliberately has no profiling, logging, allocation or user-mode locks.
@@ -150,7 +156,7 @@ void Status() {
          << ",\"refused\":" << shiftStatus.refused << ",\"gameDataInstanceWrites\":" << shiftStatus.gameDataInstanceWrites << ",\"restores\":" << shiftStatus.restores << '}'
          << ",\"steeringLinearity\":" << settings.steeringLinearity << ",\"steeringSource\":\"" << steeringSource << "\",\"wheelUpdates\":" << wheelUpdates << ",\"curveRestores\":" << curveRestores
          << ",\"curveRestorePending\":" << (curveOverride.object?"true":"false")
-         << ",\"suppressedPedalMenuStates\":" << pedalMenuStates
+         << ",\"suppressedPedalMenuStates\":" << pedalMenuStates << ",\"genericMutedStates\":" << generic.muted
          << ",\"diagnosticMode\":\"state_overlay\",\"stateWrites\":" << stateWrites << ",\"restoredStates\":" << restored
          << ",\"staleRestoresSkipped\":" << staleRestores << ",\"attachments\":" << attachments
          << ",\"routeProbe\":{\"step\":\"" << (route.valid?"valid":routeProbe.step) << "\",\"parentTableRva\":" << routeProbe.parentTable
@@ -319,6 +325,7 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
         Advance(reinterpret_cast<void*>(item.address));if(failed)return false;
         const auto found=std::find_if(maps.begin(),maps.end(),[&](const auto& m){return m.map==item.address && m.ready;});
         if(found==maps.end())return false;
+        const bool genericMap=generic.family && item.id==generic.map;
         std::vector<uint32_t> actions;
         for(const auto& identity:identities)if(std::find(actions.begin(),actions.end(),identity.action)==actions.end())actions.push_back(identity.action);
         if(wheelConfigured)for(auto id:steeringActions)if(std::find(actions.begin(),actions.end(),id)==actions.end())actions.push_back(id);
@@ -328,6 +335,7 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
         for(const auto id:menuActions) {
             if(std::find(actions.begin(),actions.end(),id)==actions.end())actions.push_back(id);
         }
+        if(genericMap)for(const auto id:generic.actions)if(std::find(actions.begin(),actions.end(),id)==actions.end())actions.push_back(id);
         for(const auto id:actions) {
             const bool menuAction=std::find(menuActions.begin(),menuActions.end(),id)!=menuActions.end();
             bool replayAction{};
@@ -335,7 +343,11 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
             // Driving values belong only to the proven local player's map.
             // Menu/replay actions retain native query eligibility in their own
             // contexts, where a local driving controller may not exist.
-            if(!menuAction && !replayAction && (!route.valid || item.id!=route.map))continue;
+            const bool routed=menuAction || replayAction || (route.valid && item.id==route.map);
+            // The generic preset's wheel carriers stay neutral in every context;
+            // launcher values still reach only the contexts above.
+            const bool genericAction=genericMap && std::find(generic.actions.begin(),generic.actions.end(),id)!=generic.actions.end();
+            if(!routed && !genericAction)continue;
             uintptr_t node{};if(!Find(item.address+8,id,node))return false;
             std::array<uint32_t,2> range{};std::vector<Axis> native,applied;
             if(node) {
@@ -344,6 +356,7 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
                 if(!native.empty() && (!Heap(range[0],native.size()*sizeof(Axis)) || !ReadMemory(reinterpret_cast<void*>(range[0]),native.data(),native.size()*sizeof(Axis))))return false;
             }
             applied=native;
+            if(genericAction)generic.muted+=MuteFamily(applied,generic.family);
             if(route.valid && item.id==route.map)for(size_t i=0;i<steeringActions.size();++i)
                 if(steeringActions[i]==id) {
                     auto& value=nativeOtherSteering[i];
@@ -360,7 +373,7 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
                 }
             }
             std::vector<Axis> combined;
-            for(size_t binding=0;binding<bindings.size();++binding)if(identities[binding].action==id) {
+            for(size_t binding=0;binding<bindings.size();++binding)if(routed && identities[binding].action==id) {
                 auto& report=coverage[binding];std::vector<Axis> shadows;
                 for(const auto& s:found->shadows)if(s.binding==binding)shadows.push_back(s.axis);
                 report.connectedDevices=std::max(report.connectedDevices,static_cast<unsigned>(shadows.size()));
@@ -377,7 +390,7 @@ bool PrepareStates(const std::vector<LiveMap>& live) {
                     }
                 }
             }
-            if(std::any_of(identities.begin(),identities.end(),[&](const auto& entry){return entry.action==id;}))
+            if(routed && std::any_of(identities.begin(),identities.end(),[&](const auto& entry){return entry.action==id;}))
                 OverlayAction(applied,combined,identities,id);
             for(size_t axis=0;axis<native.size();++axis)if(!SameState(native[axis].state,applied[axis].state)) {
                 if(next.size()>=4096)return false;
@@ -417,7 +430,8 @@ void WriteClaim() {
     file << ",\"familiesAfter\":";list(claim.after);
     file << ",\"nativeCall\":" << (claim.called?"true":"false") << ",\"nativeResult\":" << claim.result
          << ",\"device\":{\"family\":" << claim.device.family << ",\"index\":" << claim.device.index << ",\"matched\":\"" << claim.matched << "\"}"
-         << ",\"bindTarget\":\"Input2 5c1db0 (ScreenPressStart 7dcec4)\",\"gameCodeWrites\":0}\n";
+         << ",\"bindTarget\":\"Input2 5c1db0 (ScreenPressStart 7dcec4)\",\"genericFallback\":\"" << generic.state << "\",\"genericResult\":" << generic.result
+         << ",\"genericTarget\":\"Input2 473ce0 (StateSetControlsPreset babe45)\",\"gameCodeWrites\":0}\n";
 }
 void FinishClaim(const char* why) { claim.pending=false;claim.reason=why;WriteClaim(); }
 bool ClaimCompile() {
@@ -428,6 +442,18 @@ bool ClaimCompile() {
         auto upper=family;for(auto& c:upper)c=static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
         claim.candidates.push_back({Intern(family),Intern(upper)});
         if(!claim.candidates.back().family || !claim.candidates.back().familyUpper)return false;
+    }
+    if(generic.ready) {
+        // The same name the static initializer (VA ef9140) interns into the
+        // global the menu's entry builder reads, and the DirectInput backend.
+        uint32_t global{};generic.preset=Intern("di_default");
+        if(!generic.preset || !Read(base+0xe58c38,global) || global!=generic.preset || !Read(base+0xe6a0ec,generic.backend) || !generic.backend)
+            {generic.ready=false;generic.state="generic_identity";}
+        for(const auto name:GenericPresetActions) {
+            if(!generic.ready)break;
+            const auto id=Intern(std::string(name));if(!id){generic.ready=false;generic.state="generic_identity";break;}
+            generic.actions.push_back(id);
+        }
     }
     return claimActions[0] && claimActions[1];
 }
@@ -500,6 +526,21 @@ void ClaimDevice(uintptr_t object) {
     claim.result=Function<uint32_t (__thiscall*)(void*,uint32_t,const Device*)>(0x1c1db0)(reinterpret_cast<void*>(object),current.map,&device);
     bool shaped{};
     {LibraryLock lock(object);uintptr_t registry{};shaped=MapFamilies(object,current.map,claim.after,registry);}
+    // No shipped preset for a DirectInput device: bind the stock generic one,
+    // exactly as the Controls menu does. Bindings-backed sessions only, so the
+    // overlay keeps its colliding defaults neutral.
+    const bool genericNeeded=shaped && !CarriesFamily(claim.after,device.family) && generic.backend && device.backend==generic.backend;
+    if(genericNeeded && generic.ready && !claim.only) {
+        generic.state="generic_bind_called";generic.called=true;claim.reason="generic_bind_called";WriteClaim();
+        const PresetEntry entry{device,generic.preset};
+        generic.result=Function<uint32_t (__thiscall*)(void*,uint32_t,const PresetEntry*)>(0x73ce0)(reinterpret_cast<void*>(object),current.map,&entry);
+        {LibraryLock lock(object);uintptr_t registry{};shaped=MapFamilies(object,current.map,claim.after,registry);}
+        const bool bound=shaped && CarriesFamily(claim.after,device.family);
+        if(bound){generic.family=device.family;generic.map=current.map;}
+        generic.state=bound?"bound":"left_map_keyboard_only";
+        FinishClaim(!shaped?"claimed_map_shape":bound?"claimed_generic":"bind_left_map_keyboard_only");return;
+    }
+    if(generic.ready)generic.state=genericNeeded?"claim_only":"not_needed";
     FinishClaim(!shaped?"claimed_map_shape":CarriesFamily(claim.after,device.family)?"claimed":"bind_left_map_keyboard_only");
 }
 void __fastcall ServiceUpdate(void* self,void*,const double* delta) {
@@ -721,6 +762,25 @@ bool ClaimGuards() {
         at(0x1c1ece,RelativeCall(0x1c1ece,0x1a1cf0)) && at(0x3dcebd,pressStart) && at(0x3dcec4,RelativeCall(0x3dcec4,0x1c1db0)) &&
         at(0x43250,mapStub) && at(0x3dce77,RelativeCall(0x3dce77,0x43250));
 }
+// Input2 473ce0(map, const PresetEntry*) and its only caller, StateSetControlsPreset
+// (VA babe45, followed by the career save b664e0 that the claim never calls),
+// plus the menu's entry builder 0x5a5290: DirectInput backend test and the
+// "di_default" global its static initializer (VA ef9140) interns. No bytes are patched.
+bool GenericGuards() {
+    constexpr uint8_t prologue[]{0x55,0x8b,0xec,0x83,0xec,0x2c,0x53,0x8b,0x5d,0x0c,0x56,0x89,0x4d,0xfc,0x57,0x8b,0xcb,0xbf,0x58,0x00,0x00,0x00};
+    constexpr uint8_t epilogue[]{0x8b,0xc7,0x5f,0x5e,0x5b,0x8b,0xe5,0x5d,0xc2,0x08,0x00};
+    constexpr uint8_t menuArguments[]{0x50,0x8b,0xce};
+    constexpr uint8_t name[]{'d','i','_','d','e','f','a','u','l','t',0};
+    const auto at=[](uintptr_t rva,std::span<const uint8_t> bytes){return MatchesInstructions(reinterpret_cast<void*>(base+rva),bytes);};
+    const auto address=[](uintptr_t rva){return static_cast<uint32_t>(base+rva);};
+    return at(0x73ce0,prologue) && at(0x73e0e,epilogue) && at(0x73cf6,RelativeCall(0x73cf6,0xc6d0)) &&
+        at(0x73d1e,RelativeCall(0x73d1e,0x55e820)) && at(0x73d77,RelativeCall(0x73d77,0x2ead40)) && at(0x73e09,RelativeCall(0x73e09,0x1a1cf0)) &&
+        at(0x7abe42,menuArguments) && at(0x7abe45,RelativeCall(0x7abe45,0x73ce0)) && at(0x7abe4a,RelativeCall(0x7abe4a,0x7664e0)) &&
+        at(0x1a52f4,WithAddress(std::array<uint8_t,2>{0x8b,0x15},address(0xe6a0ec))) &&
+        at(0x1a5311,WithAddress(std::array<uint8_t,2>{0x8b,0x0d},address(0xe58c38))) &&
+        at(0xaf9140,WithAddress(std::array<uint8_t,1>{0x68},address(0xc448f0))) &&
+        at(0xaf9145,WithAddress(std::array<uint8_t,1>{0xb9},address(0xe58c38))) && at(0xc448f0,name);
+}
 void LoadClaim(const std::filesystem::path& output) {
     claim.requested=true;
     std::ifstream file(output/L"device-claim.request",std::ios::binary);
@@ -728,6 +788,8 @@ void LoadClaim(const std::filesystem::path& output) {
     const std::string text=file && !error && size<=1024?std::string((std::istreambuf_iterator<char>(file)),{}):std::string();
     if(!ParseClaimRequest(text,claim.request)){claim.reason="invalid_request";WriteClaim();return;}
     if(!ClaimGuards()){claim.reason="claim_instruction_guard";WriteClaim();return;}
+    // A mismatch only disables the generic fallback; the claim itself stays armed.
+    generic.ready=GenericGuards();generic.state=generic.ready?"armed":"generic_instruction_guard";
     claim.pending=true;claim.reason="waiting_for_input_instance";WriteClaim();
 }
 InputRoute DriverRoute() {

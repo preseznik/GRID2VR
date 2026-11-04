@@ -58,4 +58,42 @@ inline bool KeyboardOnly(std::span<const uint32_t> families,uint32_t keyboard) {
 inline bool CarriesFamily(std::span<const uint32_t> families,uint32_t family) {
     return family && std::find(families.begin(),families.end(),family)!=families.end();
 }
+// A DirectInput wheel GRID 2 ships no preset for (G920, Moza) is left
+// keyboard-only by the bind above, so the game gives it no force feedback.
+// GRID 2's Controls menu offers such a device its stock generic preset
+// (input/dinput_default.xml, "di_default"): 0x5a5290 builds a 16-byte entry,
+// the native device record plus the preset name, and StateSetControlsPreset
+// (VA babe45) passes it to Input2 473ce0(map, entry). The claim does the
+// same, without the menu's career save (b664e0). Stock data only: online play
+// and career saves stay intact, unlike an added preset file (ProJict f61544b3).
+struct PresetEntry { Device device{};uint32_t preset{}; };
+static_assert(sizeof(PresetEntry)==16 && offsetof(PresetEntry,preset)==12);
+// Every action dinput_default.xml binds. On such a wheel these defaults collide
+// with the launcher bindings: look on the pedals, steering on the clutch, replay,
+// view and horn on paddles and shifter. The preset is bound only so the wheel
+// gets native force feedback; its own carriers stay neutral and the launcher
+// bindings drive.
+inline constexpr std::string_view GenericPresetActions[]{
+    "Accelerate","Brake","Handbrake","Steer Left","Steer Right","Change View","Gear Up","Gear Down",
+    "Look Left","Look Right","Look Up","Look Down","Look Back","Pause","Instant Replay","Horn",
+    "Menu Left","Menu Right","Menu Up","Menu Down","Menu Select","Menu Back","Menu Button3","Menu Button4","Menu Start Button",
+    "Fe View Tweak Left","Fe View Tweak Right","Fe View Tweak Up","Fe View Tweak Down","Fe View Tweak In","Fe View Tweak Out",
+    "Replay Rewind","Replay Fast Forward","Replay Pause","Replay Next Camera","Replay Prev Camera","Replay Jump In","Replay Exit",
+    "Replay UI On Off","Replay Youtube","Youtube Drag Left","Youtube Drag Right","Youtube Speed Up","Youtube Speed Down",
+    "Youtube Upload","Youtube Exit","Spectator Next Camera","Spectator Previous Camera","Spectator UI On Off","Spectator List On Off",
+    "Cycle Forward On Board Cameras","Activate Replay System"};
+// Neutral state for one device family's carriers; other devices stay native.
+inline size_t MuteFamily(std::span<Axis> axes,uint32_t family) {
+    size_t muted{};
+    for(auto& axis:axes)if(family && axis.device.family==family && !SameState(axis.state,State{})){axis.state={};++muted;}
+    return muted;
+}
+// An instruction whose last four bytes are an absolute address in the loaded
+// image (relocated like the game's own operands).
+template<size_t N> inline std::array<uint8_t,N+4> WithAddress(const std::array<uint8_t,N>& prefix,uint32_t address) {
+    std::array<uint8_t,N+4> bytes{};
+    for(size_t i=0;i<N;++i)bytes[i]=prefix[i];
+    for(size_t i=0;i<4;++i)bytes[N+i]=static_cast<uint8_t>(address>>(8*i));
+    return bytes;
+}
 }

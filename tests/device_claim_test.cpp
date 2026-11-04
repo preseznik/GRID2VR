@@ -1,5 +1,7 @@
 #include "device_claim_model.h"
+#include <cstring>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 using namespace grid2vr::drivingcontrols;
 void Check(bool value,const char* message) { if(!value)throw std::runtime_error(message); }
@@ -46,6 +48,26 @@ int main() {
         Check(KeyboardOnly(before,keyboard) && !KeyboardOnly(mixed,keyboard) && !KeyboardOnly(none,keyboard) && !KeyboardOnly(before,0),
             "only a keyboard-only driving map is claimed");
         Check(CarriesFamily(mixed,pad) && !CarriesFamily(before,pad) && !CarriesFamily(mixed,0),"claim verification needs the bound family");
+
+        // Stock generic preset fallback: the Controls menu's 16-byte entry.
+        const PresetEntry entry{{0x4000,wheelUpper,2},0x55};
+        uint32_t words[4]{};std::memcpy(words,&entry,sizeof(words));
+        Check(words[0]==0x4000 && words[1]==wheelUpper && words[2]==2 && words[3]==0x55,"generic entry is the device record then the preset name");
+        std::set<std::string_view> names(std::begin(GenericPresetActions),std::end(GenericPresetActions));
+        Check(names.size()==52 && names.size()==std::size(GenericPresetActions),"every dinput_default.xml action, once");
+        for(auto name:{"Look Up","Look Down","Look Left","Look Right","Steer Left","Menu Down","Change View","Horn","Activate Replay System","Fe View Tweak In"})
+            Check(names.count(name)==1,"colliding defaults are muted");
+        Axis wheelLook{},padLook{},keyboardLook{};
+        wheelLook.device={0x4000,wheelUpper,0};wheelLook.state={0.8f,1,1,0,0};
+        padLook.device={0x3000,pad,0};padLook.state={0.4f,1,0,0,0};
+        keyboardLook.device={0x1000,keyboard,0};
+        std::vector<Axis> look{wheelLook,padLook,keyboardLook};
+        Check(MuteFamily(look,wheelUpper)==1 && SameState(look[0].state,State{}) && look[1].state.value==0.4f && look[1].state.held,
+            "only the generic wheel's carrier goes neutral");
+        Check(MuteFamily(look,wheelUpper)==0 && MuteFamily(look,0)==0,"neutral carriers and an unset family are not counted");
+        Check(look[0].device==wheelLook.device && look[0].input==wheelLook.input,"muting changes state only, never the binding");
+        const auto load=WithAddress(std::array<uint8_t,2>{0x8b,0x15},0x0126a0ecu);
+        Check(load==std::array<uint8_t,6>{0x8b,0x15,0xec,0xa0,0x26,0x01},"absolute operand guard bytes are little-endian");
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}
     std::cout<<"device claim model passed\n";return 0;
 }
