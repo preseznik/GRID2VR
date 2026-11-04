@@ -27,17 +27,18 @@ $cropped=Get-HeadsetResolutionPlan 3072 3264 150 80
 Assert ($cropped.sceneWidth -eq 3686 -and $cropped.sceneHeight -eq 3916 -and $cropped.width -eq 3072 -and $cropped.height -eq 3264 -and $cropped.fov -eq 80 -and $cropped.resolutionRequest -ceq '3072 3264 150 80') 'Cropped field of view'
 Assert ((Get-HeadsetResolutionPlan 3072 3264 150 100).resolutionRequest -ceq '3072 3264 150') 'Full field of view keeps the three-value request'
 Assert ((Get-HeadsetResolutionPlan 3072 3264 300 80).sceneWidth -eq 7372) 'A cropped field of view leaves room for a higher render scale'
-foreach($fov in 69,101) { Reject { Get-HeadsetResolutionPlan 3072 3264 100 $fov } }
+foreach($fov in 49,101) { Reject { Get-HeadsetResolutionPlan 3072 3264 100 $fov } }
 # A helmet crop trims only top and bottom: width keeps the full field of view.
 $helmet=Get-HeadsetResolutionPlan 3072 3264 150 80 Vertical
 Assert ($helmet.sceneWidth -eq 4608 -and $helmet.sceneHeight -eq 3916 -and $helmet.fovCrop -ceq 'Vertical' -and $helmet.resolutionRequest -ceq '3072 3264 150 100 80') 'Helmet crop'
 Assert ((Get-HeadsetResolutionPlan 3072 3264 150 100 Vertical).resolutionRequest -ceq '3072 3264 150') 'A full helmet view keeps the three-value request'
 Reject { Get-HeadsetResolutionPlan 3072 3264 150 80 Sideways }
-# Only the helmet crop goes below 70%, down to 50% vertically.
+# Both crops go down to 50%.
 $deep=Get-HeadsetResolutionPlan 3072 3264 150 50 Vertical
 Assert ($deep.sceneWidth -eq 4608 -and $deep.sceneHeight -eq 2448 -and $deep.resolutionRequest -ceq '3072 3264 150 100 50') 'A helmet crop reaches 50% vertically'
 foreach($fov in 49,101) { Reject { Get-HeadsetResolutionPlan 3072 3264 150 $fov Vertical } }
-foreach($fov in 50,69) { Reject { Get-HeadsetResolutionPlan 3072 3264 150 $fov All } }
+$even=Get-HeadsetResolutionPlan 3072 3264 150 50
+Assert ($even.sceneWidth -eq 2304 -and $even.sceneHeight -eq 2448 -and $even.resolutionRequest -ceq '3072 3264 150 50') 'An even crop reaches 50%'
 Reject { Get-HeadsetResolutionPlan 640 640 50 70 }
 $fixture=Join-Path (Split-Path $PSScriptRoot -Parent) ('build/headset-resolution-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixture | Out-Null

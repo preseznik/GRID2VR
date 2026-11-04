@@ -13,15 +13,15 @@ inline bool ValidOutput(unsigned width,unsigned height) {
     return width && height && width<=8192 && height<=8192 && uint64_t(width)*height<=16ull*1024*1024;
 }
 // Field of view crops each eye about its optical axis in tangent space, left
-// and right by fovX (70-100%), up and down by fovY (50-100%: a helmet crop keeps
-// fovX at 100 and may cut deeper vertically, ProJict b48d88c5).
+// and right by fovX, up and down by fovY, each 50-100% (a helmet crop keeps fovX
+// at 100).
 // The scene shrinks by the same factors, so its pixels stay square.
 struct Plan {
     unsigned width{},height{},scale{},fovX{100},fovY{100};
     unsigned SceneWidth() const { return width*scale*fovX/10000; }
     unsigned SceneHeight() const { return height*scale*fovY/10000; }
     bool Valid() const {
-        return ValidOutput(width,height) && scale>=50 && scale<=300 && fovX>=70 && fovX<=100 && fovY>=50 && fovY<=100 &&
+        return ValidOutput(width,height) && scale>=50 && scale<=300 && fovX>=50 && fovX<=100 && fovY>=50 && fovY<=100 &&
             SceneWidth()>=320 && SceneHeight()>=180 && ValidScene(SceneWidth(),SceneHeight());
     }
 };

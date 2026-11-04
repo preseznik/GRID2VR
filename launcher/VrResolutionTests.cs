@@ -42,7 +42,7 @@ internal static class VrResolutionTests
         Check(quest.MaximumRenderScaleAt(80, 80) == 300 && !quest.Summary(300, 80, 80).Contains("Exceeds renderer limits"));
         Check(quest.Summary(150, 100, 80).Contains("Render: 4608 × 3916 per eye at 150%, 80% field of view, top and bottom."));
         Check(new HeadsetResolution("VDXR", "Small", 640, 640).Summary(50, 70, 70).Contains("Below the renderer minimum"));
-        foreach (var (fov, crop) in new[] { (100, "all"), (85, "all"), (70, "all"), (80, "vertical"), (50, "vertical"), (100, "vertical") })
+        foreach (var (fov, crop) in new[] { (100, "all"), (85, "all"), (70, "all"), (50, "all"), (80, "vertical"), (50, "vertical"), (100, "vertical") })
         {
             var selected = original with { Graphics = original.Graphics with { VrFieldOfView = fov, VrFieldOfViewCrop = crop } };
             client.Save(selected); Check(client.Load() == selected);
@@ -53,7 +53,7 @@ internal static class VrResolutionTests
             if (fov < 100 && crop == "vertical") Check(vrArgs[vrArgs.IndexOf("-VrFieldOfViewCrop") + 1] == "Vertical");
             Check(selected.Graphics.VrFieldOfViewX == (crop == "vertical" ? 100 : fov) && selected.Graphics.VrFieldOfViewY == fov);
         }
-        foreach (var (fov, crop) in new[] { (69, "all"), (50, "all"), (49, "vertical"), (101, "all"), (80, "sideways") })
+        foreach (var (fov, crop) in new[] { (49, "all"), (49, "vertical"), (101, "all"), (80, "sideways") })
         {
             var rejected = false;
             try { client.Save(original with { Graphics = original.Graphics with { VrFieldOfView = fov, VrFieldOfViewCrop = crop } }); }
@@ -96,18 +96,17 @@ internal static class VrResolutionTests
         Apply(legacy with { VrFieldOfView = 80, VrFieldOfViewCrop = "vertical" });
         Check(Current() is { VrFieldOfView: 80, VrFieldOfViewCrop: "vertical" } && fieldOfView.Value == 80 && fieldOfViewCrop.SelectedIndex == 1);
         Apply(legacy); Check(Current() == legacy && fieldOfView.Value == 100 && fieldOfViewCrop.SelectedIndex == 0);
-        // The helmet crop reaches 50%; switching back to All edges lifts the view to its 70% floor.
-        Apply(legacy with { VrFieldOfView = 55, VrFieldOfViewCrop = "vertical" });
-        Check(Current() is { VrFieldOfView: 55, VrFieldOfViewCrop: "vertical" } && fieldOfView.Minimum == 50);
-        fieldOfViewCrop.SelectedIndex = 0; Check(Current() is { VrFieldOfView: 70, VrFieldOfViewCrop: "all" } && fieldOfView.Minimum == 70);
-        fieldOfViewCrop.SelectedIndex = 1; fieldOfView.Value = 50; Check(Current() is { VrFieldOfView: 50, VrFieldOfViewCrop: "vertical" });
-        using (var helmet = new RenderScaleSlider(fieldOfView.Minimum, 100) { Value = fieldOfView.Value, Size = new Size(420, 72) })
+        // Both crops reach 50%, and switching the crop keeps the value.
+        Apply(legacy with { VrFieldOfView = 50, VrFieldOfViewCrop = "vertical" });
+        Check(Current() is { VrFieldOfView: 50, VrFieldOfViewCrop: "vertical" } && fieldOfView.Value == 50);
+        fieldOfViewCrop.SelectedIndex = 0; Check(Current() is { VrFieldOfView: 50, VrFieldOfViewCrop: "all" });
+        using (var helmet = new RenderScaleSlider(50, 100) { Value = fieldOfView.Value, Size = new Size(420, 72) })
         using (var preview = new Bitmap(420, 72))
         {
             LauncherAppearance.Apply(helmet); helmet.DrawToBitmap(preview, helmet.ClientRectangle);
-            preview.Save(Path.Combine(root, "build", $"vr-field-of-view-helmet-50-{(LauncherAppearance.Modern ? "modern" : "classic")}.png"));
+            preview.Save(Path.Combine(root, "build", $"vr-field-of-view-50-{(LauncherAppearance.Modern ? "modern" : "classic")}.png"));
         }
-        Apply(legacy); Check(Current() == legacy && fieldOfView.Value == 100 && fieldOfView.Minimum == 70);
+        Apply(legacy); Check(Current() == legacy && fieldOfView.Value == 100);
         var runtime = (ComboBox)typeof(MainForm).GetField("runtime", flags)!.GetValue(form)!;
         typeof(MainForm).GetField("headsetResolution", flags)!.SetValue(form, new HeadsetResolution((string)runtime.SelectedItem!, "Test headset", 2400, 2600));
         foreach (var scale in new[] { 50, 100, 137, 150 })

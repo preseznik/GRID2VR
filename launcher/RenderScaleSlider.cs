@@ -27,8 +27,5 @@ internal sealed class RenderScaleSlider : UserControl
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int Value { get => track.Value; set => track.Value = value; }
-    // Raising it clamps Value up and raises ValueChanged.
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public int Minimum { get => track.Minimum; set => track.Minimum = value; }
     private void RefreshValue() { valueText.Text = $"{Value}%"; track.AccessibleDescription = AccessibleDescription = $"{Value}%"; }
 }
