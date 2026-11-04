@@ -10,6 +10,7 @@ param(
     [ValidateRange(2,900)][int]$Frames=900,
     [ValidateRange(1,300)][int]$CaptureAfterSeconds=75,
     [ValidateRange(30,600)][int]$TimeoutSeconds=180,
+    [ValidateRange(60,600)][int]$GameStartSeconds=60,
     [switch]$KeepCaptures,
     [switch]$WaitForStereoStart,
     [switch]$RuntimeSession,
@@ -367,7 +368,7 @@ try {
         TraceVisibility=$true;ExpandVisibility=$true;RestoreReplayComputeState=$true
         SortReplayVpl=$true;IsolateReplayShadowSampler=$true;NormalizeShadowBindings=$true
         KeepCaptures=[bool]$KeepCaptures;DeferCaptureFinalization=$true
-        CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;PythonPath=$PythonPath
+        CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds;PythonPath=$PythonPath
         WaitForStereoStart=[bool]$WaitForStereoStart
         SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch
         NativeCockpitExposure=[bool]$NativeCockpitExposure;NativeImpactEffect=[bool]$NativeImpactEffect
@@ -401,7 +402,7 @@ try {
             RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers
             UntilExit=[bool]$UntilExit
             SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch;PythonPath=$PythonPath;DeferCaptureFinalization=$true
-            CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds
+            CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds
             BackgroundPlay=$BackgroundPlay
         }
     }

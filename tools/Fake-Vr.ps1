@@ -11,6 +11,12 @@ function Set-FakeVrNullDriver([string]$Path,[int]$Width=2016,[int]$Height=2240) 
     if(!$settings.ContainsKey('steamvr')) { $settings['steamvr']=[ordered]@{} }
     $settings['steamvr']['forcedDriver']='null'
     $settings['steamvr']['activateMultipleDrivers']=$true
+    # GRID2VR renders stereo only with a focused session. SteamVR Home and the dashboard
+    # (which also shows Steam's launch prompts in the headset) would keep the focus.
+    $settings['steamvr']['enableHomeApp']=$false
+    if(!$settings.ContainsKey('dashboard')) { $settings['dashboard']=[ordered]@{} }
+    $settings['dashboard']['enableDashboard']=$false
+    $settings['dashboard']['autoShowGameTheater']=$false
     # The motionless virtual headset otherwise enters standby after 5 s: the compositor
     # pauses, the session never becomes visible and the game submits no frames.
     if(!$settings.ContainsKey('power')) { $settings['power']=[ordered]@{} }
@@ -23,6 +29,22 @@ function Set-FakeVrNullDriver([string]$Path,[int]$Width=2016,[int]$Height=2240) 
 }
 
 function Test-FakeVrSteamVrRunning { return [bool](Get-Process $script:FakeVrSteamVr -ErrorAction SilentlyContinue) }
+
+# GRID2VR's SteamVR theater step (steamvr_theater.py) needs a running SteamVR, so the
+# virtual headset is started before the session, from the SteamVR install the launcher uses.
+function Start-FakeVrSteamVr {
+    . (Join-Path $PSScriptRoot 'OpenXR-Runtime.ps1')
+    $startup=Join-Path (Split-Path (Get-Grid2VrRuntimeManifest 'SteamVR') -Parent) 'bin/win64/vrstartup.exe'
+    if(!(Test-Path -LiteralPath $startup -PathType Leaf)) { throw "SteamVR is not installed where the launcher looks: $startup" }
+    Start-Process -FilePath $startup | Out-Null
+    $deadline=(Get-Date).AddSeconds(90)
+    while((Get-Date) -lt $deadline -and !((Get-Process vrserver -ErrorAction SilentlyContinue) -and (Get-Process vrcompositor -ErrorAction SilentlyContinue))) {
+        Start-Sleep -Milliseconds 500
+    }
+    if(!((Get-Process vrserver -ErrorAction SilentlyContinue) -and (Get-Process vrcompositor -ErrorAction SilentlyContinue))) { return $false }
+    Start-Sleep -Seconds 5
+    return $true
+}
 
 # SteamVR rewrites its settings on exit, so the restore waits until every process is gone.
 function Stop-FakeVrSteamVr {

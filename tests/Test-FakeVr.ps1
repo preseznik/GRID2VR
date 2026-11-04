@@ -13,6 +13,8 @@ try {
     Check ($settings['steamvr']['forcedDriver'] -ceq 'null' -and $settings['steamvr']['activateMultipleDrivers'] -eq $true) 'Null driver not forced.'
     Check ($settings['steamvr']['mirrorViewGeometry'] -ceq '0 0 1 1' -and $settings['DesktopUI']['pairing'] -ceq '1,2,3,4,0') 'Unrelated SteamVR settings changed.'
     Check ($settings['power']['turnOffScreensTimeout'] -eq 86400 -and $settings['power']['pauseCompositorOnStandby'] -eq $false) 'Standby still pauses the compositor.'
+    Check ($settings['steamvr']['enableHomeApp'] -eq $false -and $settings['dashboard']['enableDashboard'] -eq $false -and
+        $settings['dashboard']['autoShowGameTheater'] -eq $false) 'SteamVR Home or the dashboard could keep the session unfocused.'
     Check ($settings['driver_null']['renderWidth'] -eq 1600 -and $settings['driver_null']['renderHeight'] -eq 1800 -and $settings['driver_null']['enable'] -eq $true) 'Virtual headset size not applied.'
     # A minimal file without steamvr or power sections still gets both.
     Set-Content -LiteralPath $path -Value '{}' -NoNewline

@@ -10,6 +10,7 @@ param(
     [ValidateRange(1,600)][int]$AfterPairs=480,
     [ValidateRange(0,180)][int]$ObservationSeconds=0,
     [ValidateRange(40,600)][int]$TimeoutSeconds=120,
+    [ValidateRange(60,600)][int]$GameStartSeconds=60,
     [ValidateRange(1,300)][int]$CaptureAfterSeconds=35,
     [switch]$CycleCamera,
     [switch]$CaptureSignTransition,
@@ -49,7 +50,7 @@ if($CycleCamera) { $selectionArgs+='--cycle-camera' }
 if($LASTEXITCODE) { throw 'Automated selected session preparation failed.' }
 $parameters=@{
     Mode=$(if($Preflight){'Preflight'}elseif($Mode -eq 'Simulated'){'Desktop'}else{'Headset'})
-    XrRuntime=$XrRuntime;HeadsetScale=$HeadsetScale;Frames=900;CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds
+    XrRuntime=$XrRuntime;HeadsetScale=$HeadsetScale;Frames=900;CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds
     RuntimeSession=$true;FlickerDiagnostic=$true;AutoCaptureFlicker=$true;FlickerCaptureAfterPairs=$AfterPairs
     FlickerObservationSeconds=$ObservationSeconds
     FlickerSignTarget=[bool]$CaptureSignTransition

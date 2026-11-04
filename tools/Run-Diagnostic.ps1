@@ -104,7 +104,10 @@ param(
     [switch]$OnlineLaunch,
     [string[]]$XrLayerBypass=@(),
     [ValidateRange(1,300)][int]$CaptureAfterSeconds = 30,
-    [ValidateRange(30,600)][int]$TimeoutSeconds = 90
+    [ValidateRange(30,600)][int]$TimeoutSeconds = 90,
+    # How long a launch may take before any game process appears. Fake-VR runs wait
+    # longer: Steam holds the launch on VR prompts no one answers in a virtual headset.
+    [ValidateRange(60,600)][int]$GameStartSeconds = 60
 )
 $ErrorActionPreference='Stop'
 if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
@@ -675,7 +678,7 @@ try {
         }
         if ($seen.Count -gt 0 -and !$processes.Count) { $receipt.result='process_exited'; break }
         if ($UntilExit -and (Test-Path -LiteralPath (Join-Path $run 'session-exit.request'))) { $receipt.result='session_end_requested'; break }
-        if (!$seen.Count -and $timer.Elapsed.TotalSeconds -gt 60) { $receipt.result='no_game_process'; break }
+        if (!$seen.Count -and $timer.Elapsed.TotalSeconds -gt $GameStartSeconds) { $receipt.result='no_game_process'; break }
         Start-Sleep -Milliseconds 500
     }
     if ($receipt.result -in @('prepared','probe_window_completed','session_end_requested','profile_storage_refused')) {

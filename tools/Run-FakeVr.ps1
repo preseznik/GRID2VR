@@ -12,7 +12,9 @@ param(
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [ValidateRange(1,600)][int]$AfterPairs=480,
     [ValidateRange(1,300)][int]$CaptureAfterSeconds=35,
-    [ValidateRange(40,600)][int]$TimeoutSeconds=150,
+    [ValidateRange(40,600)][int]$TimeoutSeconds=330,
+    # Steam holds the launch on VR prompts the virtual headset never answers (~60 s).
+    [ValidateRange(60,600)][int]$GameStartSeconds=180,
     [switch]$CaptureSignTransition,
     [ValidateRange(640,4096)][int]$Width=2016,
     [ValidateRange(640,4096)][int]$Height=2240,
@@ -40,8 +42,10 @@ try {
     $applied=Get-Content -LiteralPath $vrSettings -Raw | ConvertFrom-Json -AsHashtable
     $result.nullDriverApplied=$applied['steamvr']['forcedDriver'] -eq 'null' -and $applied['power']['pauseCompositorOnStandby'] -eq $false
     if(!$SettingsOnly) {
+        $result.steamVrStarted=Start-FakeVrSteamVr
+        if(!$result.steamVrStarted) { throw 'SteamVR did not start with the virtual headset within 90 s.' }
         $run=@{Mode='Headset';XrRuntime='SteamVR';Car=$Car;Track=$Track;PlaybackMode=$PlaybackMode;NativeLeftEye=$NativeLeftEye
-            HeadsetScale=$HeadsetScale;AfterPairs=$AfterPairs;CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds
+            HeadsetScale=$HeadsetScale;AfterPairs=$AfterPairs;CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds
             CaptureSignTransition=[bool]$CaptureSignTransition;DiagnosticProxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path}
         $output=& (Join-Path $PSScriptRoot 'Run-AutomatedFlicker.ps1') @run *>&1 | Tee-Object -FilePath (Join-Path $Evidence 'run.log')
         $result.diagnosticEvidence=@($output | Where-Object { "$_" -like 'Diagnostic evidence: *' } | ForEach-Object { "$_".Substring(21) }) | Select-Object -First 1
