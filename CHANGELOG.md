@@ -1,3 +1,10 @@
+# GRID2VR 0.2.18 — Experimental
+
+Fixes for 0.2.17:
+
+- **Career progress is saved again with a wheel (GitHub #4).** For a wheel GRID 2 has no preset for (such as a Logitech G920), **Normal** launches added GRID2VR's session wheel preset to the game's preset list, and GRID 2 stops saving while that list is changed. Normal now leaves the preset out, like **Online**. The launcher's driving bindings still drive.
+- **Force feedback for newer wheels.** Wheels GRID 2 has no preset for (such as a Logitech G920 or Moza) now get the game's own force feedback through its built-in generic wheel setting, online too. Their clashing default buttons and axes are switched off, so your launcher bindings stay in control.
+
 # GRID2VR 0.2.17 — Experimental
 
 Fixes for 0.2.16:

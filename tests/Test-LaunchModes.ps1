@@ -299,12 +299,14 @@ try {
     }
     if($script:flowCalls -ne 2) { throw 'Selected human mode lost its flow transaction.' }
 
-    # Online is a Normal launch that never deploys the session wheel preset, which GRID 2's
-    # online race-start check rejects (ProJict 1d47bf5c).
+    # Normal and Online launches never deploy the session wheel preset: GRID 2's online
+    # race-start check rejects it (ProJict 1d47bf5c), and GRID 2 stops autosaving the
+    # career while input/paths.xml is modified (ProJict 9214d7e0, GitHub #4). Only
+    # selected Practice/Race sessions, which never save the career, may deploy it.
     $onlineGuard=Find-TestStatement $diagnostic 'Online launch uses the native menus'
     $preset=Find-TestStatement $diagnostic 'New-DevicePresetDeployment'
     function New-DevicePresetDeployment { $script:presetCalls++; return @{fixture=$true} }
-    foreach($case in @(@{normal=$true;online=$false;claim=$true;preset=1},@{normal=$true;online=$true;claim=$true;preset=0},
+    foreach($case in @(@{normal=$true;online=$false;claim=$true;preset=0},@{normal=$true;online=$true;claim=$true;preset=0},
                        @{normal=$false;online=$false;claim=$true;preset=1},@{normal=$true;online=$false;claim=$false;preset=0})) {
         $NormalLaunch=$case.normal; $OnlineLaunch=$case.online; $deviceClaimWritten=$case.claim; $script:presetCalls=0
         & $onlineGuard

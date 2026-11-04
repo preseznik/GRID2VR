@@ -448,10 +448,13 @@ if ($selectedSession) {
 # Persist ownership before copying, so recovery works after interrupted deployment.
 $practiceFlow=$null
 if($selectedSession -and $selectedSession.control -eq 'human') { $practiceFlow=New-PracticeFlowDeployment $game $run }
-# Only a claimed DirectInput wheel without a shipped preset gets a session preset.
-# Online launches never do: GRID 2 drops an online race when its loaded presets
-# differ from stock (ProJict 1d47bf5c). The launcher bindings still drive.
-$devicePreset=if($deviceClaimWritten -and !$OnlineLaunch){New-DevicePresetDeployment $game $run $deviceClaimRequest $validatedDrivingControls}else{$null}
+# Only a claimed DirectInput wheel without a shipped preset gets a session preset,
+# and only in selected Practice/Race sessions, which never save the career.
+# Normal and Online launches never do: GRID 2 drops an online race when its loaded
+# presets differ from stock (ProJict 1d47bf5c), and it stops autosaving the career
+# while input/paths.xml is modified (ProJict 9214d7e0, GitHub #4). The launcher
+# bindings still drive, and the claim falls back to the stock generic preset.
+$devicePreset=if($deviceClaimWritten -and !$NormalLaunch){New-DevicePresetDeployment $game $run $deviceClaimRequest $validatedDrivingControls}else{$null}
 $startupMovies=$null # Retain the journal field for recovery of older deployments.
 $nativeStartup=if($SkipIntro) { Write-NativeStartupRequest $game $run } else { $null }
 $cinemaMatte=$null
