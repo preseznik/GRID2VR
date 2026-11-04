@@ -1,6 +1,7 @@
 #include "xr_session.h"
 #include "frame_timing.h"
 #include "tracked_views.h"
+#include "xr_adapter.h"
 #include <dxgi.h>
 #include <algorithm>
 #include <cstdarg>
@@ -141,11 +142,12 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
     ComPtr<IDXGIDevice> dxgi;ComPtr<IDXGIAdapter> adapter;DXGI_ADAPTER_DESC desc{};
     const bool compatible=SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&dxgi))) &&
         SUCCEEDED(dxgi->GetAdapter(&adapter)) && SUCCEEDED(adapter->GetDesc(&desc)) &&
-        !memcmp(&desc.AdapterLuid,&requirements.adapterLuid,sizeof(LUID)) && device->GetFeatureLevel()>=requirements.minFeatureLevel;
+        RequiredAdapter(requirements.adapterLuid,desc.AdapterLuid) && device->GetFeatureLevel()>=requirements.minFeatureLevel;
     Log("device game=%p compatible=%u luid=%08lx:%08lx required=%08lx:%08lx feature=0x%x minimum=0x%x",
         device,compatible,desc.AdapterLuid.HighPart,desc.AdapterLuid.LowPart,requirements.adapterLuid.HighPart,
         requirements.adapterLuid.LowPart,device->GetFeatureLevel(),requirements.minFeatureLevel);
     if (!compatible) {failed_=true;Shutdown();return false;}
+    if (AnyAdapter(requirements.adapterLuid)) Log("runtime names no graphics adapter; using the game's");
     uint32_t count{};
     std::array<XrViewConfigurationView,2> views{{{XR_TYPE_VIEW_CONFIGURATION_VIEW},{XR_TYPE_VIEW_CONFIGURATION_VIEW}}};
     if (!Check(xrEnumerateViewConfigurationViews(instance_,system,XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,2,&count,views.data()),"stereo_views") || count!=2) {failed_=true;Shutdown();return false;}

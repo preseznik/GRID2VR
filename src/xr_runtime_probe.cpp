@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include "xr_adapter.h"
 
 using Microsoft::WRL::ComPtr;
 namespace {
@@ -67,9 +68,11 @@ int main() {
         if(FAILED(result)) return 6;
         DXGI_ADAPTER_DESC1 description{};
         if(FAILED(adapter->GetDesc1(&description))) return 6;
-        if(!memcmp(&description.AdapterLuid,&requirements.adapterLuid,sizeof(LUID))) {
+        if(RequiredAdapter(requirements.adapterLuid,description.AdapterLuid)) {
+            if(AnyAdapter(requirements.adapterLuid)) puts("runtime names no graphics adapter; using the first");
             printf("required_adapter=%ls vendor=0x%x device=0x%x\n",description.Description,description.VendorId,description.DeviceId);
             found=true;
+            if(AnyAdapter(requirements.adapterLuid)) break;
         }
     }
     if(!found) { puts("Required adapter not found"); return 6; }

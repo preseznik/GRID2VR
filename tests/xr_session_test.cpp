@@ -8,7 +8,7 @@ namespace {
 ID3D11Device* expectedDevice{};
 LUID adapterLuid{};
 XrSessionState eventState=XR_SESSION_STATE_READY;
-bool invalidTracking{},badAdapter{},badSpace{},badLocate{},discard{},missingFunction{},protocolError{};
+bool invalidTracking{},badAdapter{},zeroAdapter{},badSpace{},badLocate{},discard{},missingFunction{},protocolError{};
 unsigned instances{},sessions{},spaces{},waits{},ends{},phase{};
 std::array<ComPtr<ID3D11Texture2D>,3> eyeImages;
 std::array<unsigned,3> imagePhases{};
@@ -34,7 +34,7 @@ XrQuaternionf Orientation(float yaw,float pitch,float roll) {
 bool Near(float a,float b) {return std::abs(a-b)<1e-5f;}
 void STDMETHODCALLTYPE DrawNative(ID3D11DeviceContext* c,UINT count,UINT first) {c->Draw(count,first);}
 void Reset() {
-    eventState=XR_SESSION_STATE_READY;invalidTracking=badAdapter=badSpace=badLocate=discard=missingFunction=protocolError=false;
+    eventState=XR_SESSION_STATE_READY;invalidTracking=badAdapter=zeroAdapter=badSpace=badLocate=discard=missingFunction=protocolError=false;
     instances=sessions=spaces=waits=ends=phase=0;
     eyeImages={};imagePhases={};swapchains=projectionEnds=screenEnds=0;hidden=false;
     performanceEnds=performanceAcquires=lastLayerCount=0;
@@ -43,7 +43,7 @@ void Reset() {
     headPose={{0,0,0,1},{0,0,0}};lastScreenPose={};lastScreenSize={};
 }
 XrResult XRAPI_CALL Requirements(XrInstance,XrSystemId,XrGraphicsRequirementsD3D11KHR* r) {
-    r->adapterLuid=adapterLuid;if(badAdapter) r->adapterLuid.LowPart^=1;
+    r->adapterLuid=adapterLuid;if(badAdapter) r->adapterLuid.LowPart^=1;if(zeroAdapter) r->adapterLuid={};
     r->minFeatureLevel=D3D_FEATURE_LEVEL_11_0;return XR_SUCCESS;
 }
 }
@@ -245,6 +245,14 @@ int main(int argc,char** argv) {
         if(instances || sessions || spaces || protocolError) return 103;
     }
     std::filesystem::remove(resolutionRequest);std::filesystem::remove(sceneRequest);
+    // SteamVR's virtual headset names no adapter (all-zero LUID): the game's own
+    // device is accepted; a named, different adapter still refuses (test 1 below).
+    {
+        Reset();zeroAdapter=true;grid2vr::XrSessionProbe probe;
+        if(!probe.Initialize(device.Get(),manifest,folder) || probe.Failed() || !probe.Poll()) return 110;
+        probe.Shutdown();
+        if(instances || sessions || spaces || protocolError) return 103;
+    }
     recommendedWidth=100;recommendedHeight=120;
     for(unsigned test=0;test<6;++test) {
         Reset();grid2vr::XrSessionProbe probe;
