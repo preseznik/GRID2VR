@@ -7,14 +7,14 @@ function Assert-HeadsetResolutionProxy([string]$Path) {
 }
 
 # Field of view below 100% crops each eye: every edge, or only top and bottom
-# (Vertical, a helmet view), down to 50%. The scene shrinks with it (renderer
+# (Vertical, a helmet view), down to 10%. The scene shrinks with it (renderer
 # resolution_limits.h).
 function Get-HeadsetResolutionPlan([int]$Width,[int]$Height,[int]$Scale=100,[int]$Fov=100,[ValidateSet('All','Vertical')][string]$Crop='All') {
     if($Width -le 0 -or $Height -le 0 -or $Width -gt 8192 -or $Height -gt 8192 -or [long]$Width*$Height -gt 16MB) {
         throw 'The headset recommended resolution exceeds the renderer limit (8192 per dimension, 16,777,216 pixels per eye).'
     }
     if($Scale -lt 50 -or $Scale -gt 300) { throw 'VR render scale must be 50-300%.' }
-    if($Fov -lt 50 -or $Fov -gt 100) { throw 'VR field of view must be 50-100%.' }
+    if($Fov -lt 10 -or $Fov -gt 100) { throw 'VR field of view must be 10-100%.' }
     $fovX=if($Crop -eq 'Vertical'){100}else{$Fov}
     $sceneWidth=[int][Math]::Floor([long]$Width*$Scale*$fovX/10000.0)
     $sceneHeight=[int][Math]::Floor([long]$Height*$Scale*$Fov/10000.0)

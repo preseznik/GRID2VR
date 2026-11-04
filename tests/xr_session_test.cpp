@@ -226,7 +226,8 @@ int main(int argc,char** argv) {
     // The scene request must match the cropped size; out-of-range values refuse.
     struct CropCase { const char* request; const char* scene; float x,y; };
     for(const auto crop:{CropCase{"800 900 50 80","320 360",.8f,.8f},CropCase{"800 900 50 100 80","400 360",1,.8f},
-            CropCase{"800 900 100 50","400 450",.5f,.5f},CropCase{"800 900 100 49","392 441",0,0},CropCase{"800 900 50 101","320 360",0,0},CropCase{"800 900 50 100 50","400 225",1,.5f},CropCase{"800 900 50 100 49","400 220",0,0},
+            CropCase{"800 900 100 50","400 450",.5f,.5f},CropCase{"800 900 100 49","392 441",.49f,.49f},CropCase{"800 900 50 101","320 360",0,0},CropCase{"800 900 50 100 50","400 225",1,.5f},CropCase{"800 900 50 100 49","400 220",1,.49f},
+            CropCase{"800 900 300 15","360 405",.15f,.15f},CropCase{"800 900 300 100 10","2400 270",1,.1f},CropCase{"800 900 300 100 9","2400 243",0,0},CropCase{"800 900 100 10","80 90",0,0},
             CropCase{"800 900 50 80 80 1","320 360",0,0},CropCase{"800 900 50 100 80","320 360",0,0}}) {
         Reset();grid2vr::XrSessionProbe probe;const bool accepted=crop.x>0;
         std::ofstream(resolutionRequest)<<crop.request;std::ofstream(sceneRequest)<<crop.scene;

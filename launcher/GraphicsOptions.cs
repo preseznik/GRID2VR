@@ -7,8 +7,10 @@ internal sealed record GraphicsOptions(int RenderScale = 100, bool DesktopVSync 
     // must never be interpreted as percentages of a headset recommendation.
     public bool UseVrResolutionPreset { get; init; }
     public int VrRenderScale { get; init; } = 100;
-    // Percent of the headset's field of view. "all" crops every edge evenly;
-    // "vertical" crops only top and bottom, like looking out of a helmet.
+    // Percent of the headset's field of view, 10-100 (50 is the suggested
+    // minimum). "all" crops every edge evenly; "vertical" crops only top and
+    // bottom, like looking out of a helmet.
+    internal const int MinimumFieldOfView = 10, SuggestedMinimumFieldOfView = 50;
     public int VrFieldOfView { get; init; } = 100;
     public string VrFieldOfViewCrop { get; init; } = "all";
     [System.Text.Json.Serialization.JsonIgnore]
@@ -51,7 +53,7 @@ internal sealed record GraphicsOptions(int RenderScale = 100, bool DesktopVSync 
     public void Validate()
     {
         if (VrRenderScale is < 50 or > 300) throw new ArgumentException("VR render scale must be 50–300%.");
-        if (VrFieldOfView is < 50 or > 100 || VrFieldOfViewCrop is not ("all" or "vertical")) throw new ArgumentException("VR field of view must be 50–100%, cropping all edges or top and bottom.");
+        if (VrFieldOfView is < MinimumFieldOfView or > 100 || VrFieldOfViewCrop is not ("all" or "vertical")) throw new ArgumentException("VR field of view must be 10–100%, cropping all edges or top and bottom.");
         if (RenderScale is < 50 or > 300 || DesktopRenderScale is < 50 or > 300 || HeadsetScale is < 25 or > 200 || HeadsetScale % 25 != 0 || DesktopMsaa is not ("off" or "2xmsaa" or "4xmsaa" or "8xmsaa") || VrMsaa is not ("off" or "2xmsaa" or "4xmsaa" or "8xmsaa") ||
             TreeDetail is not ("medium" or "high" or "ultra") || ObjectDetail is not ("medium" or "high" or "ultra") ||
             CrowdDetail is not ("off" or "low" or "medium" or "high" or "ultra") || TextureFiltering is not ("off" or "low" or "high" or "ultra"))

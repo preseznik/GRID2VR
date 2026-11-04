@@ -42,7 +42,9 @@ internal static class VrResolutionTests
         Check(quest.MaximumRenderScaleAt(80, 80) == 300 && !quest.Summary(300, 80, 80).Contains("Exceeds renderer limits"));
         Check(quest.Summary(150, 100, 80).Contains("Render: 4608 × 3916 per eye at 150%, 80% field of view, top and bottom."));
         Check(new HeadsetResolution("VDXR", "Small", 640, 640).Summary(50, 70, 70).Contains("Below the renderer minimum"));
-        foreach (var (fov, crop) in new[] { (100, "all"), (85, "all"), (70, "all"), (50, "all"), (80, "vertical"), (50, "vertical"), (100, "vertical") })
+        // Field of view goes down to 10% with either crop; 10% of a Quest 3 is below the renderer's minimum scene.
+        Check(quest.Summary(100, 10, 10).Contains("Below the renderer minimum") && !quest.Summary(100, 11, 11).Contains("Below the renderer minimum"));
+        foreach (var (fov, crop) in new[] { (100, "all"), (85, "all"), (70, "all"), (50, "all"), (10, "all"), (80, "vertical"), (50, "vertical"), (10, "vertical"), (100, "vertical") })
         {
             var selected = original with { Graphics = original.Graphics with { VrFieldOfView = fov, VrFieldOfViewCrop = crop } };
             client.Save(selected); Check(client.Load() == selected);
@@ -53,7 +55,7 @@ internal static class VrResolutionTests
             if (fov < 100 && crop == "vertical") Check(vrArgs[vrArgs.IndexOf("-VrFieldOfViewCrop") + 1] == "Vertical");
             Check(selected.Graphics.VrFieldOfViewX == (crop == "vertical" ? 100 : fov) && selected.Graphics.VrFieldOfViewY == fov);
         }
-        foreach (var (fov, crop) in new[] { (49, "all"), (49, "vertical"), (101, "all"), (80, "sideways") })
+        foreach (var (fov, crop) in new[] { (9, "all"), (9, "vertical"), (101, "all"), (80, "sideways") })
         {
             var rejected = false;
             try { client.Save(original with { Graphics = original.Graphics with { VrFieldOfView = fov, VrFieldOfViewCrop = crop } }); }
@@ -96,15 +98,18 @@ internal static class VrResolutionTests
         Apply(legacy with { VrFieldOfView = 80, VrFieldOfViewCrop = "vertical" });
         Check(Current() is { VrFieldOfView: 80, VrFieldOfViewCrop: "vertical" } && fieldOfView.Value == 80 && fieldOfViewCrop.SelectedIndex == 1);
         Apply(legacy); Check(Current() == legacy && fieldOfView.Value == 100 && fieldOfViewCrop.SelectedIndex == 0);
-        // Both crops reach 50%, and switching the crop keeps the value.
-        Apply(legacy with { VrFieldOfView = 50, VrFieldOfViewCrop = "vertical" });
-        Check(Current() is { VrFieldOfView: 50, VrFieldOfViewCrop: "vertical" } && fieldOfView.Value == 50);
-        fieldOfViewCrop.SelectedIndex = 0; Check(Current() is { VrFieldOfView: 50, VrFieldOfViewCrop: "all" });
-        using (var helmet = new RenderScaleSlider(50, 100) { Value = fieldOfView.Value, Size = new Size(420, 72) })
-        using (var preview = new Bitmap(420, 72))
+        // Both crops reach 10%, switching the crop keeps the value, and the slider marks 50% as the suggested minimum.
+        Apply(legacy with { VrFieldOfView = 10, VrFieldOfViewCrop = "vertical" });
+        Check(Current() is { VrFieldOfView: 10, VrFieldOfViewCrop: "vertical" } && fieldOfView.Value == 10);
+        fieldOfViewCrop.SelectedIndex = 0; Check(Current() is { VrFieldOfView: 10, VrFieldOfViewCrop: "all" });
+        Check(fieldOfView.HasMarker && fieldOfView.Height >= 62 && fieldOfView.AccessibleDescription == "10%; 50% suggested minimum" &&
+            form.Controls.Find("RenderScaleMarker", true).Length == 1 && !render.HasMarker && !desktop.HasMarker);
+        foreach (var value in new[] { 10, 50, 80 })
         {
-            LauncherAppearance.Apply(helmet); helmet.DrawToBitmap(preview, helmet.ClientRectangle);
-            preview.Save(Path.Combine(root, "build", $"vr-field-of-view-50-{(LauncherAppearance.Modern ? "modern" : "classic")}.png"));
+            using var slider = new RenderScaleSlider(GraphicsOptions.MinimumFieldOfView, 100, GraphicsOptions.SuggestedMinimumFieldOfView, "50% suggested minimum") { Value = value, Size = new Size(420, 72) };
+            using var preview = new Bitmap(420, 72);
+            LauncherAppearance.Apply(slider); slider.DrawToBitmap(preview, slider.ClientRectangle);
+            preview.Save(Path.Combine(root, "build", $"vr-field-of-view-{value}-{(LauncherAppearance.Modern ? "modern" : "classic")}.png"));
         }
         Apply(legacy); Check(Current() == legacy && fieldOfView.Value == 100);
         var runtime = (ComboBox)typeof(MainForm).GetField("runtime", flags)!.GetValue(form)!;

@@ -22,7 +22,7 @@ internal sealed partial class MainForm : LauncherForm
     private readonly Label lapsHint = TextLabel("");
     private readonly RenderScaleSlider renderScale = new() { Name = "VrRenderScale", AccessibleName = "VR render scale" };
     private readonly RenderScaleSlider desktopRenderScale = new() { Name = "DesktopRenderScale", AccessibleName = "Desktop render scale" };
-    private readonly RenderScaleSlider vrFieldOfView = new(50, 100) { Name = "VrFieldOfView", AccessibleName = "VR field of view" };
+    private readonly RenderScaleSlider vrFieldOfView = new(GraphicsOptions.MinimumFieldOfView, 100, GraphicsOptions.SuggestedMinimumFieldOfView, $"{GraphicsOptions.SuggestedMinimumFieldOfView}% suggested minimum") { Name = "VrFieldOfView", AccessibleName = "VR field of view" };
     private readonly Button refreshHeadset = new() { Name = "RefreshHeadset", Text = "Refresh headset", AutoSize = true };
     private HeadsetResolution? headsetResolution;
     private string headsetResolutionStatus = "Connect your headset and select Refresh headset to read its resolution.";
@@ -752,7 +752,7 @@ internal sealed partial class MainForm : LauncherForm
         tips.SetToolTip(carSearch, "Filter by car name, manufacturer or game code. Clear the search to show all installed cars.");
         tips.SetToolTip(laps, "Requested lap count for circuit and city routes. Point-to-point routes always use one run.");
         tips.SetToolTip(renderScale, "100% uses the connected headset’s recommended per-eye resolution. Each percentage scales width and height: 200% is four times the pixels. Output stays at the recommended size. Arrow keys adjust by 1%.");
-        tips.SetToolTip(vrFieldOfView, "Experimental. Lower values trim the edges of your VR view and render a proportionally smaller scene, saving GPU work. 100% keeps the full view; objects keep their normal size. Goes down to 50%.");
+        tips.SetToolTip(vrFieldOfView, "Experimental. Lower values trim the edges of your VR view and render a proportionally smaller scene, saving GPU work. 100% keeps the full view; objects keep their normal size. Goes down to 10%; below the suggested 50% the view gets very narrow, and the launcher warns if the scene falls below the renderer minimum.");
         tips.SetToolTip(vrFieldOfViewCrop, "All edges trims the view evenly. Top and bottom keeps the full width, like looking out of a helmet visor. Applies when Field of view is below 100%.");
         tips.SetToolTip(desktopRenderScale, "Desktop scene rendering from 50–300% of 1280 × 720. Applies on the next desktop Launch only; VR resolution is independent.");
         tips.SetToolTip(measuredScene, "Actual native scene dimensions from the current or last session, compared with that session's request. A requested size alone does not prove the game rendered it. No measurement means the scene has not been observed or the build did not report it.");

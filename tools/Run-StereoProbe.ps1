@@ -5,7 +5,7 @@ param(
     [string]$RunLogDirectory='',
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [int]$HeadsetWidth=0,[int]$HeadsetHeight=0,[int]$VrRenderScale=0,
-    [ValidateRange(50,100)][int]$VrFieldOfView=100,
+    [ValidateRange(10,100)][int]$VrFieldOfView=100,
     [ValidateSet('All','Vertical')][string]$VrFieldOfViewCrop='All',
     [ValidateRange(2,900)][int]$Frames=900,
     [ValidateRange(1,300)][int]$CaptureAfterSeconds=75,

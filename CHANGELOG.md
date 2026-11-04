@@ -4,7 +4,7 @@ Fixes for 0.2.16:
 
 - **Online launch mode now works.** In 0.2.16 it still added GRID2VR's session wheel preset, so online races with a bound wheel could still disconnect at race start. Online now leaves the preset out, as intended.
 - **VR with a reduced field of view now starts.** In 0.2.16 every VR launch with **Field of view** below 100% stopped before the game started.
-- **Field of view down to 50%.** **Graphics → VR rendering → Field of view** now goes down to 50% with either **Crop** (was 70%), for example to match a real helmet's narrower vertical view.
+- **Field of view down to 10%.** **Graphics → VR rendering → Field of view** now goes down to 10% with either **Crop** (was 70%), for example to match a real helmet's narrower vertical view. 50% is marked under the slider as the suggested minimum. Very low values on some headsets fall below the renderer's minimum size, which the launcher shows before you launch.
 
 # GRID2VR 0.2.16 — Experimental
 
