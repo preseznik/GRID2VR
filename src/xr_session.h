@@ -9,6 +9,7 @@
 #include <fstream>
 #include "xr_eye_images.h"
 #include "bounded_log.h"
+#include "head_motion.h"
 #include "performance_display.h"
 #include "resolution_limits.h"
 
@@ -75,5 +76,9 @@ private:
     XrPosef screenAnchor_{};
     bool screenAnchorReady_{};
     resolution::Plan resolution_;
+    // Diagnostic look-around sweep for the virtual headset only (head-motion.request).
+    headmotion::Sweep motion_{};
+    bool motionEnabled_{},motionStarted_{};
+    XrTime motionStart_{};
 };
 }

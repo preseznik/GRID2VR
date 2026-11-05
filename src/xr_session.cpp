@@ -148,6 +148,19 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
         requirements.adapterLuid.LowPart,device->GetFeatureLevel(),requirements.minFeatureLevel);
     if (!compatible) {failed_=true;Shutdown();return false;}
     if (AnyAdapter(requirements.adapterLuid)) Log("runtime names no graphics adapter; using the game's");
+    // Unattended fake-VR runs only: a real headset never gets synthetic head motion,
+    // and a malformed request refuses the session. User sessions skip this entirely.
+    motionEnabled_=motionStarted_=false;
+    const auto motionPath=output/L"head-motion.request";
+    if (std::filesystem::exists(motionPath)) {
+        XrSystemProperties systemProperties{XR_TYPE_SYSTEM_PROPERTIES};
+        if (!Check(xrGetSystemProperties(instance_,system,&systemProperties),"system_properties")) {failed_=true;Shutdown();return false;}
+        Log("system name=%s vendor=%u",systemProperties.systemName,systemProperties.vendorId);
+        if (!headmotion::VirtualHeadset(properties.runtimeName,systemProperties.systemName)) {failed_=true;Log("session refused reason=head_motion_requires_virtual_headset");Shutdown();return false;}
+        std::ifstream request(motionPath);
+        if (std::filesystem::file_size(motionPath)>64 || !headmotion::Read(request,motion_)) {failed_=true;Log("session refused reason=head_motion_request_invalid");Shutdown();return false;}
+        motionEnabled_=true;Log("head_motion diagnostic=1 yaw=%.3g pitch=%.3g period=%.3g",motion_.yaw,motion_.pitch,motion_.period);
+    }
     uint32_t count{};
     std::array<XrViewConfigurationView,2> views{{{XR_TYPE_VIEW_CONFIGURATION_VIEW},{XR_TYPE_VIEW_CONFIGURATION_VIEW}}};
     if (!Check(xrEnumerateViewConfigurationViews(instance_,system,XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,2,&count,views.data()),"stereo_views") || count!=2) {failed_=true;Shutdown();return false;}
@@ -247,6 +260,14 @@ bool XrSessionProbe::BeginFrame(uint64_t frame) {
     constexpr XrViewStateFlags viewFlags=XR_VIEW_STATE_ORIENTATION_VALID_BIT|XR_VIEW_STATE_POSITION_VALID_BIT|XR_VIEW_STATE_ORIENTATION_TRACKED_BIT|XR_VIEW_STATE_POSITION_TRACKED_BIT;
     constexpr XrSpaceLocationFlags headFlags=XR_SPACE_LOCATION_ORIENTATION_VALID_BIT|XR_SPACE_LOCATION_POSITION_VALID_BIT|XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT|XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
     valid=valid && (viewState.viewStateFlags&viewFlags)==viewFlags && (head.locationFlags&headFlags)==headFlags;
+    // The game projection, the submitted layer and the logged poses all read the turned views.
+    if (valid && motionEnabled_) {
+        if (!motionStarted_) {motionStarted_=true;motionStart_=displayTime_;}
+        const auto rotation=headmotion::Rotation(motion_,(displayTime_-motionStart_)*1e-9);
+        const auto centre=head.pose.position;
+        headmotion::Apply(rotation,centre,head.pose);
+        for (auto& view:views) headmotion::Apply(rotation,centre,view.pose);
+    }
     // The game projection and the submitted layer read these same cropped views.
     if (valid && (resolution_.fovX<100 || resolution_.fovY<100)) for (auto& view:views) {
         auto& f=view.fov;const auto x=resolution_.fovX,y=resolution_.fovY;

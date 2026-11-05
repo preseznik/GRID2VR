@@ -54,8 +54,30 @@ function Stop-FakeVrSteamVr {
     return !(Test-FakeVrSteamVrRunning)
 }
 
-# The renderer must accept SteamVR's virtual headset, which names no graphics adapter.
-function Test-FakeVrRenderer([string]$Path) {
-    return (Test-Path -LiteralPath $Path -PathType Leaf) -and
-        [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($Path)).Contains("runtime names no graphics adapter; using the game's")
+# SteamVR's OpenXR system name for the running headset, from the renderer's own runtime
+# probe (the launcher's headset query): "SteamVR/OpenXR : <tracking system>".
+function Get-FakeVrHeadsetName([string]$Probe) {
+    . (Join-Path $PSScriptRoot 'OpenXR-Runtime.ps1')
+    if(!(Test-Path -LiteralPath $Probe -PathType Leaf)) { return $null }
+    $start=[Diagnostics.ProcessStartInfo]::new($Probe)
+    $start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+    $start.Environment['XR_RUNTIME_JSON']=Get-Grid2VrRuntimeManifest 'SteamVR'
+    $process=[Diagnostics.Process]::Start($start)
+    $output=$process.StandardOutput.ReadToEndAsync();$null=$process.StandardError.ReadToEndAsync()
+    if(!$process.WaitForExit(15000)) { $process.Kill($true);return $null }
+    if($output.GetAwaiter().GetResult() -match '(?m)^headset=(.+?) orientation_tracking=') { return $Matches[1] }
+    return $null
+}
+
+# Mirrors headmotion::VirtualHeadset in src/head_motion.h: only SteamVR's built-in null
+# driver gets the diagnostic head motion.
+function Test-FakeVrHeadsetName([string]$Name) { return "$Name" -match '^SteamVR/[^:]*:\s*null\s*$' }
+
+# The renderer must accept SteamVR's virtual headset, which names no graphics adapter,
+# and for -HeadMotion it must know the diagnostic sweep (head-motion.request).
+function Test-FakeVrRenderer([string]$Path,[switch]$HeadMotion) {
+    if(!(Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    $text=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($Path))
+    return $text.Contains("runtime names no graphics adapter; using the game's") -and
+        (!$HeadMotion -or $text.Contains('head_motion_requires_virtual_headset'))
 }

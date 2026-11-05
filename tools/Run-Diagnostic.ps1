@@ -102,6 +102,9 @@ param(
     [string]$SessionDirectory='',
     [switch]$NormalLaunch,
     [switch]$OnlineLaunch,
+    # Unattended fake-VR flicker runs only: a deterministic look-around sweep for SteamVR's
+    # motionless virtual headset. The renderer refuses it for a runtime that names an adapter.
+    [switch]$HeadMotion,
     [string[]]$XrLayerBypass=@(),
     [ValidateRange(1,300)][int]$CaptureAfterSeconds = 30,
     [ValidateRange(30,600)][int]$TimeoutSeconds = 90,
@@ -116,6 +119,7 @@ if($ChaseFreeLook -and (!$RuntimeSession -or $ProxyMode -ne 'Active')) { throw '
 $chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
 if($Action -eq 'Run' -and $NormalLaunch -and ($SessionDirectory -or !$RuntimeSession -or $PlayerControlProbe -ne 'Off' -or $RunKind -ne 'Probe')) { throw 'Normal launch requires the guarded runtime without a selected session or input probe.' }
 if($OnlineLaunch -and !$NormalLaunch) { throw 'Online launch uses the native menus of a Normal launch.' }
+if($HeadMotion -and (!$XrSessionProbe -or !$XrProjection -or !$RuntimeSession -or !$AutoCaptureFlicker -or $UntilExit -or $NormalLaunch -or $RecordedViewsFile)) { throw 'Head motion is for unattended fake-VR flicker runs only.' }
 if($MsaaAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe)) { throw 'MSAA audit requires an isolated bounded desktop diagnostic.' }
 if($Action -eq 'Run' -and $ExposureAudit -and (!$RuntimeSession -or !$FlickerDiagnostic -or !$AutoCaptureFlicker -or !$DiagnosticProxy -or $UntilExit -or $XrSessionProbe -or $XrProjection -or $NormalLaunch)) { throw 'Exposure audit requires an isolated bounded unattended desktop diagnostic.' }
 if($Action -eq 'Run' -and ($SceneWidth -or $SceneHeight) -and (!$RuntimeSession -or $PlayerControlOnly -or $SceneWidth -lt 320 -or $SceneWidth -gt 8192 -or $SceneHeight -lt 180 -or $SceneHeight -gt 8192 -or [long]$SceneWidth*$SceneHeight -gt 64MB)) { throw 'Invalid native VR scene-size request.' }
@@ -407,6 +411,8 @@ if ($CompactStereoTrace) { [IO.File]::WriteAllText((Join-Path $run 'compact-ster
 if ($CompactStereoTrace -and !$RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'packed-snapshots.request'),'Pack unchanged bounded CPU snapshot bytes while rendering; unpack after recovery before independent analysis.') }
 if ($ProfileReplay) { [IO.File]::WriteAllText((Join-Path $run 'profile-replay.request'),'CPU wall-time buckets, inclusive of nested scopes; driver timing includes CPU waits and is not GPU time.') }
 if ($XrSessionProbe) { [IO.File]::WriteAllText((Join-Path $run 'xr-session.request'),$runtimeInfo.manifest,[Text.UTF8Encoding]::new($false)) }
+# Peak yaw 25 and pitch 8 degrees, 8 s period: a moderate look-around (about 20 degrees/s at most).
+if ($HeadMotion) { [IO.File]::WriteAllText((Join-Path $run 'head-motion.request'),'25 8 8',[Text.UTF8Encoding]::new($false)) }
 # Steam may start GRID 2 without launcher variables; the renderer sets these around xrCreateInstance.
 if ($XrLayerBypass.Count) { [IO.File]::WriteAllText((Join-Path $run 'xr-layer-bypass.request'),($XrLayerBypass -join "`n"),[Text.UTF8Encoding]::new($false)) }
 if ($RecordedViewsFile) { [IO.File]::Copy((Get-Item -LiteralPath $RecordedViewsFile).FullName,(Join-Path $run 'recorded-views.request'),$false) }
@@ -516,6 +522,7 @@ $receipt.keepHorizonLevel=!$RecenterTilt
 $receipt.untilExit=[bool]$UntilExit
 $receipt.normalLaunch=[bool]$NormalLaunch
 $receipt.onlineLaunch=[bool]$OnlineLaunch
+$receipt.headMotion=[bool]$HeadMotion
 $receipt.launch=$launchPlan
 $receipt.vrReplayCameras=[bool]$VrReplayCameras
 $receipt.vrGarageMenus=[bool]$VrGarageMenus

@@ -73,6 +73,7 @@ param(
     [string]$SessionDirectory='',
     [switch]$NormalLaunch,
     [switch]$OnlineLaunch,
+    [switch]$HeadMotion,
     [string[]]$XrLayerBypass=@(),
     [string]$PythonPath=''
 )
@@ -133,6 +134,7 @@ if (Test-Path -LiteralPath $sessionJournal) { throw 'Recover the pending user se
 if ($UntilExit -and (!$RuntimeSession -or ($Mode -eq 'Desktop' -and !$PlayerControlOnly))) { throw 'User sessions require Headset rendering or non-rendering Desktop practice.' }
 if ($CaptureAfterSeconds -ge $TimeoutSeconds) { throw 'Capture delay must be less than timeout.' }
 if ($RecordedViewsFile -and $Mode -ne 'Desktop') { throw 'Recorded input is only supported in Desktop mode.' }
+if ($HeadMotion -and $Mode -ne 'Headset') { throw 'Head motion is only for Headset mode with the virtual headset.' }
 if ($RuntimeSession -and ($WaitForStereoStart -or $KeepCaptures)) { throw 'Runtime sessions do not use the diagnostic chat gate or capture retention.' }
 if ($PlayerControlOnly -and (($PlayerControlProbe -eq 'Off' -and $BackgroundPlay -eq 'Off') -or $RecordedViewsFile)) { throw 'Non-rendering checks require a player control or background-play probe and no recorded headset views.' }
 if ($BackgroundPlay -ne 'Off' -and !$RuntimeSession) { throw 'Background play requires a guarded runtime session.' }
@@ -370,7 +372,7 @@ try {
         KeepCaptures=[bool]$KeepCaptures;DeferCaptureFinalization=$true
         CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds;PythonPath=$PythonPath
         WaitForStereoStart=[bool]$WaitForStereoStart
-        SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch
+        SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch;HeadMotion=[bool]$HeadMotion
         NativeCockpitExposure=[bool]$NativeCockpitExposure;NativeImpactEffect=[bool]$NativeImpactEffect
         RuntimeSession=[bool]$RuntimeSession
         SkipIntro=[bool]$SkipIntro;RemoveCinemaMatte=[bool]$RemoveCinemaMatte;DiagnosticLogging=[bool]$DiagnosticLogging;MsaaAudit=[bool]$MsaaAudit;ExposureAudit=[bool]$ExposureAudit;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000;CockpitMode=$CockpitMode

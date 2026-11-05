@@ -18,6 +18,7 @@ bool fixedPerformance{};
 XrPosef lastPerformancePose{};
 bool hidden{};
 const char* runtimeName="SteamVR/test";
+const char* systemName="SteamVR/OpenXR : null";
 std::wstring expectedRuntimePath;
 std::vector<std::wstring> expectedLayerSwitches;
 unsigned recommendedWidth=100,recommendedHeight=120;
@@ -32,6 +33,9 @@ XrQuaternionf Orientation(float yaw,float pitch,float roll) {
         {std::sin(pitch/2),0,0,std::cos(pitch/2)}),{0,0,std::sin(roll/2),std::cos(roll/2)});
 }
 bool Near(float a,float b) {return std::abs(a-b)<1e-5f;}
+// Display times advance by timeStep nanoseconds per frame (1 except for the head-motion sweep).
+XrTime timeStep=1;
+XrTime DisplayTime() {return 12345+waits*timeStep;}
 void STDMETHODCALLTYPE DrawNative(ID3D11DeviceContext* c,UINT count,UINT first) {c->Draw(count,first);}
 void Reset() {
     eventState=XR_SESSION_STATE_READY;invalidTracking=badAdapter=zeroAdapter=badSpace=badLocate=discard=missingFunction=protocolError=false;
@@ -39,7 +43,7 @@ void Reset() {
     eyeImages={};imagePhases={};swapchains=projectionEnds=screenEnds=0;hidden=false;
     performanceEnds=performanceAcquires=lastLayerCount=0;
     performanceCreateFail=performanceAcquireFail=performanceTimeout=false;
-    fixedPerformance=false;lastPerformancePose={};
+    fixedPerformance=false;lastPerformancePose={};timeStep=1;
     headPose={{0,0,0,1},{0,0,0}};lastScreenPose={};lastScreenSize={};
 }
 XrResult XRAPI_CALL Requirements(XrInstance,XrSystemId,XrGraphicsRequirementsD3D11KHR* r) {
@@ -58,6 +62,10 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo*,XrIn
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProperties(XrInstance,XrInstanceProperties* out) {strcpy_s(out->runtimeName,runtimeName);return XR_SUCCESS;}
 XRAPI_ATTR XrResult XRAPI_CALL xrGetSystem(XrInstance,const XrSystemGetInfo*,XrSystemId* out) {*out=2;return XR_SUCCESS;}
+XRAPI_ATTR XrResult XRAPI_CALL xrGetSystemProperties(XrInstance,XrSystemId system,XrSystemProperties* out) {
+    if(system!=2 || out->type!=XR_TYPE_SYSTEM_PROPERTIES) protocolError=true;
+    strcpy_s(out->systemName,systemName);out->vendorId=10462;return XR_SUCCESS;
+}
 XRAPI_ATTR XrResult XRAPI_CALL xrGetInstanceProcAddr(XrInstance,const char* name,PFN_xrVoidFunction* out) {
     if(strcmp(name,"xrGetD3D11GraphicsRequirementsKHR")) return XR_ERROR_FUNCTION_UNSUPPORTED;
     *out=missingFunction?nullptr:reinterpret_cast<PFN_xrVoidFunction>(Requirements);return XR_SUCCESS;
@@ -87,24 +95,24 @@ XRAPI_ATTR XrResult XRAPI_CALL xrPollEvent(XrInstance,XrEventDataBuffer* out) {
 XRAPI_ATTR XrResult XRAPI_CALL xrBeginSession(XrSession,const XrSessionBeginInfo*) {return XR_SUCCESS;}
 XRAPI_ATTR XrResult XRAPI_CALL xrEndSession(XrSession) {if(phase) protocolError=true;return XR_SUCCESS;}
 XRAPI_ATTR XrResult XRAPI_CALL xrWaitFrame(XrSession,const XrFrameWaitInfo*,XrFrameState* out) {
-    if(phase) protocolError=true;phase=1;++waits;out->predictedDisplayTime=12345+waits;out->predictedDisplayPeriod=100;out->shouldRender=hidden?XR_FALSE:XR_TRUE;return XR_SUCCESS;
+    if(phase) protocolError=true;phase=1;++waits;out->predictedDisplayTime=DisplayTime();out->predictedDisplayPeriod=100;out->shouldRender=hidden?XR_FALSE:XR_TRUE;return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrBeginFrame(XrSession,const XrFrameBeginInfo*) {
     if(phase!=1) protocolError=true;phase=2;return discard?XR_FRAME_DISCARDED:XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrLocateViews(XrSession,const XrViewLocateInfo* info,XrViewState* state,uint32_t,uint32_t* count,XrView* out) {
-    if(phase!=2 || info->displayTime!=12345+waits || info->space!=4) protocolError=true;
+    if(phase!=2 || info->displayTime!=DisplayTime() || info->space!=4) protocolError=true;
     *count=2;state->viewStateFlags=invalidTracking?0:15;
     for(unsigned i=0;i<2;++i) {out[i].pose.orientation.w=1;out[i].pose.position.x=i?.032f:-.032f;out[i].fov={-.8f,.8f,.7f,-.7f};}
     return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrLocateSpace(XrSpace space,XrSpace base,XrTime time,XrSpaceLocation* out) {
-    if(phase!=2 || time!=12345+waits || space!=5 || base!=4) protocolError=true;
+    if(phase!=2 || time!=DisplayTime() || space!=5 || base!=4) protocolError=true;
     if(badLocate) return XR_ERROR_RUNTIME_FAILURE;
     out->locationFlags=15;out->pose=headPose;return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession,const XrFrameEndInfo* info) {
-    if(phase!=2 || info->displayTime!=12345+waits || info->environmentBlendMode!=XR_ENVIRONMENT_BLEND_MODE_OPAQUE) protocolError=true;
+    if(phase!=2 || info->displayTime!=DisplayTime() || info->environmentBlendMode!=XR_ENVIRONMENT_BLEND_MODE_OPAQUE) protocolError=true;
     lastLayerCount=info->layerCount;
     if (info->layerCount) {
         if (info->layerCount>2 || !info->layers || hidden || invalidTracking) protocolError=true;
@@ -253,6 +261,46 @@ int main(int argc,char** argv) {
         probe.Shutdown();
         if(instances || sessions || spaces || protocolError) return 103;
     }
+    // Fake-VR head motion: only SteamVR's null (virtual) headset accepts the request,
+    // whether or not it names the adapter; both eyes and the head turn about the head
+    // centre from the first located frame.
+    const auto motionRequest=folder/L"head-motion.request";
+    for(const char* request:{"20 8 4","20 8","61 0 4","0 0 4"}) {
+        for(const bool zero:{false,true}) {
+            Reset();zeroAdapter=zero;std::ofstream(motionRequest)<<request;
+            grid2vr::XrSessionProbe probe;
+            if(probe.Initialize(device.Get(),manifest,folder)!=(request==std::string("20 8 4"))) return 111;
+            probe.Shutdown();
+            if(instances || sessions || spaces || protocolError) return 103;
+        }
+    }
+    for(const char* name:{"SteamVR/OpenXR : lighthouse","SteamVR/OpenXR : oculus","SteamVR/OpenXR : nullx","null","VirtualDesktopXR : null"}) {
+        Reset();systemName=name;std::ofstream(motionRequest)<<"20 8 4";grid2vr::XrSessionProbe probe;
+        if(probe.Initialize(device.Get(),manifest,folder) || !probe.Failed()) return 112;
+        probe.Shutdown();
+        if(instances || sessions || spaces || protocolError) return 103;
+    }
+    systemName="SteamVR/OpenXR : null";
+    {
+        Reset();timeStep=1000000000;std::ofstream(motionRequest)<<"20 8 4";grid2vr::XrSessionProbe probe;
+        if(!probe.Initialize(device.Get(),manifest,folder) || !probe.Poll() || !probe.BeginFrame(1) || !probe.Views()) return 113;
+        const auto* first=probe.Views();
+        if(!Near(first->head.orientation.w,1) || !Near(first->eyes[0].pose.position.x,-.032f) || !probe.FinishFrame(1,false)) return 114;
+        // One second into a four-second period: full yaw (20 degrees), pitch back at zero.
+        if(!probe.BeginFrame(2) || !probe.Views()) return 115;
+        const auto* turned=probe.Views();const float yaw=20*3.14159265f/180;
+        const auto expected=Orientation(yaw,0,0);
+        for(const auto& pose:{turned->head,turned->eyes[0].pose,turned->eyes[1].pose})
+            if(!Near(pose.orientation.x,expected.x) || !Near(pose.orientation.y,expected.y) || !Near(pose.orientation.z,expected.z) || !Near(pose.orientation.w,expected.w)) return 116;
+        for(unsigned eye=0;eye<2;++eye) {
+            const float x=eye?.032f:-.032f;const auto& p=turned->eyes[eye].pose.position;
+            if(!Near(p.x,x*std::cos(yaw)) || !Near(p.y,0) || !Near(p.z,-x*std::sin(yaw)) || !Near(turned->eyes[eye].fov.angleLeft,-.8f)) return 117;
+        }
+        if(!probe.FinishFrame(2,false)) return 118;
+        probe.Shutdown();
+        if(instances || sessions || spaces || protocolError) return 103;
+    }
+    std::filesystem::remove(motionRequest);
     recommendedWidth=100;recommendedHeight=120;
     for(unsigned test=0;test<6;++test) {
         Reset();grid2vr::XrSessionProbe probe;

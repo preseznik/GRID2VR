@@ -22,6 +22,8 @@ param(
     [ValidateSet('Off','Compare','Replace')][string]$NativeLeftEye='Off',
     [ValidateSet('Off','Observe','Expand')][string]$InstanceCapacity='Off',
     [string]$RecordedViewsFile='',
+    # Fake-VR only: SteamVR's virtual headset never moves; sweep the head left/right and up/down.
+    [switch]$HeadMotion,
     [switch]$Preflight,
     [string]$DiagnosticProxy=(Join-Path $PSScriptRoot '../build/flicker-win32/bin/RelWithDebInfo/d3d11.dll')
 )
@@ -38,6 +40,7 @@ if($CaptureSignTransition) {
     $AfterPairs=1
 }
 if($RecordedViewsFile -and ($Mode -ne 'Simulated' -or $Preflight)) { throw 'Recorded overrides require a simulated run.' }
+if($HeadMotion -and ($Mode -ne 'Headset' -or $Preflight)) { throw 'Head motion requires a Headset run with the virtual headset.' }
 if($CycleCamera -and ($Mode -ne 'Simulated' -or $PlaybackMode -ne 'benchmark')) { throw 'Camera cycling requires a simulated AI benchmark.' }
 $root=Split-Path $PSScriptRoot -Parent
 $cache=Get-Content -LiteralPath (Join-Path $root 'build/win32/CMakeCache.txt') -Raw
@@ -65,6 +68,7 @@ $parameters=@{
     HardwareSettingsFile=(Join-Path $PSScriptRoot 'practice-settings.xml')
 }
 if($RecordedViewsFile) { $parameters.RecordedViewsFile=$RecordedViewsFile }
+if($HeadMotion) { $parameters.HeadMotion=$true }
 Write-Output "Automatic flicker diagnostic: $Mode; native AI driving; eight-scene capture plus 180-scene lightweight observation, then owned-process recovery."
 if($CaptureSignTransition) { Write-Output 'Capture is requested after the first stereo pair; the renderer waits for the verified sign placement before starting the eight-scene burst.' }
 if($NativeVisibilityControl) { Write-Output 'Diagnostic control: retain the native visibility volume while replaying both eyes. This is not a launcher setting or a headset visibility test.' }
@@ -72,5 +76,6 @@ if($TrackedVisibility) { Write-Output 'Diagnostic candidate: fit a perspective v
 if($NativeLeftEye -eq 'Compare') { Write-Output 'Diagnostic candidate: the native pass renders the left eye; both replays still run so the native and replayed left images can be compared.' }
 if($NativeLeftEye -eq 'Replace') { Write-Output 'Diagnostic candidate: the native pass renders the left eye and only the right eye is replayed.' }
 if($VisibilityCapture) { Write-Output 'Reduced capture: visibility geometry, draw totals and eight completed image triples; no per-draw payloads. The bounded 180-scene watch remains enabled.' }
+if($HeadMotion) { Write-Output 'Diagnostic head motion: the virtual headset sweeps 25 degrees left/right and 8 up/down every 8 s (renderer refuses it on a real headset).' }
 if($Mode -eq 'Simulated') { Write-Output 'Recorded poses exercise scene stereo. OpenXR and headset texture scaling are not exercised in this mode.' }
 & (Join-Path $PSScriptRoot 'Run-StereoProbe.ps1') @parameters

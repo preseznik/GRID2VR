@@ -16,6 +16,9 @@ param(
     # Steam holds the launch on VR prompts the virtual headset never answers (~60 s).
     [ValidateRange(60,600)][int]$GameStartSeconds=180,
     [switch]$CaptureSignTransition,
+    # Sweep the motionless virtual headset (25 degrees yaw, 8 pitch, 8 s period) for flicker
+    # that only shows while looking around.
+    [switch]$HeadMotion,
     [ValidateRange(640,4096)][int]$Width=2016,
     [ValidateRange(640,4096)][int]$Height=2240,
     [string]$DiagnosticProxy=(Join-Path $PSScriptRoot '../build/win32/bin/Release/d3d11.dll'),
@@ -30,13 +33,14 @@ if(Get-Process grid2,grid2_avx,GRID2VR -ErrorAction SilentlyContinue) { throw 'G
 if(Test-FakeVrSteamVrRunning) { throw 'SteamVR is running (a real headset may be in use). Close it first.' }
 if(Test-Path -LiteralPath $Evidence) { throw "Evidence folder exists: $Evidence" }
 if(!$SettingsOnly -and !(Test-FakeVrRenderer $DiagnosticProxy)) { throw "This renderer refuses SteamVR's virtual headset (no adapter fix): $DiagnosticProxy" }
+if($HeadMotion -and !(Test-FakeVrRenderer $DiagnosticProxy -HeadMotion)) { throw "This renderer has no fake-VR head motion: $DiagnosticProxy" }
 $vrSettings=Get-FakeVrSettingsPath
 New-Item -ItemType Directory -Path $Evidence | Out-Null
 $original=Join-Path $Evidence 'steamvr.vrsettings.original'
 Copy-Item -LiteralPath $vrSettings -Destination $original
 $hash=(Get-FileHash -LiteralPath $vrSettings).Hash
 $result=[ordered]@{schema=1;settings=$vrSettings;settingsSha256=$hash;headset="${Width}x$Height";settingsOnly=[bool]$SettingsOnly
-    car=$Car;track=$Track;nativeLeftEye=$NativeLeftEye;proxy=$DiagnosticProxy}
+    car=$Car;track=$Track;nativeLeftEye=$NativeLeftEye;headMotion=[bool]$HeadMotion;proxy=$DiagnosticProxy}
 try {
     Set-FakeVrNullDriver $vrSettings $Width $Height
     $applied=Get-Content -LiteralPath $vrSettings -Raw | ConvertFrom-Json -AsHashtable
@@ -44,9 +48,13 @@ try {
     if(!$SettingsOnly) {
         $result.steamVrStarted=Start-FakeVrSteamVr
         if(!$result.steamVrStarted) { throw 'SteamVR did not start with the virtual headset within 90 s.' }
+        # Recorded for every run; head motion stops here, before GRID 2 starts, unless
+        # SteamVR reports the null driver the renderer will accept.
+        $result.headsetName=Get-FakeVrHeadsetName (Join-Path (Split-Path $DiagnosticProxy -Parent) 'xr_runtime_probe.exe')
+        if($HeadMotion -and !(Test-FakeVrHeadsetName $result.headsetName)) { throw "Head motion needs SteamVR's virtual headset; SteamVR reports: $($result.headsetName)" }
         $run=@{Mode='Headset';XrRuntime='SteamVR';Car=$Car;Track=$Track;PlaybackMode=$PlaybackMode;NativeLeftEye=$NativeLeftEye
             HeadsetScale=$HeadsetScale;AfterPairs=$AfterPairs;CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds
-            CaptureSignTransition=[bool]$CaptureSignTransition;DiagnosticProxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path}
+            CaptureSignTransition=[bool]$CaptureSignTransition;HeadMotion=[bool]$HeadMotion;DiagnosticProxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path}
         $output=& (Join-Path $PSScriptRoot 'Run-AutomatedFlicker.ps1') @run *>&1 | Tee-Object -FilePath (Join-Path $Evidence 'run.log')
         $result.diagnosticEvidence=@($output | Where-Object { "$_" -like 'Diagnostic evidence: *' } | ForEach-Object { "$_".Substring(21) }) | Select-Object -First 1
     }
