@@ -20,6 +20,7 @@ param(
     # Sweep the motionless virtual headset (25 degrees yaw, 8 pitch, 8 s period) for flicker
     # that only shows while looking around.
     [switch]$HeadMotion,
+    [switch]$SponsorDepthBias,
     [ValidateRange(640,4096)][int]$Width=2016,
     [ValidateRange(640,4096)][int]$Height=2240,
     [string]$DiagnosticProxy=(Join-Path $PSScriptRoot '../build/win32/bin/Release/d3d11.dll'),
@@ -41,7 +42,7 @@ $original=Join-Path $Evidence 'steamvr.vrsettings.original'
 Copy-Item -LiteralPath $vrSettings -Destination $original
 $hash=(Get-FileHash -LiteralPath $vrSettings).Hash
 $result=[ordered]@{schema=1;settings=$vrSettings;settingsSha256=$hash;headset="${Width}x$Height";settingsOnly=[bool]$SettingsOnly
-    car=$Car;track=$Track;xrRuntime=$XrRuntime;nativeLeftEye=$NativeLeftEye;headMotion=[bool]$HeadMotion;proxy=$DiagnosticProxy}
+    car=$Car;track=$Track;xrRuntime=$XrRuntime;nativeLeftEye=$NativeLeftEye;headMotion=[bool]$HeadMotion;sponsorDepthBias=[bool]$SponsorDepthBias;proxy=$DiagnosticProxy}
 try {
     Set-FakeVrNullDriver $vrSettings $Width $Height
     $applied=Get-Content -LiteralPath $vrSettings -Raw | ConvertFrom-Json -AsHashtable
@@ -55,7 +56,7 @@ try {
         if($HeadMotion -and !(Test-FakeVrHeadsetName $result.headsetName)) { throw "Head motion needs SteamVR's virtual headset; SteamVR reports: $($result.headsetName)" }
         $run=@{Mode='Headset';XrRuntime=$XrRuntime;Car=$Car;Track=$Track;PlaybackMode=$PlaybackMode;NativeLeftEye=$NativeLeftEye
             HeadsetScale=$HeadsetScale;AfterPairs=$AfterPairs;CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds
-            CaptureSignTransition=[bool]$CaptureSignTransition;HeadMotion=[bool]$HeadMotion;DiagnosticProxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path}
+            CaptureSignTransition=[bool]$CaptureSignTransition;HeadMotion=[bool]$HeadMotion;SponsorDepthBias=[bool]$SponsorDepthBias;DiagnosticProxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path}
         $output=& (Join-Path $PSScriptRoot 'Run-AutomatedFlicker.ps1') @run *>&1 | Tee-Object -FilePath (Join-Path $Evidence 'run.log')
         $result.diagnosticEvidence=@($output | Where-Object { "$_" -like 'Diagnostic evidence: *' } | ForEach-Object { "$_".Substring(21) }) | Select-Object -First 1
     }

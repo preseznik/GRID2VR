@@ -20,6 +20,7 @@
 #include "msaa_readback.h"
 #include "msaa_audit.h"
 #include "focus_cockpit.h"
+#include "sponsor_depth.h"
 #include "dlc_cockpit.h"
 #include "replay_profile.h"
 #include "bounded_log.h"
@@ -90,6 +91,7 @@ bool runtimeSession{},runtimeStopped{};
 bool diagnosticLogging{true};
 StopReceipt stopReceipt;
 FocusCockpit focusCockpit;
+SponsorDepth sponsorDepth;
 EyeTextures eyeTextures;
 // Center, left, right; or left, right when the native pass rendered the left
 // eye and its replay was skipped. A single offset diagnostic eye has two images.
@@ -198,6 +200,7 @@ void Stack(const char* label) {
 const char* BeforeGameExit() {
     opponentlod::host::RevokeWorld();
     focusCockpit.Summary();
+    sponsorDepth.Summary();
     // ExitProcess can bypass the next Present entirely. Stop at this verified
     // owning-thread boundary, but never attempt to unwind an incomplete eye pair.
     if(engine::Continuous() && !runtimeStopped && !engine::StopSession()) {
@@ -1167,11 +1170,14 @@ HRESULT STDMETHODCALLTYPE CreateTexture2D(ID3D11Device* device,const D3D11_TEXTU
             desc->MipLevels,desc->ArraySize,desc->BindFlags,desc->Usage,device->GetDeviceRemovedReason(),_ReturnAddress());
     }
     if(SUCCEEDED(hr) && texture)focusCockpit.TextureCreated(device,desc,data,*texture,realTexture2D,uintptr_t(_ReturnAddress())-gameBase);
+    if(SUCCEEDED(hr) && texture)sponsorDepth.TextureCreated(desc,data,*texture);
     msaaaudit::TextureCreated(desc,hr,SUCCEEDED(hr) && texture?*texture:nullptr,uintptr_t(_ReturnAddress()));return hr;
 }
 FocusCockpit::ViewFn realResourceView{};
 HRESULT STDMETHODCALLTYPE CreateResourceView(ID3D11Device* device,ID3D11Resource* resource,const D3D11_SHADER_RESOURCE_VIEW_DESC* desc,ID3D11ShaderResourceView** view) {
-    return focusCockpit.CreateView(device,resource,desc,view,realResourceView);
+    const auto hr=focusCockpit.CreateView(device,resource,desc,view,realResourceView);
+    if(SUCCEEDED(hr) && view && *view)sponsorDepth.ViewCreated(resource,*view);
+    return hr;
 }
 HRESULT STDMETHODCALLTYPE CreateBuffer(ID3D11Device* device,const D3D11_BUFFER_DESC* desc,const D3D11_SUBRESOURCE_DATA* data,ID3D11Buffer** buffer) {
     const auto hr=realBuffer(device,desc,data,buffer);
@@ -1626,7 +1632,7 @@ void STDMETHODCALLTYPE Draw(ID3D11DeviceContext* c,UINT n,UINT start) {
     CaptureDrawInputs(c,mark);
     auto repeat=PrepareProducerRepeat(c,mark,true,n,start);
     const bool flatMenu=BeginFlatMenu(c);
-    {profile::Scope driver(profile::DrawDriver);realDraw(c,n,start);}
+    {auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDraw(c,n,start);}sponsorDepth.End(c,bias);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     CompleteProducerRepeat(c,mark,repeat,true,n,start);
@@ -1638,7 +1644,7 @@ void STDMETHODCALLTYPE DrawIndexed(ID3D11DeviceContext* c,UINT n,UINT start,INT 
     CaptureDrawInputs(c,mark);
     auto repeat=PrepareProducerRepeat(c,mark,false,n,start,base);
     const bool flatMenu=BeginFlatMenu(c);
-    {profile::Scope driver(profile::DrawDriver);realDrawIndexed(c,n,start,base);}
+    {auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawIndexed(c,n,start,base);}sponsorDepth.End(c,bias);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     CompleteProducerRepeat(c,mark,repeat,false,n,start,base);
@@ -1649,7 +1655,7 @@ void STDMETHODCALLTYPE DrawInstanced(ID3D11DeviceContext* c,UINT n,UINT count,UI
     ++draws; CameraDraw(c); const UINT args[]{n,count,start,instance}; const auto mark=replaytrace::Work(c,"Instanced",args);
     CaptureDrawInputs(c,mark);
     const bool flatMenu=BeginFlatMenu(c);
-    {profile::Scope driver(profile::DrawDriver);realDrawInstanced(c,n,count,start,instance);}
+    {auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawInstanced(c,n,count,start,instance);}sponsorDepth.End(c,bias);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,2,args);
@@ -1659,7 +1665,7 @@ void STDMETHODCALLTYPE DrawIndexedInstanced(ID3D11DeviceContext* c,UINT n,UINT c
     ++draws; CameraDraw(c); const UINT args[]{n,count,start,static_cast<UINT>(base),instance}; const auto mark=replaytrace::Work(c,"IndexedInstanced",args);
     CaptureDrawInputs(c,mark);
     const bool flatMenu=BeginFlatMenu(c);
-    {profile::Scope driver(profile::DrawDriver);realDrawIndexedInstanced(c,n,count,start,base,instance);}
+    {auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawIndexedInstanced(c,n,count,start,base,instance);}sponsorDepth.End(c,bias);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,3,args);
@@ -1824,6 +1830,7 @@ bool Active() {
             std::filesystem::create_directories(output);
             runtimeSession=std::filesystem::exists(output/L"runtime-session.request");
             focusCockpit.Configure(host.parent_path(),output);
+            sponsorDepth.Configure(output);
             exposureaudit::Configure(output);
             diagnosticLogging=!runtimeSession || std::filesystem::exists(output/L"diagnostic-logging.request");
             unattendedStereo=runtimeSession && std::filesystem::is_regular_file(output/L"flicker-diagnostic.request") &&
@@ -1865,11 +1872,12 @@ void Attach(ID3D11Device* device,ID3D11DeviceContext* context,IDXGISwapChain* ch
     if (!initialized) return;
     if(!cockpitanimation::Install(gameBase,output)) {Log("cockpit animation qualification refused");return;}
     if(!msaaaudit::Install(gameBase,output)) {Log("MSAA audit startup hook refused");return;}
-    if((runtimeSession || msaaaudit::Enabled() || focusCockpit.Enabled()) && !Hook(device,5,reinterpret_cast<void*>(CreateTexture2D),realTexture2D)) {
-        focusCockpit.HookFailed();Log("texture observation hook refused");if(msaaaudit::Enabled())return;
+    if((runtimeSession || msaaaudit::Enabled() || focusCockpit.Enabled() || sponsorDepth.Enabled()) && !Hook(device,5,reinterpret_cast<void*>(CreateTexture2D),realTexture2D)) {
+        focusCockpit.HookFailed();sponsorDepth.HookFailed("texture_hook");Log("texture observation hook refused");if(msaaaudit::Enabled())return;
     }
-    if(focusCockpit.Enabled() && !Hook(device,7,reinterpret_cast<void*>(CreateResourceView),realResourceView)) {
-        focusCockpit.HookFailed();Log("Focus cockpit view hook refused; stock retained");
+    if((focusCockpit.Enabled() || sponsorDepth.Enabled()) && !Hook(device,7,reinterpret_cast<void*>(CreateResourceView),realResourceView)) {
+        if(focusCockpit.Enabled()) {focusCockpit.HookFailed();Log("Focus cockpit view hook refused; stock retained");}
+        if(sponsorDepth.Enabled()) {sponsorDepth.HookFailed("view_hook");Log("sponsor depth view hook refused; native draws retained");}
     }
     if(!instancecapacity::Install(gameBase,output)) {Log("instance capacity startup hook refused");return;}
     if(instancecapacity::Enabled() && !Hook(device,3,reinterpret_cast<void*>(CreateBuffer),realBuffer)) {instancecapacity::Disable();Log("instance capacity buffer observation refused");return;}

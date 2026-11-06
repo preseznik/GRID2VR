@@ -22,6 +22,7 @@ internal static class NewFeatures
         ["SectionVRcompatibility"] = NextVersion, ["DrivingControls"] = NextVersion, ["VrFieldOfView"] = NextVersion, ["VrFieldOfViewCrop"] = NextVersion,
         ["LaunchMode"] = NextVersion,
         ["Runtime"] = NextVersion,
+        ["SponsorDepthBias"] = NextVersion,
     };
     private static readonly ConditionalWeakTable<Control, object> marked = new(), painting = new();
 

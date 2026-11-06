@@ -20,6 +20,8 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public bool VrGarageMenus { get; init; } = true;
     // Faster stereo, on by default: the game's own render is the left eye; only the right eye is replayed.
     public bool NativeLeftEye { get; init; } = true;
+    // Experimental banner flicker fix (ProJict 6a887534): depth-bias stock sponsor board draws. Off by default.
+    public bool SponsorDepthBias { get; init; }
     public bool VrCockpit { get; init; } = true;
     public string CockpitDriver { get; init; } = "HeadOnly";
     public bool CockpitExposureLimit { get; init; } = true;
@@ -252,6 +254,7 @@ internal sealed class SessionClient(string root)
         }
         if (vr && !value.KeepHorizonLevel) command.ArgumentList.Add("-RecenterTilt");
         if (vr && value.NativeLeftEye) command.ArgumentList.Add("-NativeLeftEye");
+        if (vr && value.SponsorDepthBias) command.ArgumentList.Add("-SponsorDepthBias");
         if (vr && !value.CockpitExposureLimit) command.ArgumentList.Add("-NativeCockpitExposure");
         if (vr && !value.HideImpactGlitch) command.ArgumentList.Add("-NativeImpactEffect");
         if (vr && value.RecenterDevice is not null) { command.ArgumentList.Add("-RecenterDeviceBase64"); command.ArgumentList.Add(DeviceRecenter.Encode(value.RecenterDevice)); }

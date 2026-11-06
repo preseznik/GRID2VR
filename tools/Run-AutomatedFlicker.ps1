@@ -20,6 +20,7 @@ param(
     [switch]$VisibilityCapture,
     [switch]$ScreenUiStereo,
     [ValidateSet('Off','Compare','Replace')][string]$NativeLeftEye='Off',
+    [switch]$SponsorDepthBias,
     [ValidateSet('Off','Observe','Expand')][string]$InstanceCapacity='Off',
     [string]$RecordedViewsFile='',
     # Fake-VR only: SteamVR's virtual headset never moves; sweep the head left/right and up/down.
@@ -63,6 +64,7 @@ $parameters=@{
     VisibilityCapture=[bool]$VisibilityCapture
     ScreenUiStereo=[bool]$ScreenUiStereo
     NativeLeftEye=$NativeLeftEye
+    SponsorDepthBias=[bool]$SponsorDepthBias
     InstanceCapacity=$InstanceCapacity
     DiagnosticProxy=$DiagnosticProxy;BackgroundPlay='Suppress';SessionDirectory=$selection;PythonPath=$python
     HardwareSettingsFile=(Join-Path $PSScriptRoot 'practice-settings.xml')

@@ -52,6 +52,13 @@ internal static class LauncherFeaturesTests
         var fasterStereo = settings with { NativeLeftEye = true };
         Check(client.LaunchCommand(fasterStereo, true).ArgumentList.Contains("-NativeLeftEye"));
         Check(!client.LaunchCommand(fasterStereo, false).ArgumentList.Contains("-NativeLeftEye"));
+        // Optional board flicker fix persists and is forwarded only for VR.
+        Check(!new Choices().SponsorDepthBias && !JsonSerializer.Deserialize<Choices>("{}")!.SponsorDepthBias);
+        Check(!client.LaunchCommand(settings with { SponsorDepthBias = false }, true).ArgumentList.Contains("-SponsorDepthBias"));
+        var bannerFix = settings with { SponsorDepthBias = true };
+        client.Save(bannerFix); Check(client.Load().SponsorDepthBias); client.Save(settings);
+        Check(client.LaunchCommand(bannerFix, true).ArgumentList.Contains("-SponsorDepthBias"));
+        Check(!client.LaunchCommand(bannerFix, false).ArgumentList.Contains("-SponsorDepthBias"));
         var seats = new SeatAlignment { Cars = new() { ["s20"] = new(-10, 2, 3), ["pag"] = new(-5, 0, 0) } }; seats.Save(fixture);
         Check(SeatAlignment.Load(fixture).Cars["s20"] == new SeatOffset(-10,2,3));
         Check(JsonSerializer.Serialize(client.Load()) == before);

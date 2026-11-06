@@ -89,11 +89,31 @@ foreach($script in @('Run-StereoProbe.ps1','Run-Diagnostic.ps1')) {
     if(!$attribute -or $attribute.Extent.Text -notmatch "ValidateSet\('Off','Compare','Replace'\)") { throw "$script lacks the native left-eye modes." }
 }
 
+# Board bias is opt-in and ignored for Desktop at the user-session boundary.
+$sponsorBind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n[bool]`$SponsorDepthBias")
+if((& $sponsorBind) -or !(& $sponsorBind -SponsorDepthBias)) { throw 'Sponsor bias switch default changed.' }
+$sponsorForward=$start.Find({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$parameters.SponsorDepthBias'},$true)
+if(!$sponsorForward) { throw 'Sponsor bias is not forwarded.' }
+foreach($case in @(@('VR',$true,$true),@('VR',$false,$false),@('Desktop',$true,$false))) {
+    $Mode=$case[0];$SponsorDepthBias=$case[1];$parameters=@{}
+    . ([scriptblock]::Create($sponsorForward.Extent.Text))
+    if($parameters.SponsorDepthBias -ne $case[2]) { throw 'Sponsor bias must apply only to opted-in VR sessions.' }
+}
+$sponsorFlag=@($diagnosticCalls | ForEach-Object { $_.KeyValuePairs } | Where-Object { $_.Item1.Extent.Text -eq 'SponsorDepthBias' })
+if($sponsorFlag.Count -ne 1) { throw 'Sponsor bias is not forwarded to the rendering diagnostic.' }
+
 # Execute the actual preparation/routing branches in an owned fixture. External
 # Python is replaced with a recorder; no game, Steam or hardware files are read.
 $fixture=Join-Path $root ('build/launch-mode-test-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 try {
+    $writeSponsor=Find-TestStatement $diagnosticAst "'sponsor-depth-bias.request'"
+    $run=$fixture;$SponsorDepthBias=$false;. $writeSponsor
+    $sponsorRequest=Join-Path $fixture 'sponsor-depth-bias.request'
+    if(Test-Path -LiteralPath $sponsorRequest) { throw 'Disabled sponsor bias wrote a request.' }
+    $SponsorDepthBias=$true;. $writeSponsor
+    if(!(Test-Path -LiteralPath $sponsorRequest) -or (Get-Item -LiteralPath $sponsorRequest).Length -ne 0) { throw 'Enabled sponsor bias did not select native defaults.' }
+    Remove-Item -LiteralPath $sponsorRequest
     $writeDefault=Find-TestStatement $diagnosticAst "'xr-default-runtime.request'"
     & { $run=$fixture;$DefaultOpenXrRuntime=$false;. $writeDefault }
     $defaultRequest=Join-Path $fixture 'xr-default-runtime.request'

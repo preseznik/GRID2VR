@@ -44,6 +44,7 @@ internal sealed partial class MainForm : LauncherForm
     private readonly CheckBox performanceDisplay = new() { Name = "PerformanceDisplay", AccessibleName = "Performance display", Text = "FPS + GPU usage (VR)", AutoSize = true };
     private readonly CheckBox replay3d = new() { Name = "VrReplayCameras", AccessibleName = "3D replays", Text = "On", Checked = true, AutoSize = true };
     private readonly CheckBox nativeLeftEye = new() { Name = "NativeLeftEye", AccessibleName = "Faster stereo rendering (experimental)", Text = "On", Checked = true, AutoSize = true };
+    private readonly CheckBox sponsorDepthBias = new() { Name = "SponsorDepthBias", AccessibleName = "Banner flicker fix (experimental)", Text = "On", AutoSize = true };
     private readonly CheckBox garage3d = new() { Name = "VrGarageMenus", AccessibleName = "3D menus", Text = "On", Checked = true, AutoSize = true };
     private readonly CheckBox vrCockpit = new() { Name = "VrCockpit", AccessibleName = "Cockpit view in VR", Text = "On (default)", Checked = true, AutoSize = true };
     private readonly ComboBox cockpitDriver = Choice("CockpitDriver");
@@ -289,6 +290,8 @@ internal sealed partial class MainForm : LauncherForm
         Field(advancedLayout, "3D menus", garage3d);
         Field(advancedLayout, "Faster stereo (experimental)", nativeLeftEye);
         advancedLayout.Controls.Add(TextLabel("Render the left eye in the game's own pass and replay only the right eye: two scene renders per frame instead of three. On by default; turn off to use the original three-render path. Applies on the next VR launch."));
+        Field(advancedLayout, "Banner flicker fix (experimental)", sponsorDepthBias);
+        advancedLayout.Controls.Add(TextLabel("Reduce distance flicker on stock trackside sponsor boards without changing cockpit clipping. Off by default. Applies on the next VR launch."));
         advancedLayout = advancedColumns.Second;
         Section(advancedLayout, "Session details");
         details.Height = 190;
@@ -427,6 +430,7 @@ internal sealed partial class MainForm : LauncherForm
         replay3d.Checked = choices.VrReplayCameras;
         garage3d.Checked = choices.VrGarageMenus;
         nativeLeftEye.Checked = choices.NativeLeftEye;
+        sponsorDepthBias.Checked = choices.SponsorDepthBias;
         vrCockpit.Checked = choices.VrCockpit;
         SelectChoice(cockpitDriver, choices.CockpitDriver);
         cockpitDriver.Enabled = choices.VrCockpit;
@@ -468,6 +472,7 @@ internal sealed partial class MainForm : LauncherForm
         Graphics = CurrentGraphics(), ModernInterface = modernInterface.Checked, PreviewVrFixes = previewVrFixes.Checked,
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked, NativeLeftEye = nativeLeftEye.Checked,
+        SponsorDepthBias = sponsorDepthBias.Checked,
         VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
     });
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
@@ -700,7 +705,7 @@ internal sealed partial class MainForm : LauncherForm
         recenter.Enabled = drivingControls.Enabled = loaded && idle;
         bindRecenterDevice.Enabled = clearRecenterDevice.Enabled = loaded && idle && !capturingRecenter;
         defaults.Enabled = loaded && idle && !capturingRecenter;
-        foreach (var control in new Control[] { renderScale, vrFieldOfView, vrFieldOfViewCrop, desktopRenderScale, modernInterface, previewVrFixes, skipIntro, diagnosticLogging, performanceDisplay, replay3d, garage3d, nativeLeftEye, vrCockpit, keepHorizonLevel,
+        foreach (var control in new Control[] { renderScale, vrFieldOfView, vrFieldOfViewCrop, desktopRenderScale, modernInterface, previewVrFixes, skipIntro, diagnosticLogging, performanceDisplay, replay3d, garage3d, nativeLeftEye, sponsorDepthBias, vrCockpit, keepHorizonLevel,
             cockpitTextures, hudDistance, hudFollow, desktopVSync, desktopMsaa, desktopBorderless, vrMsaa, vrMirrorBorderless, treeDetail, objectDetail, crowdDetail, textureFiltering, graphicsDefaults })
             control.Enabled = loaded && idle && !capturingRecenter;
         EnableGraphicsEditors(loaded && idle && !capturingRecenter);
@@ -761,6 +766,7 @@ internal sealed partial class MainForm : LauncherForm
         tips.SetToolTip(skipIntro, "Skip startup logos and the pre-race flythrough in Practice and Race. Normal keeps the original startup sequence for career saving; this preference is retained.");
         tips.SetToolTip(diagnosticLogging, "Save extra diagnostic details for troubleshooting the next launch. Leave off for normal play to reduce disk usage. Essential status and recovery receipts are always kept.");
         tips.SetToolTip(nativeLeftEye, "Experimental. The game renders the left eye itself and only the right eye is replayed, saving one full scene render per frame. On by default; Off uses the original three-render path. Applies on the next VR launch; Desktop Launch ignores it.");
+        tips.SetToolTip(sponsorDepthBias, "Experimental. Reduce flicker where stock sponsor boards overlap their backing in the distance. Cockpit clipping stays unchanged. Off by default. Applies on the next VR launch; Desktop Launch ignores it.");
         tips.SetToolTip(performanceDisplay, "Show app FPS and GPU usage in the headset on the next VR launch. FPS counts submitted app frames, not headset refresh or reprojection. GPU usage is the busiest engine on the game's adapter, including other applications; N/A means unavailable. Desktop Launch ignores this option.");
         tips.SetToolTip(hudDistance, "HUD and results text stereo depth from 1–20 metres in 0.5 m steps. Apparent text size stays the same. Default: 1 m. Applies to the next VR launch.");
         tips.SetToolTip(hudFollow, "Off keeps HUD and results text relative to the seated reference; On follows your head. Recenter resets the seated reference.");
