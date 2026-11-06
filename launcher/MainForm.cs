@@ -291,7 +291,7 @@ internal sealed partial class MainForm : LauncherForm
         Field(advancedLayout, "Faster stereo (experimental)", nativeLeftEye);
         advancedLayout.Controls.Add(TextLabel("Render the left eye in the game's own pass and replay only the right eye: two scene renders per frame instead of three. On by default; turn off to use the original three-render path. Applies on the next VR launch."));
         Field(advancedLayout, "Banner flicker fix (experimental)", sponsorDepthBias);
-        advancedLayout.Controls.Add(TextLabel("Reduce distance flicker on stock trackside sponsor boards without changing cockpit clipping. Off by default. Applies on the next VR launch."));
+        advancedLayout.Controls.Add(TextLabel("Reduce distance flicker on stock trackside sponsor boards without changing cockpit clipping. On by default. Applies on the next VR launch."));
         advancedLayout = advancedColumns.Second;
         Section(advancedLayout, "Session details");
         details.Height = 190;
@@ -766,7 +766,7 @@ internal sealed partial class MainForm : LauncherForm
         tips.SetToolTip(skipIntro, "Skip startup logos and the pre-race flythrough in Practice and Race. Normal keeps the original startup sequence for career saving; this preference is retained.");
         tips.SetToolTip(diagnosticLogging, "Save extra diagnostic details for troubleshooting the next launch. Leave off for normal play to reduce disk usage. Essential status and recovery receipts are always kept.");
         tips.SetToolTip(nativeLeftEye, "Experimental. The game renders the left eye itself and only the right eye is replayed, saving one full scene render per frame. On by default; Off uses the original three-render path. Applies on the next VR launch; Desktop Launch ignores it.");
-        tips.SetToolTip(sponsorDepthBias, "Experimental. Reduce flicker where stock sponsor boards overlap their backing in the distance. Cockpit clipping stays unchanged. Off by default. Applies on the next VR launch; Desktop Launch ignores it.");
+        tips.SetToolTip(sponsorDepthBias, "Experimental. Reduce flicker where stock sponsor boards overlap their backing in the distance. Cockpit clipping stays unchanged. On by default. Applies on the next VR launch; Desktop Launch ignores it.");
         tips.SetToolTip(performanceDisplay, "Show app FPS and GPU usage in the headset on the next VR launch. FPS counts submitted app frames, not headset refresh or reprojection. GPU usage is the busiest engine on the game's adapter, including other applications; N/A means unavailable. Desktop Launch ignores this option.");
         tips.SetToolTip(hudDistance, "HUD and results text stereo depth from 1–20 metres in 0.5 m steps. Apparent text size stays the same. Default: 1 m. Applies to the next VR launch.");
         tips.SetToolTip(hudFollow, "Off keeps HUD and results text relative to the seated reference; On follows your head. Recenter resets the seated reference.");

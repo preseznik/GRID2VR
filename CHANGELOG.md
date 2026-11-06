@@ -1,6 +1,6 @@
 # GRID2VR 0.2.19 — Experimental
 
-- **Trackside sponsor board flicker.** The optional **Banner flicker fix (experimental)** setting reduces distance flicker on stock sponsor boards while keeping cockpit clipping unchanged. Off by default; enable it under **Advanced → VR presentation** for the next VR launch.
+- **Trackside sponsor board flicker.** **Banner flicker fix (experimental)** reduces distance flicker on stock sponsor boards while keeping cockpit clipping unchanged. On by default; it can be switched off under **Advanced → VR presentation** for the next VR launch.
 
 - **Faster launcher startup.** GRID2VR reuses successful local preparation while the installed files and prepared assets are unchanged. First setup, changed files and pending recovery still take the full checking path.
 

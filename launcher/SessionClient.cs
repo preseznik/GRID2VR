@@ -20,8 +20,8 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public bool VrGarageMenus { get; init; } = true;
     // Faster stereo, on by default: the game's own render is the left eye; only the right eye is replayed.
     public bool NativeLeftEye { get; init; } = true;
-    // Experimental banner flicker fix (ProJict 6a887534): depth-bias stock sponsor board draws. Off by default.
-    public bool SponsorDepthBias { get; init; }
+    // Experimental banner flicker fix (ProJict 6a887534): depth-bias stock sponsor board draws. On by default.
+    public bool SponsorDepthBias { get; init; } = true;
     public bool VrCockpit { get; init; } = true;
     public string CockpitDriver { get; init; } = "HeadOnly";
     public bool CockpitExposureLimit { get; init; } = true;

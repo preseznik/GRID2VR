@@ -52,9 +52,13 @@ internal static class LauncherFeaturesTests
         var fasterStereo = settings with { NativeLeftEye = true };
         Check(client.LaunchCommand(fasterStereo, true).ArgumentList.Contains("-NativeLeftEye"));
         Check(!client.LaunchCommand(fasterStereo, false).ArgumentList.Contains("-NativeLeftEye"));
-        // Optional board flicker fix persists and is forwarded only for VR.
-        Check(!new Choices().SponsorDepthBias && !JsonSerializer.Deserialize<Choices>("{}")!.SponsorDepthBias);
-        Check(!client.LaunchCommand(settings with { SponsorDepthBias = false }, true).ArgumentList.Contains("-SponsorDepthBias"));
+        // Board fix defaults on for new/older settings; explicit Off persists; VR only.
+        Check(new Choices().SponsorDepthBias && JsonSerializer.Deserialize<Choices>("{}")!.SponsorDepthBias);
+        Check(!JsonSerializer.Deserialize<Choices>("{\"SponsorDepthBias\":false}")!.SponsorDepthBias);
+        Check(client.LaunchCommand(new Choices(), true).ArgumentList.Contains("-SponsorDepthBias"));
+        var bannerOff = settings with { SponsorDepthBias = false };
+        client.Save(bannerOff); Check(!client.Load().SponsorDepthBias); client.Save(settings);
+        Check(!client.LaunchCommand(bannerOff, true).ArgumentList.Contains("-SponsorDepthBias"));
         var bannerFix = settings with { SponsorDepthBias = true };
         client.Save(bannerFix); Check(client.Load().SponsorDepthBias); client.Save(settings);
         Check(client.LaunchCommand(bannerFix, true).ArgumentList.Contains("-SponsorDepthBias"));
