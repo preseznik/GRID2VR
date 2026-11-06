@@ -381,7 +381,7 @@ internal static class SelfTests
     {
         foreach (var modern in new[] { false, true })
         {
-            using var form = new MainForm(fixture) { ClientSize = new Size(1000, 900) };
+            using var form = new MainForm(fixture, new ProfileStore(fixture.Root, () => { }, () => null)) { ClientSize = new Size(1000, 900) };
             LauncherAppearance.Modern = modern; LauncherAppearance.Apply(form);
             var tabs = (TabControl)form.Controls.Find("LauncherTabs", true).Single();
             foreach (var title in new[] { "Graphics", "Settings", "Advanced" })

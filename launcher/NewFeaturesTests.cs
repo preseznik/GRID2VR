@@ -55,7 +55,7 @@ internal static class NewFeaturesTests
         }
 
         // The launcher lists real controls and marks exactly those in builds that show marks.
-        using var form = new MainForm(fixture);
+        using var form = new MainForm(fixture, new ProfileStore(fixture.Root, () => { }, () => null));
         var missing = NewFeatures.Listed.Keys.Where(name => form.Controls.Find(name, true).Length != 1).ToArray();
         Check(missing.Length == 0, "every listed feature exists once in the launcher (" + string.Join(", ", missing) + ")");
         var shown = NewFeatures.NamesFor(Updates.CurrentVersion, BuildInfo.Channel == "Experimental").Count > 0;

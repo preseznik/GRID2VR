@@ -139,7 +139,7 @@ internal static class VrLayerTests
             Check(list.Items.Count == 0 && VrApiLayers.Remembered(data).Count == 0 && manage.Controls.Find("LayerBypassSummary", true).Single().Text.StartsWith("No OpenXR layers"));
         }
         VrApiLayers.Remember(data, [obs]);
-        using (var form = new MainForm(client))
+        using (var form = new MainForm(client, new ProfileStore(client.Root, () => { }, () => null)))
         {
             Check(form.Controls.Find("VrCompatibilitySummary", true).Single().Text == "1 remembered OpenXR layer bypass." && form.Controls.Find("ManageVrCompatibility", true).Length == 1);
         }

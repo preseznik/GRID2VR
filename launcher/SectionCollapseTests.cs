@@ -31,7 +31,7 @@ internal static class SectionCollapseTests
             Check(b.Visible && !c.Visible, "sections collapse independently");
         }
         // The launcher's headings, shared titles and remembered state.
-        using var form = new MainForm(fixture);
+        using var form = new MainForm(fixture, new ProfileStore(fixture.Root, () => { }, () => null));
         var headers = form.SectionHeaders;
         var titles = headers.Select(h => h.Title).ToHashSet();
         foreach (var expected in new[] { "Graphics preset", "VR rendering", "VR HUD", "Event selection", "Race options", "Driving controls", "Updates" })
