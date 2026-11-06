@@ -54,6 +54,13 @@ try {
         return $names
     }
     $flickerAst=Read-ScriptAst 'Run-AutomatedFlicker.ps1';$probeAst=Read-ScriptAst 'Run-StereoProbe.ps1';$diagnosticAst=Read-ScriptAst 'Run-Diagnostic.ps1'
+    $fakeAst=Read-ScriptAst 'Run-FakeVr.ps1'
+    $fakeBind=[scriptblock]::Create($fakeAst.ParamBlock.Extent.Text+"`n`$XrRuntime")
+    $flickerBind=[scriptblock]::Create($flickerAst.ParamBlock.Extent.Text+"`n`$XrRuntime")
+    foreach($runtime in 'SteamVR','Default') {
+        Check ((& $fakeBind -Evidence $fixture -DiagnosticProxy $renderer -XrRuntime $runtime) -eq $runtime) 'Fake-VR runtime binding lost.'
+        Check ((& $flickerBind -DiagnosticProxy $renderer -XrRuntime $runtime) -eq $runtime) 'Automated VR runtime binding lost.'
+    }
     foreach($hop in @(@{from=(Read-ScriptAst 'Run-FakeVr.ps1');variable='$run';to=$flickerAst;name='Run-AutomatedFlicker.ps1'},
             @{from=$flickerAst;variable='$parameters';to=$probeAst;name='Run-StereoProbe.ps1'})) {
         $names=Get-SplatNames $hop.from $hop.variable;$declared=Get-ScriptParameters $hop.to

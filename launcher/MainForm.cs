@@ -244,9 +244,9 @@ internal sealed partial class MainForm : LauncherForm
         var settingColumns = Columns(Page(tabs, "Settings")); var settings = settingColumns.First;
         Section(settings, "Paths and runtime");
         Field(settings, "Game folder", new TextBox { Text = AppPaths.Game(client.Root), ReadOnly = true, Dock = DockStyle.Fill });
-        runtime.Items.AddRange(["VDXR", "SteamVR"]); runtime.SelectedIndex = 0;
+        runtime.Items.AddRange(["VDXR", "SteamVR", "Default"]); runtime.SelectedIndex = 0;
         Field(settings, "OpenXR runtime", runtime);
-        settings.Controls.Add(TextLabel("VDXR: connect through Virtual Desktop and keep SteamVR closed. SteamVR: connect the headset through SteamVR. The choice applies only to this session."));
+        settings.Controls.Add(TextLabel("VDXR: connect through Virtual Desktop and keep SteamVR closed. SteamVR: connect through SteamVR. Default: use this PC's configured 32-bit OpenXR runtime. The system default is unchanged."));
         settings.Controls.Add(TextLabel("Uses your installed GRID 2. Settings and careers are kept when updating."));
         Section(settings, "VR compatibility");
         layerBypassSummary.Name = "VrCompatibilitySummary";
@@ -775,7 +775,7 @@ internal sealed partial class MainForm : LauncherForm
         tips.SetToolTip(graphicsDefaults, "Restore only graphics choices to the working profile, then Save or Launch to keep them.");
         tips.SetToolTip(vrMirrorBorderless, "Fill the VR mirror's current monitor without borders on the next VR launch. VR resolution is unchanged.");
         tips.SetToolTip(requestedSession, "Requested choices for the next launch. Check the actual car and track in GRID 2.");
-        tips.SetToolTip(runtime, "VDXR connects directly through Virtual Desktop. SteamVR uses SteamVR's OpenXR runtime. Applies to the next session only.");
+        tips.SetToolTip(runtime, "VDXR connects directly through Virtual Desktop. SteamVR uses SteamVR's OpenXR runtime. Default follows the configured 32-bit runtime. Applies to the next session only; the system default is unchanged.");
         tips.SetToolTip(recenter, "Choose the in-game recenter shortcut. Sit comfortably and face forward before pressing it in GRID 2.");
         tips.SetToolTip(desktop, "Save your choices and start the selected launch mode on desktop.");
         tips.SetToolTip(vr, "Save your choices and start the selected launch mode in VR using the selected runtime.");

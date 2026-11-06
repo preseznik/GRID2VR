@@ -71,7 +71,7 @@ internal sealed class SessionClient(string root)
     {
         if (!Regex.IsMatch(value.Car, @"\A[a-z0-9_]+\z") ||
             !Regex.IsMatch(value.Track, @"\A(circuits|cities|p2p|australia|europe)/[a-z0-9_]+/route_[0-9]+\z") ||
-            value.Runtime is not ("VDXR" or "SteamVR")) throw new ArgumentException("Invalid session selection.");
+            value.Runtime is not ("VDXR" or "SteamVR" or "Default")) throw new ArgumentException("Invalid session selection.");
         if (value.LaunchMode is not ("Practice" or "Race" or "Normal" or "Online")) throw new ArgumentException("Choose Normal, Online, Practice or Race.");
         if (value.Opponents is < 1 or > 7) throw new ArgumentException("Choose between 1 and 7 opponents.");
         if (value.OpponentCars is not ("same" or "mixed" or "class")) throw new ArgumentException("Choose Same car, Mixed or Same class.");

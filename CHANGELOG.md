@@ -1,3 +1,11 @@
+# Unreleased
+
+- **Faster launcher startup.** GRID2VR reuses successful local preparation while the installed files and prepared assets are unchanged. First setup, changed files and pending recovery still take the full checking path.
+
+- **Practice result menus.** Direct Practice now keeps the result screen available so you can watch the replay, restart or quit after finishing.
+
+- **Default OpenXR runtime.** The OpenXR runtime choice now includes **Default**, which follows this PC's configured 32-bit OpenXR runtime alongside the existing VDXR and SteamVR choices. It leaves the system default unchanged and names the runtime found by the headset check. A compatible 32-bit runtime is required; additional runtimes and headsets still need acceptance testing.
+
 # GRID2VR 0.2.18 — Experimental
 
 Fixes for 0.2.17:

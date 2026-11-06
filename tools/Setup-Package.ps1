@@ -35,7 +35,12 @@ function Test-PreparedBank([string]$Bank,[string]$Folder) {
     }
     if($Bank -eq 'cockpit-start') { return (Test-BankFile (Join-Path $Folder 'startsequence.xml') (Read-CockpitAssetCatalog $root).startsequence.sha256) }
     $module=if($Bank -eq 'startup-movies'){'startup_movies'}else{'practice_entry'}
-    & $python -c "import sys; sys.path.insert(0,sys.argv[1]); from $module import verify; verify(sys.argv[2],sys.argv[3])" (Join-Path $root 'tools') $game $Folder 2>$null | Out-Null
+    $check=switch($Bank) {
+        'practice-menus-20261106' { "assert verify(sys.argv[2],sys.argv[3]).get('resultsMenus') is True" }
+        'practice-flow-20261014' { "assert not verify(sys.argv[2],sys.argv[3]).get('resultsMenus', False)" }
+        default { 'verify(sys.argv[2],sys.argv[3])' }
+    }
+    & $python -c "import sys; sys.path.insert(0,sys.argv[1]); from $module import verify; $check" (Join-Path $root 'tools') $game $Folder 2>$null | Out-Null
     return !$LASTEXITCODE
 }
 function Remove-PreparedBank([string]$Folder) {
@@ -47,9 +52,10 @@ function Remove-PreparedBank([string]$Folder) {
 }
 # Each bank is generated from this player's original game. Nothing is downloaded
 # or copied from another player's game or career, and no game file is changed.
-foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras','cockpit-start')) {
+foreach($bank in @('practice-flow-20261014','practice-menus-20261106','startup-movies','cockpit-cameras','cockpit-start')) {
     switch($bank) {
         'practice-flow-20261014' { Progress-Step 16 'Preparing Practice and Race assets…' }
+        'practice-menus-20261106' { Progress-Step 20 'Preparing Practice result menus…' }
         'startup-movies' { Progress-Step 22 'Preparing intro and logo skipping…' }
         'cockpit-cameras' { Progress-Step 28 'Checking per-car cockpit cameras…' }
         'cockpit-start' { Progress-Step 88 'Preparing the VR cockpit starting view…' }
@@ -63,9 +69,10 @@ foreach($bank in @('practice-flow-20261014','startup-movies','cockpit-cameras','
         Remove-PreparedBank $target
     }
     $temporary=Join-Path $data ($bank+'-preparing-'+[guid]::NewGuid().ToString('N'))
-    $scriptName=switch($bank){'practice-flow-20261014'{'practice_entry.py'} 'startup-movies'{'startup_movies.py'} 'cockpit-cameras'{'cockpit_assets.py'} 'cockpit-start'{'cockpit_start.py'}}
+    $scriptName=switch($bank){'practice-flow-20261014'{'practice_entry.py'} 'practice-menus-20261106'{'practice_entry.py'} 'startup-movies'{'startup_movies.py'} 'cockpit-cameras'{'cockpit_assets.py'} 'cockpit-start'{'cockpit_start.py'}}
     $arguments=@('-u',(Join-Path $root "tools/$scriptName"),'--game-root',$game,'--output',$temporary)
     if($bank -ne 'cockpit-start') { $arguments+=@('--converter',$converter) }
+    if($bank -eq 'practice-menus-20261106') { $arguments+='--results-menus' }
     if($bank -eq 'cockpit-cameras') { $arguments+=@('--catalog',(Join-Path $root 'tools/data/cockpit-cars.json'),'--progress') }
     try {
         & $python @arguments

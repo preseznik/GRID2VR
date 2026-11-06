@@ -183,13 +183,15 @@ def car_content(installed, car):
     return dict(dlc=vehicle.get('dlc', False), cockpitAvailable=vehicle.get('cockpitAvailable', True))
 
 
-def check_practice_bundle(root, control, bundle):
+def check_practice_bundle(root, control, bundle, mode):
     if control == 'human':
         if not isinstance(bundle, (str, Path)):
             raise ValueError('Human selected sessions require --practice-bundle')
         # Local import: the flow preparer shares our path/fingerprint guards.
         import practice_entry
-        practice_entry.verify(root, bundle)
+        data = practice_entry.verify(root, bundle)
+        if data.get('resultsMenus') and mode != 'practice':
+            raise ValueError('Post-Practice menus require Practice mode')
     elif bundle is not None:
         raise ValueError('Practice flow is only supported with human selected sessions')
 
@@ -208,7 +210,7 @@ def prepare(game_root, output, practice_bundle=None, **selection):
     payload = configuration(installed, **selection)
     mode = selection.get('mode', 'benchmark')
     control = selection.get('control', 'ai')
-    check_practice_bundle(root, control, practice_bundle)
+    check_practice_bundle(root, control, practice_bundle, mode)
     path = destination/'session.xml'
     result = dict(schema=2, status='prepared_not_launched', gameRoot=str(root),
                   executableSha256=digest, configuration=str(path),
@@ -259,7 +261,7 @@ def verify(game_root, session):
     content = car_content(installed, selection['car'])
     if data.get('carContent', dict(dlc=False, cockpitAvailable=True)) != content:
         raise ValueError('Selected car content changed; regenerate the session')
-    check_practice_bundle(root, data['control'], data.get('practiceBundle'))
+    check_practice_bundle(root, data['control'], data.get('practiceBundle'), selection.get('mode', 'benchmark'))
     payload = config.read_bytes()
     flag = launch_flag(selection.get('mode', 'benchmark'))
     # Old prepared bundles still verify against their original receipt. Staging
@@ -292,8 +294,9 @@ def stage(game_root, session, run_directory):
     flow_output = plain_path(run/'practice-flow.bin')
     if data['control'] == 'human':
         import practice_entry
+        practice = practice_entry.verify(game_root, data['practiceBundle'])
         flow_payload = plain_path(Path(data['practiceBundle'])/'flow.bin').read_bytes()
-        if hashlib.sha256(flow_payload).hexdigest() != practice_entry.PRACTICE_SHA256:
+        if hashlib.sha256(flow_payload).hexdigest() != practice['modifiedFlowSha256']:
             raise ValueError('Practice flow changed during staging')
         if flow_output.exists():
             raise FileExistsError(flow_output)
@@ -311,7 +314,8 @@ def stage(game_root, session, run_directory):
                 nativeConfigurationName=SESSION_FILENAME)
     if flow_payload is not None:
         result['practiceFlow'] = str(flow_output)
-        result['practiceFlowSha256'] = practice_entry.PRACTICE_SHA256
+        result['practiceFlowSha256'] = practice['modifiedFlowSha256']
+        result['postPracticeMenus'] = practice.get('resultsMenus', False)
     return result
 
 

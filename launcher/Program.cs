@@ -27,7 +27,7 @@ internal static class Program
         try
         {
             var root = SessionClient.FindRoot(AppContext.BaseDirectory);
-            if (AppPaths.Packaged(root))
+            if (AppPaths.Packaged(root) && !PreparationCache.IsCurrent(root))
             {
                 using var preparing = new PreparationForm(root);
                 Application.Run(preparing);

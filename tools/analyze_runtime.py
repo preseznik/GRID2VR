@@ -142,12 +142,14 @@ def analyze(run):
     unexpected = fault_classification['unexpectedFaults']
     # The fixed practice binary and its recovery backup are bounded inputs,
     # not renderer dumps. Never exempt arbitrary .bin files or supplied hashes.
-    from practice_entry import FLOW_SHA256, PRACTICE_SHA256
+    from practice_entry import FLOW_SHA256, PRACTICE_SHA256, PRACTICE_MENUS_SHA256
     deployment = read('deployment-restored.json', 32768)
-    expected_entry = dict(name='system/flow.bin', originalSha256=FLOW_SHA256, sha256=PRACTICE_SHA256)
+    entry = deployment.get('practiceFlow') if deployment else None
+    practice_hash = entry.get('sha256') if isinstance(entry, dict) else None
+    expected_entry = dict(name='system/flow.bin', originalSha256=FLOW_SHA256, sha256=practice_hash)
     practice_files = []
-    if deployment and deployment.get('practiceFlow') == expected_entry:
-        for name, digest in (('practice-flow-original.bin', FLOW_SHA256), ('practice-flow.bin', PRACTICE_SHA256)):
+    if practice_hash in (PRACTICE_SHA256, PRACTICE_MENUS_SHA256) and entry == expected_entry:
+        for name, digest in (('practice-flow-original.bin', FLOW_SHA256), ('practice-flow.bin', practice_hash)):
             path = run/name
             if path.is_file() and not path.is_symlink() and path.stat().st_size <= 2*1024*1024 and hashlib.sha256(path.read_bytes()).hexdigest() == digest:
                 practice_files.append(name)

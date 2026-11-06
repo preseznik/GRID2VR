@@ -81,6 +81,9 @@ internal static class Installation
         }
         await process.WaitForExitAsync(); var error = await errors; await log.WriteAsync(error);
         if(process.ExitCode!=0)throw new IOException(SetupFailure(error,Path.Combine(data,"setup.log"),AppPaths.Game(root),backend=="Steam"));
+        try { PreparationCache.SaveVerified(root); }
+        catch (Exception cacheError) when (cacheError is IOException or UnauthorizedAccessException or JsonException or ArgumentException or InvalidOperationException or KeyNotFoundException or FormatException)
+        { Debug.WriteLine("Preparation cache could not be saved: " + cacheError.Message); }
         progress?.Report(new(100, "Preparation complete."));
     }
     // Players report this dialog as a screenshot, so it carries the refusal and its usual remedy.

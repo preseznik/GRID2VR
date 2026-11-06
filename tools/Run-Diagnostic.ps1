@@ -89,6 +89,7 @@ param(
     [ValidateSet('Off','Observe','Suppress')][string]$BackgroundPlay='Off',
     [switch]$ProfileReplay,
     [Alias('SteamVrRuntime')][string]$XrRuntimeManifest='C:\Program Files\Virtual Desktop Streamer\OpenXR\virtualdesktop-openxr-32.json',
+    [switch]$DefaultOpenXrRuntime,
     [switch]$RepeatAoDraw,
     [switch]$RepeatShadowDraw,
     [switch]$NormalizeShadowBindings,
@@ -269,7 +270,8 @@ if ($XrProjection -and (!$XrSessionProbe -or !$CompactStereoTrace -or !$DisableM
 if ($DisableMotionBlur -and (!$ReplayStereo -or $ReplayEyeFrames -lt 2)) { throw 'DisableMotionBlur requires a bounded stereo sequence.' }
 if ($ProfileReplay -and !$CompactStereoTrace) { throw 'ProfileReplay requires CompactStereoTrace.' }
 if ($XrSessionProbe -and !$ReplayStereo) { throw 'OpenXR session probes require ReplayStereo.' }
-if ($XrSessionProbe) { $runtimeInfo=Resolve-Grid2VrRuntime $XrRuntimeManifest }
+if($DefaultOpenXrRuntime -and !$XrSessionProbe) { throw 'Default OpenXR requires an OpenXR session.' }
+if ($XrSessionProbe) { $runtimeInfo=Resolve-Grid2VrRuntime $XrRuntimeManifest -DefaultRuntime:$DefaultOpenXrRuntime }
 if ($XrLayerBypass.Count) {
     . (Join-Path $PSScriptRoot 'OpenXR-Layers.ps1')
     if (!$XrSessionProbe -or $XrLayerBypass.Count -gt 16 -or @($XrLayerBypass | Where-Object { !(Test-Grid2VrLayerDisableVariable $_) }).Count -or
@@ -411,6 +413,7 @@ if ($CompactStereoTrace) { [IO.File]::WriteAllText((Join-Path $run 'compact-ster
 if ($CompactStereoTrace -and !$RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'packed-snapshots.request'),'Pack unchanged bounded CPU snapshot bytes while rendering; unpack after recovery before independent analysis.') }
 if ($ProfileReplay) { [IO.File]::WriteAllText((Join-Path $run 'profile-replay.request'),'CPU wall-time buckets, inclusive of nested scopes; driver timing includes CPU waits and is not GPU time.') }
 if ($XrSessionProbe) { [IO.File]::WriteAllText((Join-Path $run 'xr-session.request'),$runtimeInfo.manifest,[Text.UTF8Encoding]::new($false)) }
+if ($DefaultOpenXrRuntime) { [IO.File]::WriteAllText((Join-Path $run 'xr-default-runtime.request'),'Default',[Text.UTF8Encoding]::new($false)) }
 # Peak yaw 25 and pitch 8 degrees, 8 s period: a moderate look-around (about 20 degrees/s at most).
 if ($HeadMotion) { [IO.File]::WriteAllText((Join-Path $run 'head-motion.request'),'25 8 8',[Text.UTF8Encoding]::new($false)) }
 # Steam may start GRID 2 without launcher variables; the renderer sets these around xrCreateInstance.

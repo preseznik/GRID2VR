@@ -46,8 +46,8 @@ internal static class SelfTests
             Check(client.Load() == (selection with { ModernInterface = false, Graphics = graphics with { HeadsetScale = 100 } }));
             Check(client.Load().Graphics.VrMsaa == "off");
             client.Save(selection);
-            foreach (var runtime in new[] { "SteamVR", "VDXR" })
-                foreach (var mode in new[] { "Normal", "Practice", "Race" })
+            foreach (var runtime in new[] { "SteamVR", "VDXR", "Default" })
+                foreach (var mode in new[] { "Normal", "Online", "Practice", "Race" })
                     foreach (var borderless in new[] { false, true })
                     {
                         var mirrorOptions = selection with { Runtime = runtime, LaunchMode = mode, Graphics = graphics with { VrMirrorBorderless = borderless, DesktopBorderless = borderless } };
@@ -355,6 +355,7 @@ internal static class SelfTests
             LauncherFeaturesTests.Run(fixture);
             UpdateNotificationTests.Run(root, client);
             InstallationTests.Run(fixture);
+            PreparationCacheTests.Run(fixture);
             SessionRecoveryTests.Run(fixture);
             DrivingControlsTests.Run(fixture);
             ChaseCameraTests.Run(root, client);

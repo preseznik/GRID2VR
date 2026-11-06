@@ -2,6 +2,7 @@
 # fingerprints aligned with practice_entry.py; arbitrary journal hashes are refused.
 $script:PracticeOriginalHash='8b2f7fce029ed2fe2e82d837d0e180f14347e14737f71566b0a318c46bd32894'
 $script:PracticeModifiedHash='f2dc0085047a3cf29feac15e62002d9866c71261a7aa325ebb27571ed8b07d24'
+$script:PracticeMenusHash='5cc32e5c315e58bca857e94b5f06c5a25dc11b0a9264b5cc8e786238393680cd'
 $script:PracticeStatesHash='07e593b3891171a7c4caa67b0b2e0ee1a9c166fc2d4bd25814ad695c439d9adc'
 
 function Assert-PracticePlainPath([string]$Path) {
@@ -31,7 +32,7 @@ function Get-PracticeFlowPaths([string]$Game,[string]$Run) {
 }
 
 function Assert-PracticeFlowEntry($Entry) {
-    if(!$Entry -or $Entry.name -cne 'system/flow.bin' -or $Entry.sha256 -ne $script:PracticeModifiedHash -or $Entry.originalSha256 -ne $script:PracticeOriginalHash) {
+    if(!$Entry -or $Entry.name -cne 'system/flow.bin' -or $Entry.sha256 -notin @($script:PracticeModifiedHash,$script:PracticeMenusHash) -or $Entry.originalSha256 -ne $script:PracticeOriginalHash) {
         throw 'Unsupported practice recovery entry.'
     }
 }
@@ -46,11 +47,13 @@ function New-PracticeFlowDeployment([string]$Game,[string]$Run) {
     if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Close GRID 2 before preparing practice deployment.' }
     if(Test-Path -LiteralPath $paths.temporary) { throw 'Existing practice temporary file retained.' }
     Assert-PracticeHash $paths.target $script:PracticeOriginalHash
-    Assert-PracticeHash $paths.source $script:PracticeModifiedHash
+    Assert-PracticePlainPath $paths.source
+    $modifiedHash=(Get-FileHash -LiteralPath $paths.source -ErrorAction Stop).Hash.ToLowerInvariant()
+    if($modifiedHash -notin @($script:PracticeModifiedHash,$script:PracticeMenusHash)) { throw 'Unsupported practice flow.' }
     Assert-PracticeHash $paths.states $script:PracticeStatesHash
     [IO.File]::Copy($paths.target,$paths.backup,$false)
     Assert-PracticeHash $paths.backup $script:PracticeOriginalHash
-    return @{name='system/flow.bin';originalSha256=$script:PracticeOriginalHash;sha256=$script:PracticeModifiedHash}
+    return @{name='system/flow.bin';originalSha256=$script:PracticeOriginalHash;sha256=$modifiedHash}
 }
 
 function Write-PracticeFlowAtomic($Paths,[string]$Source,[string]$Expected,[string]$Before) {
@@ -71,9 +74,9 @@ function Install-PracticeFlow([string]$Game,[string]$Run,$Entry) {
     if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Existing GRID 2 process retained.' }
     Assert-PracticeHash $paths.target $script:PracticeOriginalHash
     Assert-PracticeHash $paths.backup $script:PracticeOriginalHash
-    Assert-PracticeHash $paths.source $script:PracticeModifiedHash
+    Assert-PracticeHash $paths.source $Entry.sha256
     Assert-PracticeHash $paths.states $script:PracticeStatesHash
-    Write-PracticeFlowAtomic $paths $paths.source $script:PracticeModifiedHash $script:PracticeOriginalHash
+    Write-PracticeFlowAtomic $paths $paths.source $Entry.sha256 $script:PracticeOriginalHash
 }
 
 function Restore-PracticeFlow([string]$Game,[string]$Run,$Entry) {
@@ -82,15 +85,15 @@ function Restore-PracticeFlow([string]$Game,[string]$Run,$Entry) {
     if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'GRID 2 must exit before restoring practice flow.' }
     Assert-PracticeHash $paths.backup $script:PracticeOriginalHash
     $current=(Get-FileHash -LiteralPath $paths.target).Hash
-    if($current -notin @($script:PracticeOriginalHash,$script:PracticeModifiedHash)) { throw 'Changed installed flow retained; recovery requires inspection.' }
+    if($current -notin @($script:PracticeOriginalHash,$Entry.sha256)) { throw 'Changed installed flow retained; recovery requires inspection.' }
     # Validate everything before mutation. A partial/foreign temporary file is
     # retained for inspection; it is never taken as a valid installed asset.
     if(Test-Path -LiteralPath $paths.temporary) {
-        if((Get-FileHash -LiteralPath $paths.temporary).Hash -notin @($script:PracticeOriginalHash,$script:PracticeModifiedHash)) { throw 'Changed practice temporary file retained.' }
+        if((Get-FileHash -LiteralPath $paths.temporary).Hash -notin @($script:PracticeOriginalHash,$Entry.sha256)) { throw 'Changed practice temporary file retained.' }
         Remove-Item -LiteralPath $paths.temporary
     }
-    if($current -eq $script:PracticeModifiedHash) {
-        Write-PracticeFlowAtomic $paths $paths.backup $script:PracticeOriginalHash $script:PracticeModifiedHash
+    if($current -eq $Entry.sha256) {
+        Write-PracticeFlowAtomic $paths $paths.backup $script:PracticeOriginalHash $Entry.sha256
     }
     Assert-PracticeHash $paths.target $script:PracticeOriginalHash
 }

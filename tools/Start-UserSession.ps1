@@ -1,7 +1,7 @@
 param(
     [ValidateSet('VR','Desktop')][string]$Mode='VR',
     [ValidateSet('Practice','Race','Normal','Online')][string]$LaunchMode='Practice',
-    [ValidateSet('VDXR','SteamVR')][string]$XrRuntime='VDXR',
+    [ValidateSet('VDXR','SteamVR','Default')][string]$XrRuntime='VDXR',
     [string]$Car='pag',
     [string]$Track='p2p/okutama/route_1',
     [ValidateRange(1,20)][int]$Laps=1,
@@ -164,7 +164,8 @@ try {
         # Normal and Online use native menus and no selected flow.
         New-Item -ItemType Directory -Path $selection -ErrorAction Stop | Out-Null
     } else {
-        $bundle=Join-Path (Get-Grid2DataRoot $root) 'practice-flow-20261014'
+        $bank=if($LaunchMode -eq 'Practice'){'practice-menus-20261106'}else{'practice-flow-20261014'}
+        $bundle=Join-Path (Get-Grid2DataRoot $root) $bank
         $selectionArguments=@('--game-root',(Get-Grid2GameRoot $root),'prepare','--output',$selection,'--car',$Car,'--track',$Track,'--laps',$sessionLaps,
             '--mode',$LaunchMode.ToLowerInvariant(),'--control','human','--practice-bundle',$bundle)
         if($LaunchMode -eq 'Race') { $selectionArguments+=@('--opponents',$Opponents,'--opponent-cars',$OpponentCars.ToLowerInvariant()) }

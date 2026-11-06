@@ -12,7 +12,7 @@ function Find-TestStatement($Ast,[string]$Text) {
     return [scriptblock]::Create($statement.Extent.Text)
 }
 $start=Read-TestAst 'Start-UserSession.ps1'
-$bind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n@{mode=`$LaunchMode;opponents=`$Opponents;opponentCars=`$OpponentCars;laps=`$Laps;replays=`$VrReplayCameras;garage=`$VrGarageMenus}")
+$bind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n@{mode=`$LaunchMode;runtime=`$XrRuntime;opponents=`$Opponents;opponentCars=`$OpponentCars;laps=`$Laps;replays=`$VrReplayCameras;garage=`$VrGarageMenus}")
 $defaults=& $bind
 if($defaults.mode -ne 'Practice' -or $defaults.opponents -ne 7 -or $defaults.opponentCars -cne 'same' -or $defaults.laps -ne 1 -or $defaults.replays -ne 1 -or $defaults.garage -ne 1) { throw 'Launch defaults changed.' }
 foreach($mode in @('Normal','Online','Practice','Race')) {
@@ -28,6 +28,11 @@ foreach($mode in @('Normal','Online','Practice','Race')) {
 function Get-TestParameterNames($Ast) { @($Ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath }) }
 $probeAst=Read-TestAst 'Run-StereoProbe.ps1'; $diagnosticAst=Read-TestAst 'Run-Diagnostic.ps1'
 $probeNames=Get-TestParameterNames $probeAst; $diagnosticNames=Get-TestParameterNames $diagnosticAst
+foreach($runtime in 'VDXR','SteamVR','Default') {
+    if((& $bind -XrRuntime $runtime).runtime -ne $runtime) { throw 'Runtime selection lost at the launcher session entry.' }
+    $probeBind=[scriptblock]::Create($probeAst.ParamBlock.Extent.Text+"`n`$XrRuntime")
+    if((& $probeBind -XrRuntime $runtime -HardwareSettingsFile (Join-Path $root 'tools/stereo-probe-settings.xml')) -ne $runtime) { throw 'Runtime selection lost at Run-StereoProbe.' }
+}
 $forwarded=@($start.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$parameters'},$true) |
     ForEach-Object { $_.Right.Find({param($node) $node -is [Management.Automation.Language.HashtableAst]},$true).KeyValuePairs } | ForEach-Object { $_.Item1.Extent.Text })
 $forwarded+=@($start.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left -is [Management.Automation.Language.MemberExpressionAst] -and
@@ -41,6 +46,14 @@ foreach($call in $diagnosticCalls) {
     $names=@($call.KeyValuePairs | ForEach-Object { $_.Item1.Extent.Text })
     $missing=@($names | Where-Object { $_ -notin $diagnosticNames })
     if($missing.Count -or $names -notcontains 'OnlineLaunch') { throw "Run-Diagnostic.ps1 call drops options: $($missing -join ', ') OnlineLaunch=$($names -contains 'OnlineLaunch')" }
+}
+$defaultFlag=@($diagnosticCalls | ForEach-Object { $_.KeyValuePairs } | Where-Object { $_.Item1.Extent.Text -eq 'DefaultOpenXrRuntime' })
+if($defaultFlag.Count -ne 1) { throw 'Default OpenXR selection is not forwarded to the rendering diagnostic.' }
+$defaultExpression=[scriptblock]::Create($defaultFlag[0].Item2.Extent.Text)
+foreach($case in @(@('Headset','Default',$true),@('Desktop','Default',$false),@('Headset','VDXR',$false),@('Headset','SteamVR',$false))) {
+    & { $Mode=$case[0];$XrRuntime=$case[1]
+        if([bool](& $defaultExpression) -ne $case[2]) { throw 'Default OpenXR must reach VR only, without changing explicit providers.' }
+    }
 }
 # Run-StereoProbe re-checks the scene size it was given against the headset plan, which must
 # include the field of view: 0.2.16 refused every VR launch below 100%.
@@ -81,6 +94,13 @@ foreach($script in @('Run-StereoProbe.ps1','Run-Diagnostic.ps1')) {
 $fixture=Join-Path $root ('build/launch-mode-test-'+[guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($fixture) | Out-Null
 try {
+    $writeDefault=Find-TestStatement $diagnosticAst "'xr-default-runtime.request'"
+    & { $run=$fixture;$DefaultOpenXrRuntime=$false;. $writeDefault }
+    $defaultRequest=Join-Path $fixture 'xr-default-runtime.request'
+    if(Test-Path -LiteralPath $defaultRequest) { throw 'An explicit provider gained the Default runtime request.' }
+    & { $run=$fixture;$DefaultOpenXrRuntime=$true;. $writeDefault }
+    if([IO.File]::ReadAllText($defaultRequest) -cne 'Default') { throw 'Renderer Default runtime request was not written.' }
+    Remove-Item -LiteralPath $defaultRequest
     # Exercise the launch progress transport with fixture receipts and fake owned
     # processes. No live window or game is inspected or controlled.
     $progressStatements=@($start.FindAll({param($node)
@@ -204,6 +224,9 @@ try {
             $modeIndex=[Array]::IndexOf($captured,'--mode'); $opponentIndex=[Array]::IndexOf($captured,'--opponents')
             if($modeIndex -lt 0 -or $captured[$modeIndex+1] -cne $LaunchMode.ToLowerInvariant() -or
                $captured -notcontains '--practice-bundle' -or $captured -notcontains 'human') { throw 'Selected mode lost guarded human entry.' }
+            $bundleIndex=[Array]::IndexOf($captured,'--practice-bundle')
+            $expectedBank=if($LaunchMode -eq 'Practice'){'practice-menus-20261106'}else{'practice-flow-20261014'}
+            if((Split-Path $captured[$bundleIndex+1] -Leaf) -cne $expectedBank) { throw 'Post-Practice menus escaped Practice routing.' }
             if($LaunchMode -eq 'Race' -and ($opponentIndex -lt 0 -or $captured[$opponentIndex+1] -ne 7)) { throw 'Race opponent count was lost.' }
             $carsIndex=[Array]::IndexOf($captured,'--opponent-cars')
             if($LaunchMode -eq 'Race' -and ($carsIndex -lt 0 -or $captured[$carsIndex+1] -cne $OpponentCars)) { throw 'Race opponent car choice was lost.' }

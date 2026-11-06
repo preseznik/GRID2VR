@@ -17,6 +17,14 @@ Reject { ConvertFrom-HeadsetQuery ($query.Replace('eye1=2400','eye1=2500')) 'VDX
 Reject { ConvertFrom-HeadsetQuery ($query.Replace('max=8192x8192','max=2000x2000')) 'VDXR' }
 Reject { ConvertFrom-HeadsetQuery 'get_headset_system=-34' 'VDXR' }
 Assert ((ConvertFrom-HeadsetQuery ($query.Replace('VirtualDesktopXR','SteamVR/test')) 'SteamVR').width -eq 2400) 'SteamVR query'
+foreach($provider in 'VirtualDesktopXR','SteamVR/test','VendorOpenXR') {
+    $system=ConvertFrom-HeadsetQuery ($query.Replace('VirtualDesktopXR',$provider)) 'Default'
+    Assert ($system.runtime -eq 'Default' -and $system.runtimeName -ceq $provider) 'Default runtime keeps the requested selection and reports the actual provider'
+}
+Reject { ConvertFrom-HeadsetQuery $query 'Default' 'SteamVR' }
+Reject { ConvertFrom-HeadsetQuery ($query.Replace('VirtualDesktopXR','VendorOpenXR')) 'Default' 'VDXR' }
+$unavailable=[pscustomobject]@{runtime='Default';exitCode=1;output='get_headset_system=-35';errors=''}
+Assert ((Get-HeadsetQueryFailure $unavailable).Contains('default OpenXR runtime')) 'Default without a headset must explain how to connect or select a runtime'
 foreach($dimensions in @(@(150,4608,4896),@(200,6144,6528),@(251,7710,8192))) {
     $quest=Get-HeadsetResolutionPlan 3072 3264 $dimensions[0]
     Assert ($quest.sceneWidth -eq $dimensions[1] -and $quest.sceneHeight -eq $dimensions[2] -and $quest.width -eq 3072 -and $quest.height -eq 3264) 'Quest 3 supersampling and fixed output'

@@ -326,21 +326,37 @@ int main(int argc,char** argv) {
         probe.Shutdown();
         if(instances || sessions || spaces || phase || protocolError) return 12;
     }
-    // Both providers use the same game-device/session lifecycle. A mismatched
-    // provider identity or 64-bit VDXR manifest must still refuse and clean up.
-    struct RuntimeCase { const wchar_t* filename; const char* name; bool accepted; };
+    // Default runtime selection is explicit. Known provider identities stay
+    // guarded, and every accepted provider uses the same game-device lifecycle.
+    struct RuntimeCase { const wchar_t* filename; const char* name; bool accepted; bool defaultSelection=false; };
     for (const auto test:{RuntimeCase{L"virtualdesktop-openxr-32.json","VirtualDesktopXR",true},
             RuntimeCase{L"virtualdesktop-openxr-32.json","SteamVR/test",false},
             RuntimeCase{L"steamxr_win32.json","VirtualDesktopXR",false},
-            RuntimeCase{L"virtualdesktop-openxr.json","VirtualDesktopXR",false}}) {
+            RuntimeCase{L"virtualdesktop-openxr.json","VirtualDesktopXR",false},
+            RuntimeCase{L"vendor-runtime.json","Vendor OpenXR",false},
+            RuntimeCase{L"vendor-runtime.json","Vendor OpenXR",true,true},
+            RuntimeCase{L"vendor-runtime.json","",false,true},
+            RuntimeCase{L"vendor-runtime.txt","Vendor OpenXR",false,true},
+            RuntimeCase{L"steamxr_win32.json","VirtualDesktopXR",false,true},
+            RuntimeCase{L"STEAMXR_WIN32.JSON","SteamVR/test",true,true}}) {
         Reset();runtimeName=test.name;
+        const auto selection=folder/L"xr-default-runtime.request";
+        if(test.defaultSelection) std::ofstream(selection)<<"Default";
         const auto selected=folder/test.filename;std::ofstream(selected)<<"fake linked runtime";
         expectedRuntimePath=selected.wstring();grid2vr::XrSessionProbe probe;
         if (probe.Initialize(device.Get(),selected,folder)!=test.accepted) return 40;
         if (test.accepted && (!probe.Poll() || !probe.Sample(1))) return 41;
         probe.Shutdown();
+        std::filesystem::remove(selection);
         wchar_t previous[64]{};GetEnvironmentVariableW(L"XR_RUNTIME_JSON",previous,64);
         if (wcscmp(previous,L"preserve-test-value") || instances || sessions || spaces || phase || protocolError) return 42;
+    }
+    for(const char* request:{"","Other","Default extra","DefaultDefaultDefault"}) {
+        Reset();runtimeName="SteamVR/test";expectedRuntimePath=manifest.wstring();
+        std::ofstream(folder/L"xr-default-runtime.request")<<request;
+        grid2vr::XrSessionProbe refused;
+        if(refused.Initialize(device.Get(),manifest,folder) || instances) return 114;
+        refused.Shutdown();std::filesystem::remove(folder/L"xr-default-runtime.request");
     }
     runtimeName="VirtualDesktopXR";
     const auto vdxrManifest=folder/L"virtualdesktop-openxr-32.json";

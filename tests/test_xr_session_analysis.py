@@ -73,6 +73,20 @@ class XrEvidenceTests(unittest.TestCase):
             log.write_text(text);engine=run/'engine.log';engine.write_text(engine.read_text().replace('visibility_restored=1','visibility_restored=0'))
             self.assertFalse(analyze(run)['accepted'])
 
+    def test_default_runtime_requires_explicit_selection_and_keeps_provider_guards(self):
+        with tempfile.TemporaryDirectory() as folder:
+            run=Path(folder);fixture(run)
+            request=run/'xr-session.request';log=run/'openxr-session.log'
+            request.write_text('C:\\runtime\\vendor-runtime.json')
+            log.write_text(log.read_text().replace('SteamVR/test','VendorOpenXR'))
+            self.assertFalse(analyze(run)['accepted'])
+            selection=run/'xr-default-runtime.request';selection.write_text('Default')
+            self.assertTrue(analyze(run)['accepted'])
+            selection.write_text('Other');self.assertFalse(analyze(run)['accepted'])
+            selection.write_text('Default')
+            request.write_text('C:\\runtime\\steamxr_win32.json')
+            self.assertFalse(analyze(run)['accepted'])
+
     def test_render_eligibility_loss_is_explicit(self):
         with tempfile.TemporaryDirectory() as folder:
             run=Path(folder);fixture(run);log=run/'openxr-session.log'

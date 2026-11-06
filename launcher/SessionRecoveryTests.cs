@@ -15,7 +15,7 @@ internal static class SessionRecoveryTests
         Environment.SetEnvironmentVariable("GRID2VR_USER_BASE", Path.Combine(fixture, "recovery-data"));
         try
         {
-            foreach (var test in new[] { "unchanged", "grouped", "settings", "asset", "backup", "executable", "worker", "run", "deployed", "theater", "foreign", "malformed", "outside", "outside-backup" })
+            foreach (var test in new[] { "unchanged", "grouped", "default-runtime", "settings", "asset", "backup", "executable", "worker", "run", "deployed", "theater", "foreign", "malformed", "outside", "outside-backup" })
             {
                 var game = Path.Combine(fixture, "recovery-" + test);
                 var root = Path.Combine(game, "GRID2VR"); Directory.CreateDirectory(root);
@@ -44,7 +44,7 @@ internal static class SessionRecoveryTests
                 }
                 var journal = Path.Combine(data, "session-pending.json");
                 var state = new JsonObject { ["schema"] = 1, ["backup"] = backup, ["run"] = null, ["workerId"] = int.MaxValue,
-                    ["workerStartedUtc"] = "2026-10-26T20:39:58Z", ["mode"] = "Headset", ["runtime"] = "SteamVR" };
+                    ["workerStartedUtc"] = "2026-10-26T20:39:58Z", ["mode"] = "Headset", ["runtime"] = test == "default-runtime" ? "Default" : "SteamVR" };
                 switch (test)
                 {
                     case "settings": File.AppendAllText(files[0]!["path"]!.GetValue<string>(), "changed"); break;
@@ -61,8 +61,8 @@ internal static class SessionRecoveryTests
                 File.WriteAllText(Path.Combine(backup, "manifest.json"), new JsonObject { ["files"] = files, ["executables"] = executables }.ToJsonString());
                 File.WriteAllText(journal, test == "malformed" ? "{}" : state.ToJsonString());
                 var beforeJournal = File.ReadAllBytes(journal);
-                Check(SessionRecovery.TryClearUnstarted(root, documents) == (test is "unchanged" or "grouped"));
-                if (test is "unchanged" or "grouped")
+                Check(SessionRecovery.TryClearUnstarted(root, documents) == (test is "unchanged" or "grouped" or "default-runtime"));
+                if (test is "unchanged" or "grouped" or "default-runtime")
                 {
                     Check(!File.Exists(journal));
                     Check(File.ReadAllBytes(Path.Combine(backup, "user-session-recovered-unchanged.json")).SequenceEqual(beforeJournal));

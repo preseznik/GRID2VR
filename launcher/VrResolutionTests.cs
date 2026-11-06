@@ -31,6 +31,14 @@ internal static class VrResolutionTests
                 }
         }
         var headset = HeadsetResolution.Parse("{\"runtime\":\"VDXR\",\"headset\":\"Test headset\",\"width\":2400,\"height\":2600}", "VDXR");
+        var systemHeadset = HeadsetResolution.Parse("{\"runtime\":\"Default\",\"runtimeName\":\"VendorOpenXR\",\"headset\":\"Test headset\",\"width\":2400,\"height\":2600}", "Default");
+        Check(systemHeadset.Summary(100).Contains("Default OpenXR (VendorOpenXR)"));
+        var selectedRuntime = original with { Runtime = "Default" };
+        client.Save(selectedRuntime); Check(client.Load() == selectedRuntime);
+        var launch = client.LaunchCommand(selectedRuntime, true).ArgumentList;
+        Check(launch[launch.IndexOf("-XrRuntime") + 1] == "Default");
+        var query = client.HeadsetQueryCommand("Default", []).ArgumentList;
+        Check(query[query.IndexOf("-Runtime") + 1] == "Default");
         Check(headset.Summary(50).Contains("Render: 1200 × 1300 per eye") && headset.Summary(100).Contains("Render: 2400 × 2600 per eye"));
         Check(headset.Summary(150).Contains("Render: 3600 × 3900 per eye") && headset.Summary(150).Contains("Output: 2400 × 2600 per eye"));
         Check(!headset.Summary(200).Contains("Exceeds renderer limits"));
@@ -88,6 +96,8 @@ internal static class VrResolutionTests
         var desktop = (RenderScaleSlider)form.Controls.Find("DesktopRenderScale", true).Single();
         var summary = (Label)form.Controls.Find("VrResolutionSummary", true).Single();
         var tabs = (TabControl)form.Controls.Find("LauncherTabs", true).Single();
+        var runtimes = (ComboBox)form.Controls.Find("Runtime", true).Single();
+        Check(runtimes.Items.Cast<string>().SequenceEqual(new[] { "VDXR", "SteamVR", "Default" }));
         Check(tabs.TabPages.Cast<TabPage>().Single(p => p.Text == "Graphics").Contains(render));
         Check(form.Controls.Find("HeadsetScale", true).Length == 0 && form.Controls.Find("VrResolution", true).Length == 0);
         var original = client.Load();

@@ -42,11 +42,12 @@ function Write-HeadsetResolutionRequests([string]$Run,[int]$Width,[int]$Height,[
     }
 }
 
-function ConvertFrom-HeadsetQuery([string]$Text,[string]$Runtime) {
+function ConvertFrom-HeadsetQuery([string]$Text,[string]$Runtime,[string]$ExpectedRuntime='') {
     if($Text.Length -gt 65536) { throw 'Headset query returned too much data.' }
+    if(!$ExpectedRuntime) { $ExpectedRuntime=$Runtime }
     $identity=[regex]::Match($Text,'(?m)^runtime=(.+) version=\d+\.\d+\.\d+\r?$')
-    if(!$identity.Success -or ($Runtime -eq 'VDXR' -and $identity.Groups[1].Value -cne 'VirtualDesktopXR') -or
-       ($Runtime -eq 'SteamVR' -and !$identity.Groups[1].Value.StartsWith('SteamVR/',[StringComparison]::Ordinal))) { throw 'Headset query returned an unexpected OpenXR runtime.' }
+    if(!$identity.Success -or ($ExpectedRuntime -eq 'VDXR' -and $identity.Groups[1].Value -cne 'VirtualDesktopXR') -or
+       ($ExpectedRuntime -eq 'SteamVR' -and !$identity.Groups[1].Value.StartsWith('SteamVR/',[StringComparison]::Ordinal))) { throw 'Headset query returned an unexpected OpenXR runtime.' }
     $eyes=[regex]::Matches($Text,'(?m)^eye([01])=(\d+)x(\d+) recommended_samples=\d+ max=(\d+)x(\d+)\r?$')
     if($eyes.Count -ne 2 -or $eyes[0].Groups[1].Value -ne '0' -or $eyes[1].Groups[1].Value -ne '1') { throw 'Could not read both headset eye resolutions.' }
     $width=[int]$eyes[0].Groups[2].Value; $height=[int]$eyes[0].Groups[3].Value
@@ -57,17 +58,17 @@ function ConvertFrom-HeadsetQuery([string]$Text,[string]$Runtime) {
     $plan=Get-HeadsetResolutionPlan $width $height
     $name=[regex]::Match($Text,'(?m)^headset=(.+) orientation_tracking=\d+ position_tracking=\d+\r?$')
     if(!$name.Success) { throw 'Headset query did not identify a headset.' }
-    return [ordered]@{runtime=$Runtime;headset=$name.Groups[1].Value;width=$plan.width;height=$plan.height}
+    return [ordered]@{runtime=$Runtime;runtimeName=$identity.Groups[1].Value;headset=$name.Groups[1].Value;width=$plan.width;height=$plan.height}
 }
 
 . (Join-Path $PSScriptRoot 'OpenXR-Layers.ps1')
 
 # Run the 32-bit probe once. $LayerBypasses are approved, revalidated layer identities.
-function Invoke-HeadsetQuery([string]$Root,[ValidateSet('VDXR','SteamVR')][string]$Runtime,[object[]]$LayerBypasses=@()) {
+function Invoke-HeadsetQuery([string]$Root,[ValidateSet('VDXR','SteamVR','Default')][string]$Runtime,[object[]]$LayerBypasses=@()) {
     . (Join-Path $PSScriptRoot 'Paths.ps1')
     . (Join-Path $PSScriptRoot 'OpenXR-Runtime.ps1')
     $manifest=Get-Grid2VrRuntimeManifest $Runtime
-    $null=Resolve-Grid2VrRuntime $manifest
+    $runtimeInfo=Resolve-Grid2VrRuntime $manifest -DefaultRuntime:($Runtime -eq 'Default')
     $probe=if(Test-Grid2Package $Root) { Get-Grid2PackageFile $Root 'payload/xr_runtime_probe.exe' } else { Join-Path $Root 'build/win32/bin/RelWithDebInfo/xr_runtime_probe.exe' }
     if(!(Test-Path -LiteralPath $probe -PathType Leaf)) { throw 'Headset resolution helper is missing. Rebuild the native renderer or reinstall GRID2VR.' }
     $start=[Diagnostics.ProcessStartInfo]::new($probe)
@@ -85,11 +86,12 @@ function Invoke-HeadsetQuery([string]$Root,[ValidateSet('VDXR','SteamVR')][strin
         $output=$process.StandardOutput.ReadToEndAsync(); $errorOutput=$process.StandardError.ReadToEndAsync()
         if(!$process.WaitForExit(15000)) {
             $process.Kill($true)
+            if($Runtime -eq 'Default') { throw 'Headset query timed out. Connect your headset in its runtime software and check the default OpenXR runtime, or choose VDXR or SteamVR.' }
             throw "Headset query timed out. Connect your headset through $Runtime and refresh."
         }
         $text=$output.GetAwaiter().GetResult(); $errors=$errorOutput.GetAwaiter().GetResult()
         if($errors.Length -gt 65536) { $errors=$errors.Substring(0,65536) }
-        return [pscustomobject][ordered]@{runtime=$Runtime;exitCode=$process.ExitCode;output=$text;errors=$errors
+        return [pscustomobject][ordered]@{runtime=$Runtime;provider=$runtimeInfo.name;exitCode=$process.ExitCode;output=$text;errors=$errors
             disabledLayers=@($LayerBypasses | Where-Object { $_ } | ForEach-Object { $_.layerName })}
     } finally { $process.Dispose() }
 }
@@ -106,13 +108,14 @@ function Get-HeadsetQueryFailure($Query) {
     if($failures.Count) { return Format-Grid2VrLayerFailures $failures }
     $step=[regex]::Matches($Query.output,'(?m)^([a-z_]+)=(-[0-9]+)\r?$') | Select-Object -Last 1
     $detail=if($step) { ", $($step.Groups[1].Value)=$($step.Groups[2].Value)" } else { '' }
+    if($Query.runtime -eq 'Default') { return "Could not read the headset resolution (query exit $($Query.exitCode)$detail). Connect your headset in its runtime software and check the default OpenXR runtime, or choose VDXR or SteamVR." }
     return "Could not read the headset resolution (query exit $($Query.exitCode)$detail). Connect your headset through $($Query.runtime) and refresh."
 }
 
-function Get-ConnectedHeadsetResolution([string]$Root,[ValidateSet('VDXR','SteamVR')][string]$Runtime,[object[]]$LayerBypasses=@(),[string]$ReportPath='',[switch]$ReportSuccess) {
+function Get-ConnectedHeadsetResolution([string]$Root,[ValidateSet('VDXR','SteamVR','Default')][string]$Runtime,[object[]]$LayerBypasses=@(),[string]$ReportPath='',[switch]$ReportSuccess) {
     $query=Invoke-HeadsetQuery $Root $Runtime $LayerBypasses
     # A failed query always keeps its loader report; it names the step and any failing layer.
     if($ReportPath -and ($query.exitCode -ne 0 -or $ReportSuccess)) { [IO.File]::WriteAllText($ReportPath,(Get-HeadsetQueryReport $query),[Text.UTF8Encoding]::new($false)) }
     if($query.exitCode -ne 0) { throw (Get-HeadsetQueryFailure $query) }
-    return ConvertFrom-HeadsetQuery $query.output $Runtime
+    return ConvertFrom-HeadsetQuery $query.output $Runtime $query.provider
 }

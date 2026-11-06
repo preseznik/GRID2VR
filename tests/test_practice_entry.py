@@ -5,7 +5,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from practice_entry import CHANGES, redirect, signature, verify_roundtrip
+from practice_entry import CHANGES, RESULT_CHANGES, redirect, results_redirect, signature, verify_roundtrip
 
 
 class PracticeEntryTests(unittest.TestCase):
@@ -64,6 +64,45 @@ class PracticeEntryTests(unittest.TestCase):
         verify_roundtrip(expected, actual)
         actual.find(".//node[@id='unrelated']/link").set('target', 'different_exit')
         with self.assertRaises(ValueError): verify_roundtrip(expected, actual)
+
+    def results_fixture(self):
+        flow = ET.Element('flow')
+        for change in RESULT_CHANGES:
+            node = ET.SubElement(flow, 'node', id=change['node'], state='cl')
+            ET.SubElement(node, 'link', id='skip_results', target=change['before'])
+            ET.SubElement(node, 'link', id='default', target=change['after'])
+            ET.SubElement(node, 'link', id='sprint', target='native_sprint')
+            ET.SubElement(flow, 'node', id=change['before'], state='mZ')
+            ET.SubElement(flow, 'node', id=change['after'], state='native_results')
+        ET.SubElement(flow, 'node', id='native_sprint', state='sprint_results')
+        return flow, ET.fromstring('<states><StateResultsScreenDecision id="cl"/></states>')
+
+    def test_results_menus_change_only_skip_branches_and_preserve_source(self):
+        flow, states = self.results_fixture()
+        before = signature(flow)
+        result = results_redirect(flow, states)
+        for change in RESULT_CHANGES:
+            node = result.find(f"node[@id='{change['node']}']")
+            self.assertEqual(node.find("link[@id='skip_results']").get('target'),
+                             node.find("link[@id='default']").get('target'))
+            node.find("link[@id='skip_results']").set('target', change['before'])
+        self.assertEqual(signature(result), before)
+        self.assertEqual(signature(flow), before)
+
+    def test_results_menus_refuse_changed_destinations_and_incomplete_graph(self):
+        for mutation in ('missing', 'duplicate', 'extra', 'skip', 'default', 'end', 'state'):
+            with self.subTest(mutation=mutation):
+                flow, states = self.results_fixture()
+                node = flow.find("node[@id='1vd']")
+                if mutation == 'missing': flow.remove(node)
+                if mutation == 'duplicate': flow.append(copy.deepcopy(node))
+                if mutation == 'extra':
+                    other = copy.deepcopy(node); other.set('id', 'unexpected'); flow.append(other)
+                if mutation == 'skip': node.find("link[@id='skip_results']").set('target', 'other')
+                if mutation == 'default': node.find("link[@id='default']").set('target', 'other')
+                if mutation == 'end': flow.find("node[@id='1ve']").set('state', 'other')
+                if mutation == 'state': states[0].set('timeDelay', '2')
+                with self.assertRaises(ValueError): results_redirect(flow, states)
 
 
 if __name__ == '__main__':

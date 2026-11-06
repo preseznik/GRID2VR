@@ -1,7 +1,7 @@
 # Native AI driving + the existing same-frame stereo renderer; no user interaction.
 param(
     [ValidateSet('Simulated','Headset')][string]$Mode='Simulated',
-    [ValidateSet('VDXR','SteamVR')][string]$XrRuntime='VDXR',
+    [ValidateSet('VDXR','SteamVR','Default')][string]$XrRuntime='VDXR',
     [ValidateSet('benchmark','attract')][string]$PlaybackMode='benchmark',
     [string]$Car='z28',
     [string]$Track='circuits/brands_hatch/route_2',

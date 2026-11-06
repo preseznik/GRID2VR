@@ -42,24 +42,26 @@ class SessionConfigurationTests(unittest.TestCase):
         with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
             return sessions.prepare(self.root, output, **selected)
 
-    def practice_bundle(self):
+    def practice_bundle(self, results_menus=False):
         bundle = Path(self.temp.name)/'practice bundle'
         bundle.mkdir()
         (self.root/'system').mkdir()
-        original, states, modified = b'original flow', b'states', b'practice flow'
+        original, states, modified = b'original flow', b'states', b'practice menu flow' if results_menus else b'practice flow'
         for name, value in (('SUPPORTED_AVX_SHA256', self.digest),
                             ('FLOW_SHA256', hashlib.sha256(original).hexdigest()),
                             ('STATES_SHA256', hashlib.sha256(states).hexdigest()),
-                            ('PRACTICE_SHA256', hashlib.sha256(modified).hexdigest())):
+                            ('PRACTICE_MENUS_SHA256' if results_menus else 'PRACTICE_SHA256', hashlib.sha256(modified).hexdigest())):
             self.enterContext(patch.object(practice, name, value))
         (self.root/'system/flow.bin').write_bytes(original)
         (self.root/'system/states.bin').write_bytes(states)
         (bundle/'flow.bin').write_bytes(modified)
         data = dict(schema=2, gameRoot=str(self.root), executableSha256=self.digest,
                     originalFlowSha256=practice.FLOW_SHA256, statesSha256=practice.STATES_SHA256,
-                    modifiedFlowSha256=practice.PRACTICE_SHA256, converterSha256=practice.CONVERTER_SHA256,
+                    modifiedFlowSha256=practice.PRACTICE_MENUS_SHA256 if results_menus else practice.PRACTICE_SHA256, converterSha256=practice.CONVERTER_SHA256,
                     changes=practice.CHANGES, semanticRoundtrip=True, installed=False,
                     playerControlValidated=False)
+        if results_menus:
+            data.update(schema=3, resultsMenus=True, changes=practice.CHANGES+practice.RESULT_CHANGES)
         (bundle/'manifest.json').write_text(json.dumps(data), encoding='utf-8')
         return bundle
 
@@ -306,6 +308,26 @@ class SessionConfigurationTests(unittest.TestCase):
             self.assertEqual(staged['practiceFlowSha256'], practice.PRACTICE_SHA256)
             with self.assertRaises(FileExistsError): sessions.stage(self.root, destination, run)
         self.assertEqual((self.root/'system/flow.bin').read_bytes(), before)
+
+    def test_post_practice_menus_stage_only_for_practice_and_reject_forgery(self):
+        bundle = self.practice_bundle(results_menus=True)
+        destination = Path(self.temp.name)/'practice menus'
+        self.prepare(destination, mode='practice', control='human', practice_bundle=bundle)
+        run = Path(self.temp.name)/'menu run'; run.mkdir()
+        with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
+            staged = sessions.stage(self.root, destination, run)
+        self.assertTrue(staged['postPracticeMenus'])
+        self.assertEqual(staged['practiceFlowSha256'], practice.PRACTICE_MENUS_SHA256)
+        self.assertEqual(Path(staged['practiceFlow']).read_bytes(), (bundle/'flow.bin').read_bytes())
+        race = Path(self.temp.name)/'race refused'
+        with self.assertRaisesRegex(ValueError, 'Practice mode'):
+            self.prepare(race, mode='race', control='human', opponents=1, practice_bundle=bundle)
+        self.assertFalse(race.exists())
+        metadata = json.loads((bundle/'manifest.json').read_text())
+        metadata['modifiedFlowSha256'] = '0'*64
+        (bundle/'manifest.json').write_text(json.dumps(metadata))
+        with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest), self.assertRaises(ValueError):
+            sessions.verify(self.root, destination)
 
     def test_race_uses_shipped_grid_limit_and_driver_presets(self):
         bundle = self.practice_bundle()

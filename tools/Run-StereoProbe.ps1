@@ -1,7 +1,7 @@
 # One bounded desktop rehearsal or headset projection test. Preflight is read-only.
 param(
     [ValidateSet('Preflight','Desktop','Headset')][string]$Mode='Preflight',
-    [ValidateSet('VDXR','SteamVR')][string]$XrRuntime='VDXR',
+    [ValidateSet('VDXR','SteamVR','Default')][string]$XrRuntime='VDXR',
     [string]$RunLogDirectory='',
     [ValidateSet(25,50,75,100,125,150,175,200)][int]$HeadsetScale=100,
     [int]$HeadsetWidth=0,[int]$HeadsetHeight=0,[int]$VrRenderScale=0,
@@ -153,7 +153,7 @@ $expected=@{
 }
 # Desktop runs need no installed headset runtime. Preflight validates the selection.
 if($UntilExit -and $Mode -eq 'Headset') { Write-Output 'GRID2VR_LAUNCH|Checking the selected OpenXR runtime...' }
-$runtimeInfo=if($Mode -ne 'Desktop'){Resolve-Grid2VrRuntime $runtime}else{$null}
+$runtimeInfo=if($Mode -ne 'Desktop'){Resolve-Grid2VrRuntime $runtime -DefaultRuntime:($XrRuntime -eq 'Default')}else{$null}
 $suppressTheater=$launchBackend -eq 'Steam' -and $Mode -eq 'Headset' -and $runtimeInfo.theaterSuppression
 if(!(Test-Grid2Package $root)) {
     $cache=Get-Content -LiteralPath (Join-Path $root 'build/win32/CMakeCache.txt') -Raw
@@ -364,7 +364,7 @@ try {
         ReplayEyeOffset=$true;ReplayEyeFrames=$Frames;ReplayAsymmetricFov=$true
         ReplayFullPose=$true;ReplayStereo=$true;CompactStereoTrace=$true;DisableMotionBlur=$true
         RecordedViewsFile=$recordedViewsFile;XrSessionProbe=($Mode -eq 'Headset');XrProjection=($Mode -eq 'Headset')
-        XrRuntimeManifest=$runtime;XrLayerBypass=$XrLayerBypass
+        XrRuntimeManifest=$runtime;XrLayerBypass=$XrLayerBypass;DefaultOpenXrRuntime=($Mode -eq 'Headset' -and $XrRuntime -eq 'Default')
         HeadsetScale=$HeadsetScale
         HeadsetWidth=$HeadsetWidth;HeadsetHeight=$HeadsetHeight;VrRenderScale=$VrRenderScale;VrFieldOfView=$VrFieldOfView;VrFieldOfViewCrop=$VrFieldOfViewCrop
         TraceVisibility=$true;ExpandVisibility=$true;RestoreReplayComputeState=$true

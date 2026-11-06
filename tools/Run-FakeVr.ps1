@@ -5,6 +5,7 @@
 # the original steamvr.vrsettings and run.json with the restore checks.
 param(
     [Parameter(Mandatory)][string]$Evidence,
+    [ValidateSet('SteamVR','Default')][string]$XrRuntime='SteamVR',
     [string]$Car='z28',
     [string]$Track='circuits/brands_hatch/route_2',
     [ValidateSet('benchmark','attract')][string]$PlaybackMode='benchmark',
@@ -40,7 +41,7 @@ $original=Join-Path $Evidence 'steamvr.vrsettings.original'
 Copy-Item -LiteralPath $vrSettings -Destination $original
 $hash=(Get-FileHash -LiteralPath $vrSettings).Hash
 $result=[ordered]@{schema=1;settings=$vrSettings;settingsSha256=$hash;headset="${Width}x$Height";settingsOnly=[bool]$SettingsOnly
-    car=$Car;track=$Track;nativeLeftEye=$NativeLeftEye;headMotion=[bool]$HeadMotion;proxy=$DiagnosticProxy}
+    car=$Car;track=$Track;xrRuntime=$XrRuntime;nativeLeftEye=$NativeLeftEye;headMotion=[bool]$HeadMotion;proxy=$DiagnosticProxy}
 try {
     Set-FakeVrNullDriver $vrSettings $Width $Height
     $applied=Get-Content -LiteralPath $vrSettings -Raw | ConvertFrom-Json -AsHashtable
@@ -52,7 +53,7 @@ try {
         # SteamVR reports the null driver the renderer will accept.
         $result.headsetName=Get-FakeVrHeadsetName (Join-Path (Split-Path $DiagnosticProxy -Parent) 'xr_runtime_probe.exe')
         if($HeadMotion -and !(Test-FakeVrHeadsetName $result.headsetName)) { throw "Head motion needs SteamVR's virtual headset; SteamVR reports: $($result.headsetName)" }
-        $run=@{Mode='Headset';XrRuntime='SteamVR';Car=$Car;Track=$Track;PlaybackMode=$PlaybackMode;NativeLeftEye=$NativeLeftEye
+        $run=@{Mode='Headset';XrRuntime=$XrRuntime;Car=$Car;Track=$Track;PlaybackMode=$PlaybackMode;NativeLeftEye=$NativeLeftEye
             HeadsetScale=$HeadsetScale;AfterPairs=$AfterPairs;CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds
             CaptureSignTransition=[bool]$CaptureSignTransition;HeadMotion=[bool]$HeadMotion;DiagnosticProxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path}
         $output=& (Join-Path $PSScriptRoot 'Run-AutomatedFlicker.ps1') @run *>&1 | Tee-Object -FilePath (Join-Path $Evidence 'run.log')

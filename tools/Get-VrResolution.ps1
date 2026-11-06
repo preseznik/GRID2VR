@@ -1,4 +1,4 @@
-param([ValidateSet('VDXR','SteamVR')][string]$Runtime='VDXR',[ValidateLength(0,16384)][string]$LayerBypassBase64='')
+param([ValidateSet('VDXR','SteamVR','Default')][string]$Runtime='VDXR',[ValidateLength(0,16384)][string]$LayerBypassBase64='')
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'Headset-Resolution.ps1')
 # Exit 0: headset JSON plus the approved layer bypasses that still apply.
@@ -9,7 +9,7 @@ try {
     $applied=@(Select-Grid2VrLayerBypasses (ConvertFrom-Grid2VrLayerTransport $LayerBypassBase64) $catalog)
     $query=Invoke-HeadsetQuery (Split-Path $PSScriptRoot -Parent) $Runtime $applied
     if($query.exitCode -eq 0) {
-        $headset=ConvertFrom-HeadsetQuery $query.output $Runtime
+        $headset=ConvertFrom-HeadsetQuery $query.output $Runtime $query.provider
         $headset.layerBypasses=$applied
         $headset | ConvertTo-Json -Compress -Depth 4
         exit 0

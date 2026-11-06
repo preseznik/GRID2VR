@@ -32,7 +32,7 @@ internal static class SessionRecovery
             var state = session.RootElement;
             if (state.GetProperty("schema").GetInt32() != 1 || state.GetProperty("run").ValueKind != JsonValueKind.Null ||
                 state.GetProperty("mode").GetString() is not ("Desktop" or "Headset") ||
-                state.GetProperty("runtime").GetString() is not ("VDXR" or "SteamVR")) return false;
+                state.GetProperty("runtime").GetString() is not ("VDXR" or "SteamVR" or "Default")) return false;
             var workerId = state.GetProperty("workerId").GetInt32();
             if (workerId <= 0) return false;
             var started = state.GetProperty("workerStartedUtc").GetDateTimeOffset();

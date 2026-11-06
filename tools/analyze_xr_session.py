@@ -13,11 +13,15 @@ def analyze(run):
     operations=rows('xr operation=');samples=rows('sample tracked=');devices=rows('device game=')
     shutdown=rows('session shutdown=');selection=rows('runtime_selection ')
     request=run/'xr-session.request'
-    manifest=request.read_text().strip().replace('\\','/').rsplit('/',1)[-1] if request.exists() else ''
+    manifest=request.read_text().strip().replace('\\','/').rsplit('/',1)[-1].lower() if request.exists() else ''
+    default_request=run/'xr-default-runtime.request'
+    default_runtime=default_request.exists() and default_request.read_text().strip()=='Default'
     runtime=rows('runtime name=')
     runtime_matches=len(runtime)==1 and (
         (manifest=='steamxr_win32.json' and runtime[0].get('name','').startswith('SteamVR/')) or
-        (manifest=='virtualdesktop-openxr-32.json' and runtime[0].get('name')=='VirtualDesktopXR'))
+        (manifest=='virtualdesktop-openxr-32.json' and runtime[0].get('name')=='VirtualDesktopXR') or
+        (default_runtime and manifest.endswith('.json') and manifest not in ('steamxr_win32.json','virtualdesktop-openxr-32.json') and bool(runtime[0].get('name'))))
+    if default_request.exists() and not default_runtime:runtime_matches=False
     trace=(run/'trace.log').read_text().splitlines() if (run/'trace.log').exists() else []
     attached={fields(line).get('device') for line in trace if 'device=' in line and 'feature_level=' in line}
     def operations_ok(name):return [r for r in operations if r.get('operation')==name]

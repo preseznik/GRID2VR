@@ -217,6 +217,25 @@ class RuntimeEvidenceTests(unittest.TestCase):
                 (run/'practice-flow-original.bin').write_bytes(b'x'*(2*1024*1024+1))
                 self.assertFalse(analyze(run)['storageBounded'])
 
+    def test_practice_menu_recovery_requires_the_matching_pinned_binary(self):
+        with tempfile.TemporaryDirectory() as name:
+            run = Path(name)
+            original, menus = b'original menu fixture', b'menu fixture'
+            before, after = [hashlib.sha256(value).hexdigest() for value in (original, menus)]
+            (run/'practice-flow-original.bin').write_bytes(original)
+            (run/'practice-flow.bin').write_bytes(menus)
+            entry = dict(name='system/flow.bin', originalSha256=before, sha256=after)
+            restored = run/'deployment-restored.json'
+            restored.write_text(json.dumps(dict(practiceFlow=entry)))
+            with patch.object(practice_entry, 'FLOW_SHA256', before), patch.object(practice_entry, 'PRACTICE_MENUS_SHA256', after):
+                self.assertTrue(analyze(run)['storageBounded'])
+                # A different supported bank in the journal cannot bless this one.
+                entry['sha256'] = practice_entry.PRACTICE_SHA256
+                restored.write_text(json.dumps(dict(practiceFlow=entry)))
+                self.assertFalse(analyze(run)['storageBounded'])
+                restored.unlink()
+                self.assertFalse(analyze(run)['storageBounded'])
+
     def test_manual_non_rendering_exit_is_not_a_runtime_stop(self):
         session = dict(result='process_exited', terminatedOwnedProcessIds=[], runtimeSession=True,
                        playerControlOnly=True, playerControlProbe='Off', engineTrace=False,

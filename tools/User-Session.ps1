@@ -150,7 +150,7 @@ function Get-UserSession([string]$Root) {
     if(!(Test-Path -LiteralPath $path)) { return $null }
     $session=Read-SessionJson $path
     if($session.schema -ne 1 -or ($session.workerId -isnot [long] -and $session.workerId -isnot [int]) -or
-        $session.workerId -le 0 -or $session.mode -notin @('Headset','Desktop') -or $session.runtime -notin @('VDXR','SteamVR')) { throw 'Invalid user session journal.' }
+        $session.workerId -le 0 -or $session.mode -notin @('Headset','Desktop') -or $session.runtime -notin @('VDXR','SteamVR','Default')) { throw 'Invalid user session journal.' }
     $session.backup=Get-SessionBackup $Root $session.backup
     if($session.run) {
         $session.run=Get-SessionRun $Root $session.run

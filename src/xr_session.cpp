@@ -44,6 +44,15 @@ bool SaveVariable(const std::wstring& name,SavedVariable& saved) {
 bool RestoreVariable(const SavedVariable& saved) {
     return SetEnvironmentVariableW(saved.name.c_str(),saved.value.empty()?nullptr:saved.value.data())!=FALSE;
 }
+bool ReadDefaultRuntime(const std::filesystem::path& path,bool& selected) {
+    selected=false;std::error_code error;
+    if (!std::filesystem::exists(path,error)) return !error;
+    const auto size=std::filesystem::file_size(path,error);
+    if (error || !size || size>16) return false;
+    std::ifstream request(path);std::string mode,extra;
+    selected=(request>>mode) && mode=="Default" && !(request>>extra);
+    return selected;
+}
 bool LevelScreenAnchor(const XrPosef& head,XrPosef& anchor) {
     std::array<double,4> q{};
     if (!TrackingPosition(head.position) || !TrackingOrientation(head.orientation,q)) return false;
@@ -86,9 +95,11 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
     diagnosticLogging_=!std::filesystem::exists(output/L"runtime-session.request") || std::filesystem::exists(output/L"diagnostic-logging.request");
     thread_=GetCurrentThreadId();log_.open(output/L"openxr-session.log",
         std::filesystem::exists(output/L"runtime-session.request")?sessionLogSegmentBytes:0);
-    const bool vdxr=runtime.filename()==L"virtualdesktop-openxr-32.json";
-    const bool steamVr=runtime.filename()==L"steamxr_win32.json";
-    if (!log_ || !runtime.is_absolute() || (!vdxr && !steamVr) || !std::filesystem::is_regular_file(runtime)) {
+    const bool vdxr=!_wcsicmp(runtime.filename().c_str(),L"virtualdesktop-openxr-32.json");
+    const bool steamVr=!_wcsicmp(runtime.filename().c_str(),L"steamxr_win32.json");
+    bool defaultRuntime{};
+    if (!ReadDefaultRuntime(output/L"xr-default-runtime.request",defaultRuntime) || !log_ || !runtime.is_absolute() ||
+        (!vdxr && !steamVr && !defaultRuntime) || _wcsicmp(runtime.extension().c_str(),L".json") || !std::filesystem::is_regular_file(runtime)) {
         failed_=true;Log("session refused reason=runtime_manifest");return false;
     }
     std::vector<std::wstring> layerSwitches;
@@ -120,14 +131,14 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
     Log("runtime_selection process_only=1 environment_restored=%u",environmentRestored);
     if (!Check(created,"create_instance") || !environmentRestored) {failed_=true;Shutdown();return false;}
     XrInstanceProperties properties{XR_TYPE_INSTANCE_PROPERTIES};
-    if (!Check(xrGetInstanceProperties(instance_,&properties),"runtime_properties") ||
-        (vdxr ? strcmp(properties.runtimeName,"VirtualDesktopXR")!=0 : strncmp(properties.runtimeName,"SteamVR/",8)!=0)) {
+    if (!Check(xrGetInstanceProperties(instance_,&properties),"runtime_properties") || !properties.runtimeName[0] ||
+        (vdxr && strcmp(properties.runtimeName,"VirtualDesktopXR")!=0) || (steamVr && strncmp(properties.runtimeName,"SteamVR/",8)!=0)) {
         failed_=true;Log("session refused reason=runtime_identity");Shutdown();return false;
     }
     Log("runtime name=%s version=%llu",properties.runtimeName,properties.runtimeVersion);
     // The bounded trace may rotate during driving; retain the selected provider.
     std::ofstream identity(output/L"openxr-runtime.json");
-    identity << "{\"schema\":1,\"selected\":\"" << (vdxr?"VDXR":"SteamVR")
+    identity << "{\"schema\":1,\"selected\":\"" << (defaultRuntime?"Default":vdxr?"VDXR":"SteamVR")
         << "\",\"name\":" << std::quoted(properties.runtimeName)
         << ",\"version\":" << properties.runtimeVersion
         << ",\"manifest\":" << std::quoted(runtime.filename().string())

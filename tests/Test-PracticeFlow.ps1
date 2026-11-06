@@ -4,6 +4,7 @@ $root=Split-Path $PSScriptRoot -Parent
 $fixture=Join-Path $root ('artifacts\practice-recovery-test-'+[guid]::NewGuid().ToString('N'))
 $original=[Text.Encoding]::UTF8.GetBytes('original flow fixture')
 $modified=[Text.Encoding]::UTF8.GetBytes('practice flow fixture')
+$menus=[Text.Encoding]::UTF8.GetBytes('practice menus fixture')
 $states=[Text.Encoding]::UTF8.GetBytes('states fixture')
 function Hash-Bytes([byte[]]$Bytes) {
     $sha=[Security.Cryptography.SHA256]::Create()
@@ -13,14 +14,15 @@ function Hash-Bytes([byte[]]$Bytes) {
 # this isolated test rather than distributing a proprietary game asset fixture.
 $script:PracticeOriginalHash=Hash-Bytes $original
 $script:PracticeModifiedHash=Hash-Bytes $modified
+$script:PracticeMenusHash=Hash-Bytes $menus
 $script:PracticeStatesHash=Hash-Bytes $states
-function New-Case([string]$Name) {
+function New-Case([string]$Name,[switch]$Menus) {
     $game=Join-Path $fixture "$Name\game"
     $run=Join-Path $fixture "$Name\run"
     New-Item -ItemType Directory -Path (Join-Path $game 'system'),$run | Out-Null
     [IO.File]::WriteAllBytes((Join-Path $game 'system\flow.bin'),$original)
     [IO.File]::WriteAllBytes((Join-Path $game 'system\states.bin'),$states)
-    [IO.File]::WriteAllBytes((Join-Path $run 'practice-flow.bin'),$modified)
+    [IO.File]::WriteAllBytes((Join-Path $run 'practice-flow.bin'),$(if($Menus){$script:menus}else{$modified}))
     return @{game=$game;run=$run;paths=(Get-PracticeFlowPaths $game $run)}
 }
 function Assert-Rejected([scriptblock]$Action,[string]$Label) {
@@ -32,20 +34,22 @@ function Assert-Rejected([scriptblock]$Action,[string]$Label) {
     if(Compare-Object $before $after) { throw "$Label mutated a fixture before rejection" }
 }
 try {
+    foreach($variant in @('entry','menus')) {
     foreach($phase in @('before-install','after-install','install-temp','restore-temp')) {
-        $case=New-Case $phase
+        $case=New-Case ($variant+'-'+$phase) -Menus:($variant -eq 'menus')
         $entry=New-PracticeFlowDeployment $case.game $case.run
         if($phase -in @('after-install','restore-temp')) {
             Install-PracticeFlow $case.game $case.run $entry
-            Assert-PracticeHash $case.paths.target $script:PracticeModifiedHash
+            Assert-PracticeHash $case.paths.target $entry.sha256
         }
-        if($phase -eq 'install-temp') { [IO.File]::WriteAllBytes($case.paths.temporary,$modified) }
+        if($phase -eq 'install-temp') { [IO.File]::WriteAllBytes($case.paths.temporary,$(if($variant -eq 'menus'){$menus}else{$modified})) }
         if($phase -eq 'restore-temp') { [IO.File]::WriteAllBytes($case.paths.temporary,$original) }
         Restore-PracticeFlow $case.game $case.run $entry
         Restore-PracticeFlow $case.game $case.run $entry
         Assert-PracticeHash $case.paths.target $script:PracticeOriginalHash
         Assert-PracticeHash $case.paths.backup $script:PracticeOriginalHash
         if(Test-Path -LiteralPath $case.paths.temporary) { throw "Temporary file retained in $phase" }
+    }
     }
     foreach($changed in @('target','backup','temporary')) {
         $case=New-Case ('foreign-'+$changed)
