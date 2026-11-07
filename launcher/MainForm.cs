@@ -246,6 +246,8 @@ internal sealed partial class MainForm : LauncherForm
         Section(settings, "Paths and runtime");
         Field(settings, "Game folder", new TextBox { Text = AppPaths.Game(client.Root), ReadOnly = true, Dock = DockStyle.Fill });
         runtime.Items.AddRange(["VDXR", "SteamVR", "Default"]); runtime.SelectedIndex = 0;
+        runtime.FormattingEnabled = true;
+        runtime.Format += (_, e) => { if (e.ListItem is "Default") e.Value = "OpenXR (system Default)"; };
         Field(settings, "OpenXR runtime", runtime);
         settings.Controls.Add(TextLabel("VDXR: connect through Virtual Desktop and keep SteamVR closed. SteamVR: connect through SteamVR. Default: use this PC's configured 32-bit OpenXR runtime. The system default is unchanged."));
         settings.Controls.Add(TextLabel("Uses your installed GRID 2. Settings and careers are kept when updating."));
