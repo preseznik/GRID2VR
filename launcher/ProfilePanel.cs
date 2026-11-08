@@ -33,7 +33,9 @@ internal sealed class ProfilePanel : VerticalStack
             Controls.Add(Label("Graphics settings and launcher controls are shared. Each new profile has separate career saves. Your current Steam career stays available."));
             Controls.Add(Label("Fresh careers need initial setup in Normal mode. Managed careers stay on this PC; they do not sync to Steam Cloud."));
         }
-        else Controls.Add(Label(ProfileStore.StandaloneCareerMessage));
+        else Controls.Add(Label(store.HasCompletedCareer()
+            ? "Create a completed career here and choose it in GRID 2 under Load Saved Data."
+            : ProfileStore.StandaloneCareerMessage));
         Controls.Add(message);
         list.SelectedIndexChanged += (_, _) => Details();
         list.DrawItem += DrawProfile;
@@ -60,7 +62,7 @@ internal sealed class ProfilePanel : VerticalStack
     internal void SetIdle(bool value) { idle = value; Actions(); }
     void Actions()
     {
-        var row = Current(); create.Enabled = idle && store.ManagedProfilesSupported;
+        var row = Current(); create.Enabled = idle && (store.ManagedProfilesSupported || store.HasCompletedCareer());
         use.Enabled = idle && row != null && (row.Entry.Info != null || row.Entry.Id == ProfileStore.CurrentCareer) && !row.Active;
         delete.Enabled = idle && store.ManagedProfilesSupported && row?.Entry.Info != null && !row.Active && row.Entry.Id != ProfileStore.CurrentCareer;
     }
@@ -133,19 +135,39 @@ internal sealed class CreateProfileForm : LauncherForm
         var input = new TextBox { Name = "ProfileName", AccessibleName = "Profile name", MaxLength = 24 };
         var fresh = new RadioButton { Text = "Fresh career", AutoSize = true, Checked = true };
         var copy = new RadioButton { Text = "Copy current game career", AutoSize = true };
+        RadioButton? completed = null;
         var hint = new Label { AutoSize = true, Text = "1–24 letters (A–Z) or numbers (0–9). No spaces or symbols.", Margin = new Padding(0, 8, 0, 10) };
         var explanation = new Label { AutoSize = true, Text = "Creates a separate career and selects it. Start Normal mode to initialize a fresh career. Your existing saves are not changed.", Margin = new Padding(0, 12, 0, 12) };
         var error = new Label { AutoSize = true, UseMnemonic = false };
         var submit = new Button { Text = "Create", AutoSize = true, Enabled = false };
         var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel { AutoSize = true }; buttons.Controls.AddRange([submit, cancel]);
-        body.Controls.AddRange([new Label { Text = "Profile name", AutoSize = true }, input, hint, fresh, copy, explanation, buttons, error]);
+        body.Controls.AddRange([new Label { Text = "Profile name", AutoSize = true }, input, hint]);
+        if (store.ManagedProfilesSupported) body.Controls.AddRange([fresh, copy]);
+        if (store.HasCompletedCareer())
+        {
+            completed = new RadioButton { Name = "CompletedCareer", Text = "100% career", AutoSize = true };
+            body.Controls.Add(completed);
+            var defaultText = explanation.Text;
+            var completedText = store.ManagedProfilesSupported
+                ? "Uses your normal GRID 2 save to create a separate, named career with all five seasons completed."
+                : "Adds a separate career with all five seasons completed. Choose its name under Load Saved Data in GRID 2.";
+            completed.CheckedChanged += (_, _) => explanation.Text = completed.Checked ? completedText : defaultText;
+            if (!store.ManagedProfilesSupported) { completed.Checked = true; explanation.Text = completedText; }
+        }
+        body.Controls.AddRange([explanation, buttons, error]);
         Controls.Add(body); AutoScroll = true; AcceptButton = submit; CancelButton = cancel;
         input.TextChanged += (_, _) => submit.Enabled = ProfileStore.IsValidNewName(input.Text);
         submit.Click += (_, _) =>
         {
-            try { store.Create(input.Text, copy.Checked); DialogResult = DialogResult.OK; Close(); }
-            catch (Exception problem) when (problem is IOException or ArgumentException or UnauthorizedAccessException or JsonException)
+            try
+            {
+                var start = completed?.Checked == true ? CareerStart.Completed : copy.Checked ? CareerStart.CopyCurrent : CareerStart.Fresh;
+                store.Create(input.Text, start);
+                DialogResult = DialogResult.OK;
+                Close();
+            }
+            catch (Exception problem) when (problem is IOException or InvalidDataException or ArgumentException or UnauthorizedAccessException or JsonException)
             { error.Text = problem.Message; }
         };
     }

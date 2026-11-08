@@ -3,6 +3,8 @@ $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 if(!$OutputDirectory) { $OutputDirectory=Join-Path $root 'build/launcher' }
 $OutputDirectory=[IO.Path]::GetFullPath($OutputDirectory)
+& python -B (Join-Path $root 'tools/stage_career_runtime.py') (Join-Path $root 'build/career-runtime')
+if($LASTEXITCODE) { throw 'Completed-career runtime staging failed.' }
 $cmake=(Get-Command cmake -ErrorAction Stop).Source
 $inputBuild=Join-Path $root 'build/driving-input-vs-x64'
 & $cmake -S (Join-Path $root 'tools/driving-input') -B $inputBuild -G 'Visual Studio 17 2022' -A x64

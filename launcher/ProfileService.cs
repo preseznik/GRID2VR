@@ -9,8 +9,13 @@ internal static class ProfileService
     {
         // Cache the UI capability for this launcher instance. The session worker
         // independently revalidates the executable pair before managed save access.
-        var managed = GameExecutable.ValidateInstallation(AppPaths.Game(workspace)) == "Steam";
-        return new(workspace, () => RequireClosed(workspace), CurrentSaveRoot, AccountId, managed);
+        var game = AppPaths.Game(workspace);
+        var steam = GameExecutable.ValidateInstallation(game) == "Steam";
+        var writer = CompletedCareerWriter.ForInstallation(workspace);
+        if (!steam)
+            return new(workspace, () => RequireClosed(workspace), () => StandaloneCareer.SaveRoot(game),
+                managedProfilesSupported: false, personalizeCompleted: writer, publishGameSlot: StandaloneCareer.Publish);
+        return new(workspace, () => RequireClosed(workspace), CurrentSaveRoot, AccountId, personalizeCompleted: writer);
     }
 
     internal static string? AccountId()

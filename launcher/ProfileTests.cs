@@ -183,7 +183,79 @@ internal static class ProfileTests
         Check(store.List().Count == 1 && File.ReadAllBytes(sourceSave).SequenceEqual(original));
         Check(closedChecks > 20);
         TestAccountOwnership(fixture, source);
+        TestCompletedCareer(fixture);
         TestStandalone(fixture, source);
+        TestStandaloneCompletedCareer(fixture);
+    }
+
+    static void TestCompletedCareer(string fixture)
+    {
+        var workspace = Path.Combine(fixture, "completed-career");
+        var source = Path.Combine(workspace, "steam");
+        var account = "123";
+        string[] keys = ["savegame@profile0#nxdtvpki.lkr", "savegame@profile0#qkigmyyi.lkr", "savegame@profile0#qkrhmyxe"];
+        ProfileStore Open() => new(workspace, () => { }, () => Directory.Exists(source) ? source : null,
+            () => account, personalizeCompleted: (stage, name) =>
+            {
+                File.AppendAllText(Path.Combine(stage, keys[0]), name);
+                if (name == "FailedWrite") throw new IOException("Test failure during personalization.");
+                if (name == "SwitchedAccount") account = "456";
+            });
+        var store = Open();
+        Check(store.HasCompletedCareer());
+        Reject(() => store.Create("Missing", CareerStart.Completed));
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, keys[0]), keys[0]);
+        Reject(() => store.Create("Incomplete", CareerStart.Completed));
+        foreach (var key in keys) File.WriteAllText(Path.Combine(source, key), key);
+        File.WriteAllText(Path.Combine(source, "savegame@autosave#other"), "autosave");
+        var withoutWriter = new ProfileStore(workspace, () => { }, () => source, () => account);
+        Check(!withoutWriter.HasCompletedCareer());
+        Reject(() => withoutWriter.Create("MissingWriter", CareerStart.Completed));
+        var created = store.Create("Completed", CareerStart.Completed);
+        Check(created.AccountId == account && created.FileCount == 3 && Open().SelectedId() == created.Id);
+        var target = Path.Combine(store.Root, created.Id, "remote", keys[0]);
+        Check(File.ReadAllText(target) == keys[0] + "Completed");
+        Check(File.ReadAllText(Path.Combine(source, keys[0])) == keys[0]);
+        Reject(() => store.Create("FailedWrite", CareerStart.Completed));
+        Reject(() => store.Create("SwitchedAccount", CareerStart.Completed));
+        account = "123";
+        Check(store.SelectedId() == created.Id && Directory.GetDirectories(store.Root).Length == 1);
+    }
+
+    static void TestStandaloneCompletedCareer(string fixture)
+    {
+        var game = Path.Combine(fixture, "local-career");
+        var saves = Path.Combine(game, "Profile", "Player", "Saves");
+        Directory.CreateDirectory(saves);
+        var config = Path.Combine(game, "SteamConfig.ini");
+        File.WriteAllText(config, "[Settings]\nPlayerName=../Player\nSaveType=0");
+        Check(StandaloneCareer.SaveRoot(game) == null);
+        File.WriteAllText(config, "[Settings]\nPlayerName=Player\nSaveType=1");
+        Check(StandaloneCareer.SaveRoot(game) == null);
+        File.WriteAllText(config, "[Settings]\nPlayerName = Player\nSaveType = 0\n[Option]\nPlayerName=Other");
+        Check(StandaloneCareer.SaveRoot(game) == saves);
+        foreach (var member in ProfileStore.NormalSaveMembers)
+            File.WriteAllText(Path.Combine(saves, "savegame@profile0#" + member.ToUpperInvariant()), member);
+        var incomplete = Path.Combine(saves, "savegame@profile1#other");
+        File.WriteAllText(incomplete, "existing");
+        var store = new ProfileStore(game, () => { }, () => StandaloneCareer.SaveRoot(game),
+            managedProfilesSupported: false, personalizeCompleted: (dir, name) => {
+                foreach (var member in ProfileStore.NormalSaveMembers)
+                    File.WriteAllText(Path.Combine(dir, "savegame@profile0#" + member), name);
+            }, publishGameSlot: StandaloneCareer.Publish);
+        using var panel = new ProfilePanel(store);
+        panel.Reload(); panel.SetIdle(true);
+        Check(panel.Controls.Find("CreateProfile", true).Single().Enabled);
+        Reject(() => store.Create("Fresh"));
+        store.Create("Finished", CareerStart.Completed);
+        Check(store.SelectedId() == ProfileStore.CurrentCareer && !Directory.EnumerateDirectories(store.Root).Any());
+        foreach (var member in ProfileStore.NormalSaveMembers)
+        {
+            Check(File.ReadAllText(Path.Combine(saves, "savegame@profile0#" + member)) == member);
+            Check(File.ReadAllText(Path.Combine(saves, "savegame@profile2#" + member)) == "Finished");
+        }
+        Check(File.ReadAllText(incomplete) == "existing");
     }
 
     static void TestStandalone(string fixture, string source)

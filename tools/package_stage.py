@@ -2,6 +2,7 @@
 import argparse, ast, hashlib, json, shutil, subprocess, sys, zipfile
 from pathlib import Path
 import release_assets
+import stage_career_runtime
 
 ROOT=Path(__file__).resolve().parent.parent
 DATA_FILES=['cockpit-assets.json','cockpit-cars.json','cockpit-defaults.json','car-classes.json','dlc-content.json']
@@ -21,6 +22,11 @@ def copy(source,target):
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
 def tree(source,target,ignore=()):
     shutil.copytree(source,target,ignore=shutil.ignore_patterns(*ignore))
+
+def stage_completed_career(mod):
+    for name in ('create_completed.py', 'stock_save.py', 'career_model.py', 'catalog.json'):
+        copy(ROOT/'tools/career_profile'/name, mod/'tools/career_profile'/name)
+    stage_career_runtime.stage(mod/'payload/career-runtime', mod/'licenses/unicorn')
 
 def stage_powershell(source, target, runtime):
     """Keep PowerShell's application dependencies; share the two .NET frameworks."""
@@ -97,6 +103,7 @@ def stage(a):
     (mod/'ReleaseNotes.txt').write_text(notes,encoding='utf-8-sig')
     (out/'ReleaseNotes.md').write_text(notes.split('\n',1)[1].lstrip(),encoding='utf-8')
     tree(ROOT/'licenses',mod/'licenses')
+    stage_completed_career(mod)
     runtime='10.0.14'
     stage_powershell(Path('C:/Program Files/PowerShell/7'),payload/'powershell',runtime)
     py=a.python.parent

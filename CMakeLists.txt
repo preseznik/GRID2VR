@@ -321,6 +321,7 @@ add_test(NAME launcher_launch_modes COMMAND pwsh -NoProfile -File "${CMAKE_SOURC
 add_test(NAME launcher_launch_backends COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-LaunchBackend.ps1")
 add_test(NAME launcher_desktop_borderless COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-DesktopBorderless.ps1")
 add_test(NAME career_profile_routing COMMAND pwsh -NoProfile -File "${CMAKE_SOURCE_DIR}/tests/Test-Profiles.ps1")
+add_test(NAME completed_career_model COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_SOURCE_DIR}/tests/test_completed_career.py")
 add_executable(profile_storage_test tests/profile_storage_test.cpp src/profile_storage.cpp)
 target_include_directories(profile_storage_test PRIVATE src)
 target_compile_definitions(profile_storage_test PRIVATE GRID2VR_PROFILE_STORAGE_TEST WIN32_LEAN_AND_MEAN NOMINMAX)

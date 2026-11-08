@@ -20,11 +20,13 @@ internal sealed record ProfileInfo(
 }
 
 internal sealed record ProfileEntry(string Id, ProfileInfo? Info, string? Error);
+internal enum CareerStart { Fresh, CopyCurrent, Completed }
 
 // Separate careers live in the workspace. The game worker routes Steam save calls
 // here; this store never replaces or rewrites the user's normal Steam career.
 internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, Func<string?> currentSaveRoot, Func<string?>? currentAccountId = null,
-    bool managedProfilesSupported = true)
+    bool managedProfilesSupported = true, Action<string, string>? personalizeCompleted = null,
+    Action<string, string>? publishGameSlot = null)
 {
     internal const string CurrentCareer = "current";
     internal const string StandaloneCareerMessage = "Standalone installations use Current game career. The game manages its existing saves; separate launcher profiles are unavailable.";
@@ -272,9 +274,34 @@ internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, F
         AtomicJson(selection, new Selection(1, id));
     }
 
-    public ProfileInfo Create(string name, bool copyCurrent = false)
+    public bool HasCompletedCareer() => personalizeCompleted != null && (ManagedProfilesSupported || publishGameSlot != null);
+
+    internal static readonly string[] NormalSaveMembers = ["nxdtvpki.lkr", "qkigmyyi.lkr", "qkrhmyxe"];
+
+    static IReadOnlyList<SaveFile> ScanNormalProfile(string source)
     {
-        RequireManagedProfiles();
+        var files = new List<SaveFile>(NormalSaveMembers.Length);
+        foreach (var member in NormalSaveMembers)
+        {
+            var path = Path.Combine(source, "savegame@profile0#" + member);
+            NoLinks(path);
+            var file = new FileInfo(path);
+            if (!file.Exists) throw new IOException("Create and save a normal GRID 2 career first.");
+            if (file.Length is <= 0 or > 262144) throw new InvalidDataException("Unexpected normal GRID 2 save size.");
+            files.Add(new SaveFile(path, file.Name, file.Length, file.LastWriteTimeUtc));
+        }
+        return files;
+    }
+
+    public ProfileInfo Create(string name, bool copyCurrent = false) =>
+        Create(name, copyCurrent ? CareerStart.CopyCurrent : CareerStart.Fresh);
+
+    public ProfileInfo Create(string name, CareerStart start)
+    {
+        var gameSlot = !ManagedProfilesSupported && start == CareerStart.Completed && publishGameSlot != null;
+        if (!gameSlot) RequireManagedProfiles();
+        if (start == CareerStart.Completed && !HasCompletedCareer())
+            throw new IOException("The completed-career writer is unavailable in this installation.");
         using var guard = new EditGuard(requireClosed);
         if (!IsValidNewName(name)) throw new ArgumentException("Use 1–24 letters (A–Z) or numbers (0–9), without spaces or symbols.");
         SelectedId(); // Never replace a broken selection without an explicit switch.
@@ -290,11 +317,18 @@ internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, F
             var existing = ReadInfo(existingId);
             if (existing.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("A profile with that name already exists.");
         }
-        var source = copyCurrent ? currentSaveRoot() ?? throw new IOException("No local GRID 2 Steam career was found to copy.") : null;
-        var files = source == null ? [] : ScanRemote(source);
-        if (copyCurrent && files.Count == 0) throw new IOException("The current game career has no save files to copy.");
+        var source = start switch {
+            CareerStart.Fresh => null,
+            CareerStart.CopyCurrent => currentSaveRoot() ?? throw new IOException("No local GRID 2 Steam career was found to copy."),
+            CareerStart.Completed => currentSaveRoot() ?? throw new IOException("Create and save a normal GRID 2 career first."),
+            _ => throw new ArgumentOutOfRangeException(nameof(start))
+        };
+        if (start == CareerStart.Completed && !gameSlot && accountId == null)
+            throw new IOException("Sign in to Steam to create a completed career.");
+        var files = source == null ? [] : start == CareerStart.Completed ? ScanNormalProfile(source) : ScanRemote(source);
+        if (start == CareerStart.CopyCurrent && files.Count == 0) throw new IOException("The current game career has no save files to copy.");
         var id = Guid.NewGuid().ToString("N");
-        var info = new ProfileInfo(1, id, name, copyCurrent ? "copied" : "fresh", DateTime.UtcNow) { AccountId = accountId };
+        var info = new ProfileInfo(1, id, name, source == null ? "fresh" : "copied", DateTime.UtcNow) { AccountId = accountId };
         var staging = Path.Combine(Root, ".creating-" + id);
         var destination = ProfileRoot(id);
         var owned = new List<string>();
@@ -319,11 +353,18 @@ internal sealed class ProfileStore(string workspaceRoot, Action requireClosed, F
                 }
                 File.SetLastWriteTimeUtc(target, file.LastWriteUtc);
             }
-            var metadata = Path.Combine(staging, "profile.json");
-            owned.Add(metadata); NewJson(metadata, info);
+            if (start == CareerStart.Completed)
+                personalizeCompleted!(Path.Combine(staging, "remote"), name);
             if (AccountId() != accountId || (source != null &&
                 !string.Equals(currentSaveRoot(), source, StringComparison.OrdinalIgnoreCase)))
-                throw new IOException("The active Steam account changed while the profile was being created. Try again after signing in.");
+                throw new IOException("The active player changed while the profile was being created. Try again.");
+            if (gameSlot)
+            {
+                publishGameSlot!(Path.Combine(staging, "remote"), source!);
+                return info;
+            }
+            var metadata = Path.Combine(staging, "profile.json");
+            owned.Add(metadata); NewJson(metadata, info);
             Directory.Move(staging, destination);
             owned = owned.Select(path => Path.Combine(destination, Path.GetRelativePath(staging, path))).ToList();
             staging = destination;
