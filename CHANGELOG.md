@@ -1,3 +1,9 @@
+# GRID2VR 0.2.20 — Unreleased
+
+- **Seat position in Desktop.** Use the saved per-car cockpit position in Desktop, with an independent cockpit field-of-view adjustment.
+
+- **In-game seat adjustment.** Press Tab in an offline cockpit to move the seat, save or cancel without relaunching. The panel uses GRID2VR red accents and supports Normal-menu races as well as direct launches. Desktop can adjust FOV too; VR keeps the headset FOV.
+
 # GRID2VR 0.2.19 — Experimental
 
 - **Trackside sponsor board flicker.** **Banner flicker fix (experimental)** reduces distance flicker on stock sponsor boards while keeping cockpit clipping unchanged. On by default; it can be switched off under **Advanced → VR presentation** for the next VR launch.

@@ -53,17 +53,23 @@ function Read-SeatAlignments([string]$Root) {
 }
 
 function Invoke-CockpitAlignment([string]$Root,$Entry,[string]$BaseHash,[string]$Output='') {
-    Assert-SeatOffset $Entry.alignment
+    $offset=@{Height=0;Forward=0;Right=0}
+    if($Entry.alignment) { Assert-SeatOffset $Entry.alignment; $offset=$Entry.alignment }
+    $fov=0
+    if($null -ne $Entry.fovOffset) {
+        if(($Entry.fovOffset -isnot [int] -and $Entry.fovOffset -isnot [long]) -or $Entry.fovOffset -lt -30 -or $Entry.fovOffset -gt 30) { throw 'Desktop FOV must be whole degrees within -30..30.' }
+        $fov=$Entry.fovOffset
+    }
     $python=Get-Grid2Python $Root
     $args=@((Join-Path $Root 'tools/cockpit_alignment.py'),'--source',(Get-CockpitAssetSource $Root $Entry),'--sha256',$BaseHash,
-        '--car',$Entry.car,'--height',[string]$Entry.alignment.Height,'--forward',[string]$Entry.alignment.Forward,'--right',[string]$Entry.alignment.Right)
+        '--car',$Entry.car,'--height',[string]$offset.Height,'--forward',[string]$offset.Forward,'--right',[string]$offset.Right,'--fov-offset',[string]$fov)
     if($Output) { $args+=@('--output',$Output) }
     $result=& $python @args
     if($LASTEXITCODE) { throw 'Cockpit alignment validation failed.' }
     return ($result | ConvertFrom-Json).sha256
 }
 
-function Get-CockpitAssetSelection([string]$Root,[string]$Game,[ValidateSet('HeadOnly','HideDriver')][string]$Mode,[string]$Car,[bool]$NormalLaunch,[bool]$StartInCockpit=$false,[bool]$DlcCar=$false) {
+function Get-CockpitAssetSelection([string]$Root,[string]$Game,[ValidateSet('HeadOnly','HideDriver')][string]$Mode,[string]$Car,[bool]$NormalLaunch,[bool]$StartInCockpit=$false,[bool]$DlcCar=$false,[bool]$ApplySeatPosition=$true,[ValidateRange(-30,30)][int]$FovOffset=0,[bool]$IncludeIntro=$true) {
     $null=Get-Grid2ExecutableHash (Join-Path $Game 'grid2_avx.exe')
     $catalog=Read-CockpitAssetCatalog $Root
     $alignments=Read-SeatAlignments $Root
@@ -77,16 +83,17 @@ function Get-CockpitAssetSelection([string]$Root,[string]$Game,[ValidateSet('Hea
         Assert-CockpitCameraHash $asset $item.$Mode
         if((Get-Item -LiteralPath $asset).Length -gt 512KB) { throw 'Cockpit asset exceeds its bound.' }
         $entry=@{car=$item.car;name=$name;mode=$Mode;originalSha256=$item.originalSha256;sha256=$item.$Mode}
-        if($alignments.Contains($item.car)) {
+        if($ApplySeatPosition -and $alignments.Contains($item.car)) {
             $offset=$alignments[$item.car]
             if($offset.Height -or $offset.Forward -or $offset.Right) {
                 $entry.alignment=$offset
-                $entry.sha256=Invoke-CockpitAlignment $Root $entry $item.$Mode
             }
         }
+        if($FovOffset) { $entry.fovOffset=$FovOffset }
+        if($entry.alignment -or $null -ne $entry.fovOffset) { $entry.sha256=Invoke-CockpitAlignment $Root $entry $item.$Mode }
         $result+=$entry
     }
-    if($NormalLaunch) {
+    if($NormalLaunch -and $IncludeIntro) {
         $intro=$catalog.intro
         Assert-CockpitCameraHash (Join-Path $Game $intro.name) $intro.originalSha256
         $entry=@{car='intro';name=$intro.name;mode='Intro';originalSha256=$intro.originalSha256;sha256=$intro.sha256}
@@ -126,7 +133,7 @@ function Assert-CockpitAssetEntries($Entries) {
         if($car.Count -ne 1 -or $entry.originalSha256 -ne $car[0].originalSha256) { throw 'Unrecognized cockpit recovery hashes.' }
         $expected=$car[0].($entry.mode)
         # Recompute from the pinned base and the journal snapshot, never today's settings.
-        if($entry.alignment) { $expected=Invoke-CockpitAlignment $script:CockpitAssetsRoot $entry $expected }
+        if($entry.alignment -or $null -ne $entry.fovOffset) { $expected=Invoke-CockpitAlignment $script:CockpitAssetsRoot $entry $expected }
         if($entry.sha256 -ne $expected) { throw 'Unrecognized aligned cockpit hash.' }
         $seen[$entry.car]=$true
     }
@@ -154,14 +161,14 @@ function New-CockpitAssetsDeployment([string]$Game,[string]$Run,[string]$Root,$E
     foreach($entry in $Entries) {
         $paths=Get-CockpitAssetPaths $Game $Run $entry
         Assert-CockpitCameraHash $paths.target $entry.originalSha256
-        if(!$entry.alignment) { Assert-CockpitCameraHash (Get-CockpitAssetSource $Root $entry) $entry.sha256 }
+        if(!$entry.alignment -and $null -eq $entry.fovOffset) { Assert-CockpitCameraHash (Get-CockpitAssetSource $Root $entry) $entry.sha256 }
         foreach($path in @($paths.source,$paths.backup,$paths.temporary)) { if(Test-Path -LiteralPath $path) { throw 'Existing cockpit recovery data retained.' } }
     }
     [IO.Directory]::CreateDirectory((Join-Path $Run 'cockpit-assets')) | Out-Null
     foreach($entry in $Entries) {
         $paths=Get-CockpitAssetPaths $Game $Run $entry
         [IO.File]::Copy($paths.target,$paths.backup,$false)
-        if($entry.alignment) {
+        if($entry.alignment -or $null -ne $entry.fovOffset) {
             $catalog=Read-CockpitAssetCatalog $Root
             $base=@($catalog.cars | Where-Object car -CEQ $entry.car)[0].($entry.mode)
             $null=Invoke-CockpitAlignment $Root $entry $base $paths.source

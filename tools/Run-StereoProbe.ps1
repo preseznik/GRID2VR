@@ -29,6 +29,8 @@ param(
     [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
+    [ValidateSet(0,1)][int]$DesktopSeatPosition=0,
+    [ValidateRange(-30,30)][int]$DesktopCockpitFov=0,
     [switch]$NativeCockpitExposure,
     [switch]$NativeImpactEffect,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
@@ -181,21 +183,23 @@ if($CockpitS2000 -ne 'Off') {
 $cockpitAssets=@()
 $dlcCockpit=$null
 $cockpitModeRequested=$CockpitMode
+$desktopCockpit=$PlayerControlOnly -and $UntilExit -and $Mode -in @('Desktop','Preflight') -and ($DesktopSeatPosition -or $DesktopCockpitFov)
+if(($DesktopSeatPosition -or $DesktopCockpitFov) -and (!$desktopCockpit -or $CockpitMode -eq 'Off')) { throw 'Desktop seat/FOV requires a Desktop user session and cockpit camera.' }
 if($selectedSession.carContent.dlc -and !$selectedSession.carContent.cockpitAvailable) { $CockpitMode='Off' }
 if($CockpitMode -ne 'Off') {
     if($UntilExit -and $Mode -ne 'Preflight') { Write-Output 'GRID2VR_LAUNCH|Checking cockpit cameras and car assets...' }
-    if(!$RuntimeSession -or (!$UntilExit -and !$ExposureAudit) -or $PlayerControlOnly -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off' -or (!$ExposureAudit -and $Mode -notin @('Preflight','Headset'))) { throw 'Launcher cockpit assets require a VR user session or bounded exposure audit.' }
+    if(!$RuntimeSession -or (!$UntilExit -and !$ExposureAudit) -or ($PlayerControlOnly -and !$desktopCockpit) -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off' -or (!$desktopCockpit -and !$ExposureAudit -and $Mode -notin @('Preflight','Headset'))) { throw 'Cockpit assets require a VR user session, explicit Desktop seat/FOV or bounded exposure audit.' }
     . (Join-Path $PSScriptRoot 'Cockpit-Assets.ps1')
     if($NormalLaunch -or $selectedSession.carContent.dlc) {
         . (Join-Path $PSScriptRoot 'Dlc-Cockpit.ps1')
-        $dlcCockpit=Get-DlcCockpitRequest $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch)
+        $dlcCockpit=Get-DlcCockpitRequest $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) -Desktop:([bool]$PlayerControlOnly) -ApplySeatPosition:(!$PlayerControlOnly -or [bool]$DesktopSeatPosition) -FovOffset:$DesktopCockpitFov
         if($dlcCockpit.cars.Count) {
-            if(!$UntilExit -or $Mode -notin @('Preflight','Headset')) { throw 'DLC cockpit cameras require a VR user session.' }
-            Assert-DlcCockpitProxy $proxy
+            if(!$UntilExit -or (!$desktopCockpit -and $Mode -notin @('Preflight','Headset'))) { throw 'DLC cockpit cameras require a VR or explicit Desktop user session.' }
+            Assert-DlcCockpitProxy $proxy ([bool]$PlayerControlOnly)
         }
     }
-    $startInCockpit=$UntilExit -and $Mode -in @('Preflight','Headset') -and $selectedSession.control -eq 'human'
-    $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) $startInCockpit ([bool]$selectedSession.carContent.dlc))
+    $startInCockpit=!$PlayerControlOnly -and $UntilExit -and $Mode -in @('Preflight','Headset') -and $selectedSession.control -eq 'human'
+    $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) $startInCockpit ([bool]$selectedSession.carContent.dlc) -ApplySeatPosition:(!$PlayerControlOnly -or [bool]$DesktopSeatPosition) -FovOffset:$DesktopCockpitFov -IncludeIntro:(!$PlayerControlOnly))
 }
 $hardwarePaths=@((Join-Path $documents 'hardware_settings_config.xml'),(Join-Path $documents 'hardware_settings_info.xml'))
 $protectedPaths=@($hardwarePaths)
@@ -232,7 +236,9 @@ $preflight.cockpitTextures=$CockpitTextures
 $preflight.cockpitModeRequested=$cockpitModeRequested
 $preflight.cockpitApplied=($cockpitAssets.Count -gt 0 -or $dlcCockpit.cars.Count -gt 0)
 $preflight.dlcCockpit=$dlcCockpit
-$preflight.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
+$preflight.cockpitExposureLimit=(!$PlayerControlOnly -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
+$preflight.desktopSeatPositionRequested=[bool]$DesktopSeatPosition
+$preflight.desktopCockpitFov=$DesktopCockpitFov
 $preflight.hideImpactGlitch=($Mode -eq 'Headset' -and !$NativeImpactEffect)
 $preflight.exposureAudit=[bool]$ExposureAudit
 $preflight.cockpitAssets=$cockpitAssets
@@ -404,6 +410,7 @@ try {
         $parameters=@{
             RuntimeSession=$true;PlayerControlProbe=$PlayerControlProbe;PlayerControlOnly=$true
             SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000
+            CockpitMode=$CockpitMode;DesktopSeatPosition=$DesktopSeatPosition;DesktopCockpitFov=$DesktopCockpitFov
             RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers
             UntilExit=[bool]$UntilExit
             SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch;PythonPath=$PythonPath;DeferCaptureFinalization=$true
@@ -490,6 +497,10 @@ try {
            (Test-Path -LiteralPath (Join-Path $artifacts 'steamvr-theater-pending.json'))) { throw 'Recovery remains pending. Close GRID 2 and choose Restore original files in GRID2VR.' }
         Copy-Item -LiteralPath $sessionJournal -Destination (Join-Path $backup 'user-session-restored.json')
         Remove-Item -LiteralPath $sessionJournal
+    }
+    if($run -and (Test-Path -LiteralPath (Join-Path $run 'seat-menu.commit'))) {
+        . (Join-Path $PSScriptRoot 'Seat-Session.ps1')
+        Save-SeatSessionCommit $root $run
     }
 }
 if($RuntimeSession) {

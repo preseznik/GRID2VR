@@ -15,7 +15,7 @@ SCRIPTS += ['Dlc-Cockpit']
 SCRIPTS += ['Launch-Backend']
 SCRIPTS += ['Chase-Camera']
 SCRIPTS += ['Headset-Resolution', 'Get-VrResolution', 'OpenXR-Layers']
-SCRIPTS += ['Device-Preset']
+SCRIPTS += ['Device-Preset', 'Seat-Session']
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def copy(source,target):
     target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
@@ -77,7 +77,7 @@ def stage(a):
     copy(ROOT/'tools/HardwareSettingsPath.cs',mod/'tools/HardwareSettingsPath.cs')
     # Analysis modules are imported on demand by bounded post-run cleanup.
     for p in (ROOT/'tools').glob('*.py'):
-        if p.name.startswith(('analyze_','observe_')) or p.name in ['session_config.py','graphics_profile.py','practice_entry.py','startup_movies.py','cockpit_assets.py','cockpit_start.py','cockpit_camera.py','cockpit_alignment.py','steamvr_theater.py','unpack_snapshots.py','summarize_diagnostic.py','recorded_views.py','dynamic_views.py']:
+        if p.name.startswith(('analyze_','observe_')) or p.name in ['session_config.py','graphics_profile.py','practice_entry.py','startup_movies.py','cockpit_assets.py','cockpit_start.py','cockpit_camera.py','cockpit_alignment.py','seat_session.py','steamvr_theater.py','unpack_snapshots.py','summarize_diagnostic.py','recorded_views.py','dynamic_views.py']:
             copy(p,mod/'tools'/p.name)
     # Include local imports even when they are used only during post-run recovery.
     pending=list((mod/'tools').glob('*.py'));included={p.stem for p in pending}

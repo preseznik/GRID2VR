@@ -245,6 +245,10 @@ internal sealed class SessionClient(string root)
         {
             command.ArgumentList.Add("-DesktopBorderless");
             command.ArgumentList.Add(value.Graphics.DesktopBorderless ? "1" : "0");
+            var seat = SeatAlignment.Load(Root);
+            if (seat.ApplyToDesktop || seat.DesktopFov != 0)
+                foreach (var arg in new[] { "-CockpitMode", value.CockpitDriver, "-DesktopSeatPosition", seat.ApplyToDesktop ? "1" : "0",
+                    "-DesktopCockpitFov", seat.DesktopFov.ToString(System.Globalization.CultureInfo.InvariantCulture) }) command.ArgumentList.Add(arg);
         }
         if (vr && value.PerformanceDisplay)
         {

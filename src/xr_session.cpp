@@ -211,12 +211,16 @@ bool XrSessionProbe::Poll() {
     if (!OnThread() || !instance_ || failed_) return false;
     for (unsigned i=0;i<32;++i) {
         XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};const auto result=xrPollEvent(instance_,&event);
-        if (result==XR_EVENT_UNAVAILABLE) return running_;
+        if (result==XR_EVENT_UNAVAILABLE) {
+            if(seatReady_)seatReady_(seatPanel_.Enabled() && Focused() && running_ && !failed_);
+            return running_;
+        }
         if (!Check(result,"poll_event")) return false;
         if (event.type==XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED) {
             const auto& state=*reinterpret_cast<const XrEventDataSessionStateChanged*>(&event);
             if (state.session!=session_) {failed_=true;return false;}
             state_=state.state;
+            if(seatReady_ && !Focused())seatReady_(false);
             if (!Visible()) sampledVisible_=false;
             if (!Focused()) sampledFocused_=false;
             Log("session state=%d",state.state);
@@ -242,6 +246,10 @@ bool XrSessionProbe::InitializeImages(NativeEyeDraw draw,unsigned width,unsigned
     imagesAttempted_=true;imagesReady_=images_.Initialize(session_,device_.Get(),draw,width,height,resolution_.width!=0);
     Log("images initialized=%u width=%u height=%u failure=%s result=%d",imagesReady_,width,height,images_.Failure()?images_.Failure():"none",images_.LastResult());
     if (!imagesReady_) failed_=true;
+    if(imagesReady_ && seatTexture_ && seatOpening_ && seatReady_) {
+        const bool ready=seatPanel_.Initialize(session_,local_,device_.Get(),draw);
+        seatReady_(ready && Focused());Log("seat panel initialized=%u",ready);
+    }
     return imagesReady_;
 }
 bool XrSessionProbe::BeginFrame(uint64_t frame) {
@@ -339,13 +347,27 @@ bool XrSessionProbe::PresentScreen(uint64_t frame,ID3D11Texture2D* backbuffer) {
 bool XrSessionProbe::EndFrame(const XrCompositionLayerBaseHeader* layer) {
     if (!OnThread() || !frameOpen_) return false;
     XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};end.displayTime=displayTime_;end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    std::array<const XrCompositionLayerBaseHeader*,2> layers{layer,nullptr};
+    std::array<const XrCompositionLayerBaseHeader*,3> layers{layer,nullptr,nullptr};
+    uint32_t layerCount=layer?1u:0u;
     if(layer && performance_.Enabled()) {
         if(!performance_.FollowsView() && !screenAnchorReady_)
             screenAnchorReady_=LevelScreenAnchor(located_.head,screenAnchor_);
         layers[1]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(performance_.Layer(GetTickCount64(),screenAnchorReady_?&screenAnchor_:nullptr));
+        if(layers[1])++layerCount;
     }
-    end.layerCount=layer?(layers[1]?2:1):0;end.layers=layer?layers.data():nullptr;
+    if(layer && seatTexture_ && seatOpening_ && seatPanel_.Enabled()) {
+        if(auto* image=seatTexture_()) {
+            XrPosef anchor{};
+            if(LevelScreenAnchor(located_.head,anchor)) {
+                anchor.position.x=located_.head.position.x+(anchor.position.x-located_.head.position.x)*.5f;
+                anchor.position.z=located_.head.position.z+(anchor.position.z-located_.head.position.z)*.5f;
+                const auto* panel=seatPanel_.Layer(image,anchor,seatOpening_());
+                if(panel)layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(panel);
+            }
+            if(!seatPanel_.Enabled())seatReady_(false);
+        }
+    }
+    end.layerCount=layerCount;end.layers=layer?layers.data():nullptr;
     const bool screen=layer && layer->type==XR_TYPE_COMPOSITION_LAYER_QUAD;
     const bool ok=Check(xrEndFrame(session_,&end),layer?(screen?"end_frame_screen":"end_frame_projection"):"end_frame_zero_layers");
     if (ok && layer) { if(screen)++screensSubmitted_;else ++imagesSubmitted_;performance_.Submitted(GetTickCount64());frametiming::Submitted(!screen); }
@@ -356,6 +378,8 @@ void XrSessionProbe::Shutdown() {
     if (!OnThread()) return;
     if (frameOpen_) EndFrame();
     frametiming::Stop();
+    if(seatReady_)seatReady_(false);
+    if(!seatPanel_.Shutdown()) {failed_=true;Log("session shutdown=0 reason=seat_panel_images_pending");return;}
     if (!performance_.Shutdown()) {
         failed_=true;Log("session shutdown=0 reason=performance_images_pending");return;
     }

@@ -17,7 +17,7 @@ void Stop();
 #ifdef GRID2VR_DLC_COCKPIT_TEST
 struct Request;
 bool TestCodeMatches(uintptr_t image);
-void TestSetup(uintptr_t image,const Request& settings,bool nativeLaunch=false);
+void TestSetup(uintptr_t image,const Request& settings,bool nativeLaunch=false,bool nativeMenus=false);
 std::array<uint64_t,2> TestCounts(size_t car);
 #endif
 
@@ -68,7 +68,10 @@ inline constexpr std::array<Car,25> cars{{
     {"zon",{0.3121f,0.9896f,0.306f},{{{{0.f,0.95f,1.294f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}},{{0.f,1.267f,-0.687f,0.022f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.142f,65.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}}}}},
 }};
 struct Row {size_t car{};std::array<float,3> seat{};};
-struct Request {bool hideDriver{};std::array<Row,25> rows{};size_t count{};};
+struct Request {bool hideDriver{},desktop{};int fovOffset{};std::array<Row,25> rows{};size_t count{};};
+inline bool ValidSession(const Request& request,bool runtime,bool xrSession,bool xrProjection) {
+    return runtime && (request.desktop?(!xrSession && !xrProjection):(xrSession && xrProjection));
+}
 inline size_t FindCar(std::string_view code) {
     for(size_t i=0;i<cars.size();++i)if(code==cars[i].code)return i;
     return cars.size();
@@ -86,8 +89,14 @@ inline bool ParseRequest(std::string_view text,Request& result) {
     for(unsigned char c:text)if(c!=10 && c!=13 && (c<32 || c>126))return false;
     std::istringstream input{std::string(text)};input.imbue(std::locale::classic());
     std::string line;std::getline(input,line);if(!line.empty() && line.back()=='\r')line.pop_back();
-    if(line!="dlc-cockpit-v1 head-only" && line!="dlc-cockpit-v1 hide-driver")return false;
-    Request parsed{};parsed.hideDriver=line=="dlc-cockpit-v1 hide-driver";
+    Request parsed{};
+    if(line=="dlc-cockpit-v1 head-only" || line=="dlc-cockpit-v1 hide-driver")parsed.hideDriver=line=="dlc-cockpit-v1 hide-driver";
+    else {
+        std::istringstream header(line);header.imbue(std::locale::classic());std::string protocol,mode,extra;
+        if(!(header>>protocol>>mode>>parsed.fovOffset) || protocol!="dlc-cockpit-desktop-v1" ||
+           (mode!="head-only" && mode!="hide-driver") || parsed.fovOffset < -30 || parsed.fovOffset > 30 || (header>>extra))return false;
+        parsed.desktop=true;parsed.hideDriver=mode=="hide-driver";
+    }
     while(std::getline(input,line)) {
         if(parsed.count==parsed.rows.size())return false;
         std::istringstream values(line);values.imbue(std::locale::classic());std::string code,extra;
@@ -119,10 +128,12 @@ inline bool ValidObject(std::span<const uint8_t> object,uint32_t table,size_t ca
         if(expected.flags[i]>=0 && object[flagOffsets[i]]!=expected.flags[i])return false;
     return true;
 }
-inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint32_t table,const Row& row,bool hideDriver) {
+inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint32_t table,const Row& row,bool hideDriver,int fovOffset=0) {
     const auto a=reinterpret_cast<uintptr_t>(forward.data()),b=reinterpret_cast<uintptr_t>(reverse.data());
-    if(!ValidSeat(row.car,row.seat) || (a>b?a-b:b-a)<objectBytes ||
+    if(fovOffset < -30 || fovOffset > 30 || !ValidSeat(row.car,row.seat) || (a>b?a-b:b-a)<objectBytes ||
        !ValidObject(forward,table,row.car,0) || !ValidObject(reverse,table,row.car,1))return false;
+    for(const auto& view:cars[row.car].original)
+        if(view.values[19]+fovOffset<15.f || view.values[19]+fovOffset>140.f)return false;
     for(size_t view=0;view<2;++view) {
         auto object=view?reverse:forward;
         for(size_t i=0;i<18;++i) {
@@ -130,6 +141,10 @@ inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint
             std::memcpy(object.data()+floatOffsets[i],&value,4);
         }
         const float clip=.02f;std::memcpy(object.data()+0xf4,&clip,4); // Initialized native near-clip cache.
+        if(fovOffset) {
+            const float fov=cars[row.car].original[view].values[19]+fovOffset;
+            std::memcpy(object.data()+0x14,&fov,4);
+        }
         for(size_t i=0;i<flagOffsets.size();++i) {
             if(cars[row.car].original[view].flags[i]<0)continue;
             object[flagOffsets[i]]=i<2?1:(i==2 && hideDriver?1:0);
@@ -138,7 +153,7 @@ inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint
     }
     return true;
 }
-inline bool PatchedPair(std::span<const uint8_t> forward,std::span<const uint8_t> reverse,uint32_t table,const Row& row,bool hideDriver) {
+inline bool PatchedPair(std::span<const uint8_t> forward,std::span<const uint8_t> reverse,uint32_t table,const Row& row,bool hideDriver,int fovOffset=0) {
     if(forward.size()!=objectBytes || reverse.size()!=objectBytes || !ValidSeat(row.car,row.seat))return false;
     std::array<std::array<uint8_t,objectBytes>,2> expected{};
     for(size_t view=0;view<2;++view) {
@@ -150,7 +165,7 @@ inline bool PatchedPair(std::span<const uint8_t> forward,std::span<const uint8_t
         for(size_t i=0;i<flagOffsets.size();++i)
             if(original.flags[i]>=0)expected[view][flagOffsets[i]]=original.flags[i];
     }
-    if(!PatchPair(expected[0],expected[1],table,row,hideDriver))return false;
+    if(!PatchPair(expected[0],expected[1],table,row,hideDriver,fovOffset))return false;
     // A native update may have rebuilt the pose cache. Compare authored fields
     // only, so subsequent Presents leave that rebuilt cache untouched.
     for(size_t view=0;view<2;++view) {

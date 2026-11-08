@@ -51,7 +51,27 @@ function Get-Grid2ExecutableHash([string]$Path,[string]$Variant='Avx') {
         [IO.File]::WriteAllText($seats,('{"Version":1,"Cars":{"s20":{"Height":'+$value+',"Forward":0,"Right":0}}}'))
         Reject { Read-SeatAlignments $fixture }
     }
-    Write-Output 'Aligned camera deployment, Normal coverage, exact recovery after settings changes and tampering guards passed.'
+    # FOV-only Desktop does not consume VR seat offsets or force the startup view.
+    @{Version=1;Cars=@{s20=@{Height=12;Forward=4;Right=2}}} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $seats
+    $desktopRun=Join-Path $fixture 'desktop';New-Item -ItemType Directory -Path $desktopRun | Out-Null
+    $desktop=@(Get-CockpitAssetSelection $fixture $game HeadOnly s20 $false -ApplySeatPosition:$false -FovOffset:10 -IncludeIntro:$false)
+    Require ($desktop.Count -eq 1 -and !$desktop[0].alignment -and $desktop[0].fovOffset -eq 10) 'Desktop FOV unexpectedly included VR seat offsets.'
+    $null=New-CockpitAssetsDeployment $game $desktopRun $fixture $desktop
+    Install-CockpitAssets $game $desktopRun $desktop
+    Assert-CockpitCameraHash (Join-Path $game $desktop[0].name) $desktop[0].sha256
+    [IO.File]::WriteAllText($seats,'{"Version":1,"DesktopFov":-10,"Cars":{}}')
+    $snapshot=$desktop | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    Restore-CockpitAssets $game $desktopRun @($snapshot)
+    Assert-CockpitCameraHash (Join-Path $game $desktop[0].name) $desktop[0].originalSha256
+    $normalDesktop=@(Get-CockpitAssetSelection $fixture $game HeadOnly s20 $true -ApplySeatPosition:$false -FovOffset:-10 -IncludeIntro:$false)
+    Require ($normalDesktop.Count -eq 2 -and @($normalDesktop | Where-Object car -EQ intro).Count -eq 0) 'Desktop changed the first-career startup view.'
+    foreach($value in @(31,-31,'10',$true)) {
+        $bad=$desktop[0].Clone();$bad.fovOffset=$value
+        Reject { Assert-CockpitAssetEntries @($bad) }
+    }
+    $bad=$desktop[0].Clone();$bad.fovOffset=-10
+    Reject { Assert-CockpitAssetEntries @($bad) }
+    Write-Output 'Seat/FOV deployment, Desktop/VR separation, exact recovery after settings changes and tampering guards passed.'
 } finally {
     $full=[IO.Path]::GetFullPath($fixture)
     if($full.StartsWith((Join-Path $root 'build/alignment-test-'),[StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $full)) { Remove-Item -LiteralPath $full -Recurse -Force }

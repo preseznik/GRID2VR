@@ -70,5 +70,19 @@ class DlcCockpitTests(unittest.TestCase):
         with patch.object(cockpit, 'CATALOG', catalog):
             with self.assertRaisesRegex(ValueError, 'catalog changed'): cockpit.calibrations()
 
+    @patch.object(game_executable, 'validate_avx', return_value='fixture')
+    @patch.object(session_config, 'installed_dlc')
+    def test_desktop_fov_request_is_explicit_and_leaves_vr_unchanged(self, installed, validate):
+        installed.return_value=self.installed
+        for offset in (-30,0,30):
+            result=cockpit.request(self.game,'head-only',car='240',desktop=True,fov_offset=offset)
+            self.assertTrue(result['text'].startswith(f'dlc-cockpit-desktop-v1 head-only {offset}\n'))
+            self.assertEqual(result['cars'][0]['position'],self.rows['240']['position'])
+            self.assertTrue(result['desktop'])
+        vr=cockpit.request(self.game,'head-only',car='240')
+        self.assertTrue(vr['text'].startswith('dlc-cockpit-v1 head-only\n'))
+        for options in (dict(fov_offset=10),dict(desktop=True,fov_offset=31),dict(desktop=True,fov_offset=True)):
+            with self.assertRaises(ValueError): cockpit.request(self.game,'head-only',car='240',**options)
+
 
 if __name__ == '__main__': unittest.main()

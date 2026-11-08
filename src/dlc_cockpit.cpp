@@ -2,6 +2,7 @@
 #include "game_executable.h"
 #include "guarded_hooks.h"
 #include "solo_race.h"
+#include "seat_camera_host.h"
 #include <atomic>
 #include <fstream>
 #include <mutex>
@@ -15,7 +16,7 @@ std::filesystem::path folder;
 std::mutex mutex;
 Request request;
 std::atomic<bool> stopped{},enabled{};
-bool prepared{},requested{},failed{},finished{},nativeLaunch{};
+bool prepared{},requested{},failed{},finished{},nativeLaunch{},seatNativeMenus{};
 const char* reason="not_requested";
 std::array<uint64_t,25> applied{},rejected{};
 struct Guard {uint32_t rva,length;const char* hash;std::vector<uint32_t> relocations;};
@@ -55,20 +56,20 @@ const std::array<Guard,32> guards{{
     {0x7af7d0,0x3ba,"75d15df528d190cadc524d88516cd52dee60bbb6aa06a3adde269fc73557e518",{0x119,0x123,0x129,0x131,0x139,0x141,0x182,0x18a,0x2b9,0x2c3,0x2c9,0x2d1,0x2d9,0x2e1,0x322,0x32a}},
     {0x5dbd50,0x65,"b71fd5f89a85526fe3339f806d15b4852f1c55d39b8c7362be7df45348aa3624",{0x1e}},
 }};
-bool CodeMatches() {
+bool CodeMatches(uintptr_t imageBase) {
     for(const auto& guard:guards) {
         std::vector<uint8_t> bytes(guard.length);
-        if(!ReadMemory(reinterpret_cast<void*>(base+guard.rva),bytes.data(),bytes.size()))return false;
+        if(!ReadMemory(reinterpret_cast<void*>(imageBase+guard.rva),bytes.data(),bytes.size()))return false;
         for(auto at:guard.relocations) {
             uint32_t value{};std::memcpy(&value,bytes.data()+at,4);
-            value-=static_cast<uint32_t>(base-0x400000);std::memcpy(bytes.data()+at,&value,4);
+            value-=static_cast<uint32_t>(imageBase-0x400000);std::memcpy(bytes.data()+at,&value,4);
         }
         if(gameexe::Digest(bytes.data(),static_cast<ULONG>(bytes.size()))!=guard.hash)return false;
     }
     uint32_t parser{},activation{},update{};
-    return ReadMemory(reinterpret_cast<void*>(base+mountedTableRva+0x30),&parser,4) && parser==base+0x4b3830 &&
-        ReadMemory(reinterpret_cast<void*>(base+mountedTableRva+0x6c),&activation,4) && activation==base+0x5dbd50 &&
-        ReadMemory(reinterpret_cast<void*>(base+mountedTableRva+0x70),&update,4) && update==base+0x7af7d0;
+    return ReadMemory(reinterpret_cast<void*>(imageBase+mountedTableRva+0x30),&parser,4) && parser==imageBase+0x4b3830 &&
+        ReadMemory(reinterpret_cast<void*>(imageBase+mountedTableRva+0x6c),&activation,4) && activation==imageBase+0x5dbd50 &&
+        ReadMemory(reinterpret_cast<void*>(imageBase+mountedTableRva+0x70),&update,4) && update==imageBase+0x7af7d0;
 }
 template<class T> bool Read(uintptr_t address,T& value) {
     return ReadMemory(reinterpret_cast<void*>(address),&value,sizeof(value));
@@ -93,12 +94,16 @@ struct Graph {
 };
 Graph lastRejected{};
 bool hasRejected{};
+Graph seatOwnedGraph{};
+seat::CameraSettings seatOwnedSettings;
+bool seatOwnsPair{};
+bool SameCameraPair(Graph a,Graph b) {a.row=b.row=0;return a==b;}
 uint64_t appliedPairs{},rejectedPairs{},alreadyPatchedPairs{};
 void WriteStatus() {
     if(folder.empty())return;
     std::ofstream out(folder/L"dlc-cockpit.json",std::ios::trunc);
     out<<std::boolalpha<<"{\"schema\":2,\"strategy\":\"loaded_camera_data\",\"requested\":"<<requested
-       <<",\"enabled\":"<<enabled.load()<<",\"nativeCodePatches\":0,\"failed\":"<<failed
+       <<",\"enabled\":"<<enabled.load()<<",\"desktop\":"<<request.desktop<<",\"fovOffset\":"<<request.fovOffset<<",\"nativeCodePatches\":0,\"failed\":"<<failed
        <<",\"stopped\":"<<stopped.load()<<",\"reason\":\""<<reason
        <<"\",\"archiveWrites\":0,\"saveWrites\":0,\"headsetValidated\":false,\"appliedPairs\":"<<appliedPairs
        <<",\"rejectedPairs\":"<<rejectedPairs<<",\"alreadyPatchedPairs\":"<<alreadyPatchedPairs<<",\"cars\":[";
@@ -116,7 +121,7 @@ bool Pointer(uintptr_t at,uintptr_t& value) {
 }
 bool Word(uintptr_t at,uintptr_t expected) {uint32_t value{};return Read(at,value) && value==expected;}
 bool ReadyParent(uintptr_t& parent) {
-    if(NormalLocalRaceReady(base) || NormalSoloRaceReady(base))return Pointer(base+0xd96808,parent);
+    if(NormalLocalRaceReady(base) || NormalSoloRaceReady(base) || (seatNativeMenus && NativeMenuLocalRaceReady(base)))return Pointer(base+0xd96808,parent);
     if(nativeLaunch)return false;
     // Same bounded solo-playback readiness used by diagnostics. Association to
     // the local car and its provider is independently checked below.
@@ -126,7 +131,7 @@ bool ReadyParent(uintptr_t& parent) {
 }
 // 530c40 assigns the named loader manager directly to car+148; 5151e0
 // binds every view provider to car+12c. These are live views, not a clone.
-bool Resolve(Graph& graph) {
+template<class FindRow> bool Resolve(Graph& graph,FindRow&& findRow) {
     if(!ReadyParent(graph.parent))return false;
     uintptr_t carsBegin{};
     if(!Pointer(graph.parent+0xa8,carsBegin) || !Pointer(carsBegin,graph.car) ||
@@ -142,9 +147,9 @@ bool Resolve(Graph& graph) {
         if(manager==graph.manager) {std::memcpy(code.data(),entry.data(),4);++matches;}
     }
     if(matches!=1 || code[3]!=0)return false;
-    graph.row=request.count;
-    for(size_t i=0;i<request.count;++i)if(!std::memcmp(code.data(),cars[request.rows[i].car].code,3))graph.row=i;
-    if(graph.row==request.count)return false;
+    const int row=findRow(std::string_view(code.data(),3));
+    if(row<0)return false;
+    graph.row=static_cast<size_t>(row);
     // Reject ambiguous names even if another entry points at a different manager.
     matches=0;
     for(int32_t i=0;i<count;++i) {
@@ -170,27 +175,40 @@ bool Resolve(Graph& graph) {
         if(!Word(view,base+mountedTableRva) || !Word(view+0x60,graph.car+0x12c) || !Writable(view,objectBytes))return false;
     return true;
 }
+bool Resolve(Graph& graph) {
+    return Resolve(graph,[](std::string_view code) {
+        for(size_t i=0;i<request.count;++i)if(code==cars[request.rows[i].car].code)return static_cast<int>(i);
+        return -1;
+    });
+}
 bool Store(uintptr_t address,const void* value,size_t length) {
     SIZE_T written{};
     return WriteProcessMemory(GetCurrentProcess(),reinterpret_cast<void*>(address),value,length,&written) && written==length;
 }
 void Arm() {
-    if(!CodeMatches()) {failed=true;reason="instruction_guard";WriteStatus();return;}
+    if(!CodeMatches(base)) {failed=true;reason="instruction_guard";WriteStatus();return;}
     enabled=true;reason="waiting_for_world";WriteStatus();
 }
 }
 void Prepare(uintptr_t gameBase,const std::filesystem::path& output) {
     std::lock_guard lock(mutex);if(prepared)return;prepared=true;base=gameBase;folder=output;
     std::error_code error;const auto path=output/L"dlc-cockpit.request";
-    if(!std::filesystem::exists(path,error))return;
-    requested=true;std::array<char,4097> bytes{};std::ifstream in(path,std::ios::binary);in.read(bytes.data(),bytes.size());
-    if(!ParseRequest(std::string_view(bytes.data(),static_cast<size_t>(in.gcount())),request) ||
-       !std::filesystem::is_regular_file(output/L"xr-session.request",error) ||
-       !std::filesystem::is_regular_file(output/L"xr-projection.request",error)) {
-        failed=true;reason="invalid_or_non_vr_request";WriteStatus();return;
-    }
     nativeLaunch=std::filesystem::is_regular_file(output/L"race-launch.request",error) ||
         std::filesystem::is_regular_file(output/L"normal-launch.request",error);
+    std::ifstream seatEntry(output/L"seat-native-menus.request",std::ios::binary);
+    std::array<char,64> entry{};seatEntry.read(entry.data(),entry.size());
+    seatNativeMenus=nativeLaunch && std::string_view(entry.data(),static_cast<size_t>(seatEntry.gcount()))=="grid2vr-seat-native-menus-v1\n";
+    if(!std::filesystem::exists(path,error))return;
+    requested=true;std::array<char,4097> bytes{};std::ifstream in(path,std::ios::binary);in.read(bytes.data(),bytes.size());
+    if(!ParseRequest(std::string_view(bytes.data(),static_cast<size_t>(in.gcount())),request)) {
+        failed=true;reason="invalid_camera_request";WriteStatus();return;
+    }
+    const bool xrSession=std::filesystem::is_regular_file(output/L"xr-session.request",error);
+    const bool xrProjection=std::filesystem::is_regular_file(output/L"xr-projection.request",error);
+    const bool runtimeSession=std::filesystem::is_regular_file(output/L"runtime-session.request",error);
+    if(!ValidSession(request,runtimeSession,xrSession,xrProjection)) {
+        failed=true;reason="camera_session_mode_mismatch";WriteStatus();return;
+    }
     wchar_t exe[32768]{};const auto length=GetModuleFileNameW(nullptr,exe,32768);
     if(!base || length==0 || length>=32768 || gameexe::Validate(exe,true).empty()) {
         failed=true;reason="executable_guard";WriteStatus();return;
@@ -206,18 +224,30 @@ void Present() {
     if(!ReadyParent(parent)) {hasRejected=false;Status("waiting_for_world");return;}
     Graph graph{};
     if(!Resolve(graph)) {Status("waiting_for_verified_camera_graph");return;}
+    // The live tool validates every edited value itself. Calibrate a newly
+    // loaded pair once, then leave its live adjustments to that owner.
     const auto& row=request.rows[graph.row];
     std::array<std::array<uint8_t,objectBytes>,2> snapshots{};
     if(!Read(graph.views[0],snapshots[0]) || !Read(graph.views[1],snapshots[1])) {
         Status("camera_snapshot_unreadable");return;
     }
-    if(PatchedPair(snapshots[0],snapshots[1],static_cast<uint32_t>(base+mountedTableRva),row,request.hideDriver)) {
+    if(seatOwnsPair && SameCameraPair(graph,seatOwnedGraph)) {
+        seat::CameraPair expected;
+        const auto table=static_cast<uint32_t>(base+mountedTableRva);
+        if(seat::ExpectedPair(seatOwnedSettings,table,expected) &&
+           seat::Matches(snapshots[0],expected[0],seatOwnedSettings,0,table) &&
+           seat::Matches(snapshots[1],expected[1],seatOwnedSettings,1,table))return;
+        // A native reload can reuse these addresses. Recalibrate only if the
+        // full original pair below still matches, then let the tool reselect it.
+        seatOwnsPair=false;
+    }
+    if(PatchedPair(snapshots[0],snapshots[1],static_cast<uint32_t>(base+mountedTableRva),row,request.hideDriver,request.fovOffset)) {
         if(reason!=std::string_view("applied_loaded_camera_data") && reason!=std::string_view("already_patched_loaded_camera_data")) {
             ++alreadyPatchedPairs;Status("already_patched_loaded_camera_data");
         }
         return;
     }
-    if(!PatchPair(snapshots[0],snapshots[1],static_cast<uint32_t>(base+mountedTableRva),row,request.hideDriver)) {
+    if(!PatchPair(snapshots[0],snapshots[1],static_cast<uint32_t>(base+mountedTableRva),row,request.hideDriver,request.fovOffset)) {
         if(!hasRejected || !(lastRejected==graph)) {++rejected[row.car];++rejectedPairs;lastRejected=graph;hasRejected=true;}
         Status("camera_original_values_rejected");return;
     }
@@ -229,6 +259,7 @@ void Present() {
         const auto address=static_cast<uintptr_t>(graph.views[i]);
         for(size_t field=0;field<18 && written;++field)
             written=Store(address+floatOffsets[field],snapshots[i].data()+floatOffsets[field],4);
+        if(written && request.fovOffset)written=Store(address+0x14,snapshots[i].data()+0x14,4);
         if(written)written=Store(address+0xf4,snapshots[i].data()+0xf4,4);
         for(size_t field=0;field<flagOffsets.size() && written;++field)
             if(cars[row.car].original[i].flags[field]>=0)
@@ -249,11 +280,112 @@ void Stop() {
     WriteStatus();
 }
 #ifdef GRID2VR_DLC_COCKPIT_TEST
-bool TestCodeMatches(uintptr_t image) {base=image;return CodeMatches();}
-void TestSetup(uintptr_t image,const Request& settings,bool normal) {
-    base=image;request=settings;nativeLaunch=normal;stopped=false;enabled=false;failed=false;finished=false;requested=true;folder.clear();
-    applied={};rejected={};appliedPairs=0;rejectedPairs=0;alreadyPatchedPairs=0;hasRejected=false;Arm();
+bool TestCodeMatches(uintptr_t image) {base=image;return CodeMatches(base);}
+void TestSetup(uintptr_t image,const Request& settings,bool normal,bool nativeMenus) {
+    base=image;request=settings;nativeLaunch=normal;seatNativeMenus=nativeMenus;stopped=false;enabled=false;failed=false;finished=false;requested=true;folder.clear();
+    applied={};rejected={};appliedPairs=0;rejectedPairs=0;alreadyPatchedPairs=0;hasRejected=false;seatOwnsPair=false;Arm();
 }
 std::array<uint64_t,2> TestCounts(size_t car) {return {applied[car],rejected[car]};}
+#endif
+}
+
+namespace grid2vr::seat {
+struct CameraHost::Impl {
+    uintptr_t base{};SessionRequest request;
+    dlccockpit::Graph last;
+    CameraSettings applied;
+    bool enabled{},failed{},haveLast{};
+    DWORD thread{};
+    const char* reason="not_requested";
+    bool Selected(const dlccockpit::Graph& graph) {
+        // The existing chase selection path, with the Mounted identity checked
+        // independently by Resolve. Require this same car-owned manager and
+        // one of its named cockpit views; loading/selection transitions close it.
+        uintptr_t root{},game{},controller{},manager{},selected{};
+        uint8_t transition{},otherTransition{},alternate{};
+        if(!(dlccockpit::Pointer(base+0xdef810,root) && dlccockpit::Pointer(root+0x10,game) &&
+            dlccockpit::Pointer(game+0x14fc,controller) && dlccockpit::Read(controller+0x392,transition) && !transition &&
+            dlccockpit::Read(controller+0x393,otherTransition) && !otherTransition &&
+            dlccockpit::Pointer(controller+0x33c,manager) && manager==graph.manager &&
+            dlccockpit::Read(manager+0x759,alternate) && alternate<=1 && dlccockpit::Pointer(manager+0x748,selected) &&
+            (selected==graph.views[0] || selected==graph.views[1])))return false;
+        uint32_t alternateView{};
+        // Look Back uses selected+70 when present, otherwise the primary view.
+        // A foreign alternate must not make an unrelated camera eligible.
+        return !alternate || (dlccockpit::Read(selected+0x70,alternateView) &&
+            (!alternateView || alternateView==graph.views[0] || alternateView==graph.views[1]));
+    }
+    bool Capture(dlccockpit::Graph& graph,CameraPair& pair) {
+        if(!NormalLocalRaceReady(base) && !NormalSoloRaceReady(base) && !(dlccockpit::seatNativeMenus && NativeMenuLocalRaceReady(base))) {reason="local_offline_race_not_ready";return false;}
+        if(!dlccockpit::Resolve(graph,[&](std::string_view code) {
+            const int car=FindCar(code);return car>=0 && request.Find(static_cast<size_t>(car))?car:-1;
+        })) {reason="local_camera_graph_not_verified";return false;}
+        if(!Selected(graph)) {reason="local_cockpit_not_selected";return false;}
+        if(!dlccockpit::Read(graph.views[0],pair[0]) || !dlccockpit::Read(graph.views[1],pair[1])) {reason="camera_snapshot_unreadable";return false;}
+        return true;
+    }
+};
+CameraHost::CameraHost():impl_(std::make_unique<Impl>()){}
+CameraHost::~CameraHost()=default;
+bool CameraHost::Initialize(uintptr_t image,const SessionRequest& request) {
+    auto& s=*impl_;
+    if(s.base || !image || !request.count || request.count>CarCount)return false;
+    wchar_t exe[32768]{};const auto length=GetModuleFileNameW(nullptr,exe,32768);
+    if(!length || length>=32768 || gameexe::Validate(exe,true).empty() || !dlccockpit::CodeMatches(image)) {
+        s.reason="executable_or_instruction_guard";s.failed=true;return false;
+    }
+    // DLC Prepare establishes this base even when no DLC request is present.
+    if(dlccockpit::base!=image) {s.reason="camera_host_not_prepared";return false;}
+    s.base=image;s.request=request;s.thread=GetCurrentThreadId();s.enabled=true;s.reason="waiting_for_local_cockpit";return true;
+}
+bool CameraHost::Update(const std::function<CameraSettings(size_t,bool)>& edit) {
+    auto& s=*impl_;
+    if(!s.enabled || s.failed || s.thread!=GetCurrentThreadId())return false;
+    std::lock_guard lock(dlccockpit::mutex);
+    dlccockpit::Graph graph;CameraPair pair;
+    if(!s.Capture(graph,pair))return false;
+    bool changed=!s.haveLast || graph!=s.last;
+    auto from=changed?s.request.Applied(graph.row):s.applied;
+    CameraPair expected;
+    const auto table=static_cast<uint32_t>(s.base+dlccockpit::mountedTableRva);
+    const auto matches=[&] {return ExpectedPair(from,table,expected) && Matches(pair[0],expected[0],from,0,table) && Matches(pair[1],expected[1],from,1,table);};
+    if(!matches() && !changed) {from=s.request.Applied(graph.row);changed=true;}
+    if(!matches()) {
+        s.reason="camera_authored_values_rejected";return false;
+    }
+    const auto to=edit(graph.row,changed);
+    const auto before=pair;
+    if(!EditPair(pair[0],pair[1],table,from,to)) {s.reason="seat_edit_rejected";return false;}
+    dlccockpit::Graph fresh;CameraPair current;
+    if(!s.Capture(fresh,current) || fresh!=graph || !Matches(current[0],expected[0],from,0,table) || !Matches(current[1],expected[1],from,1,table)) {
+        s.reason="camera_owner_changed";return false;
+    }
+    bool written=true;
+    for(size_t view=0;view<2 && written;++view) {
+        for(auto at:{size_t(0x2230),size_t(0x2234),size_t(0x2238),size_t(0x14)})
+            if(std::memcmp(before[view].data()+at,pair[view].data()+at,4))
+                written=written && dlccockpit::Store(graph.views[view]+at,pair[view].data()+at,4);
+    }
+    for(size_t view=0;view<2 && written;++view)
+        if(before[view][dlccockpit::poseCacheValidOffset]!=pair[view][dlccockpit::poseCacheValidOffset])
+            written=dlccockpit::Store(graph.views[view]+dlccockpit::poseCacheValidOffset,pair[view].data()+dlccockpit::poseCacheValidOffset,1);
+    if(!written) {s.failed=true;s.enabled=false;s.reason="camera_data_write_failed";return false;}
+    s.last=graph;s.applied=to;s.haveLast=true;s.reason="local_cockpit_ready";
+    dlccockpit::seatOwnedGraph=graph;dlccockpit::seatOwnedSettings=to;dlccockpit::seatOwnsPair=true;return true;
+}
+void CameraHost::Stop() {
+    // Only a fresh, still-qualified graph on the owning thread may be restored.
+    if(impl_->enabled && !impl_->failed && impl_->thread==GetCurrentThreadId())
+        Update([&](size_t car,bool){return impl_->request.Applied(car);});
+    impl_->enabled=false;impl_->haveLast=false;impl_->reason="stopped";
+    std::lock_guard lock(dlccockpit::mutex);dlccockpit::seatOwnsPair=false;
+}
+const char* CameraHost::Reason() const {return impl_->reason;}
+#ifdef GRID2VR_DLC_COCKPIT_TEST
+bool CameraHost::TestInitialize(uintptr_t image,const SessionRequest& request) {
+    auto& s=*impl_;
+    if(s.base || !image || !request.count || request.count>CarCount || dlccockpit::base!=image || !dlccockpit::CodeMatches(image))return false;
+    s.base=image;s.request=request;s.thread=GetCurrentThreadId();s.enabled=true;s.reason="waiting_for_local_cockpit";return true;
+}
 #endif
 }

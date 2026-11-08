@@ -41,6 +41,8 @@ param(
     [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
+    [ValidateSet(0,1)][int]$DesktopSeatPosition=0,
+    [ValidateRange(-30,30)][int]$DesktopCockpitFov=0,
     [switch]$NativeCockpitExposure,
     [switch]$NativeImpactEffect,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
@@ -69,7 +71,9 @@ if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and 
 $chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
 if($VrMirrorBorderless -and $Mode -ne 'VR') { throw 'Borderless VR mirror requires a VR launch.' }
 if($ChaseCameraObserver -and ($Mode -ne 'Desktop' -or !$DiagnosticProxy)) { throw 'Chase observation requires Desktop and an explicit diagnostic proxy; camera writes are unavailable.' }
-if($CockpitMode -ne 'Off' -and ($Mode -ne 'VR' -or $CockpitS2000 -ne 'Off')) { throw 'Launcher cockpit mode requires VR and cannot be combined with the legacy S2000 diagnostic.' }
+$desktopCockpit=$Mode -eq 'Desktop' -and ($DesktopSeatPosition -or $DesktopCockpitFov)
+if(($DesktopSeatPosition -or $DesktopCockpitFov) -and ($Mode -ne 'Desktop' -or $CockpitMode -eq 'Off')) { throw 'Desktop seat/FOV requires Desktop mode and a cockpit camera.' }
+if($CockpitMode -ne 'Off' -and (($Mode -ne 'VR' -and !$desktopCockpit) -or $CockpitS2000 -ne 'Off')) { throw 'Cockpit mode requires VR or explicit Desktop seat/FOV and cannot be combined with the legacy S2000 diagnostic.' }
 if($CockpitS2000 -ne 'Off' -and !$nativeMenus -and $Car -cne 's20') { throw 'The cockpit prototype is for the Honda S2000 only.' }
 if($PreviewVrFixes -and ($Mode -ne 'VR' -or $DiagnosticProxy -or $HeadsetVisibilityCandidate -or $FlickerDiagnostic)) { throw 'Preview VR fixes require VR and cannot be combined with diagnostic overrides.' }
 if($HeadsetVisibilityCandidate -and ($Mode -ne 'VR' -or !$DiagnosticProxy)) { throw 'Headset visibility candidate requires VR and an explicit isolated proxy.' }
@@ -128,6 +132,8 @@ try {
     $receipt.career=$career
     $receipt.cockpitS2000=$CockpitS2000
     $receipt.cockpitModeRequested=$CockpitMode
+    $receipt.desktopSeatPositionRequested=[bool]$DesktopSeatPosition
+    $receipt.desktopCockpitFov=$DesktopCockpitFov
     $receipt.cockpitMode=$CockpitMode
     $receipt.cockpitTextures=$CockpitTextures
     $receipt.cockpitExposureLimit=($Mode -eq 'VR' -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
@@ -223,6 +229,8 @@ try {
     if($Mode -eq 'Desktop') { $parameters.PlayerControlOnly=$true }
     $parameters.CockpitS2000=$CockpitS2000
     $parameters.CockpitMode=$CockpitMode
+    $parameters.DesktopSeatPosition=$DesktopSeatPosition
+    $parameters.DesktopCockpitFov=$DesktopCockpitFov
     $parameters.NativeCockpitExposure=[bool]$NativeCockpitExposure
     $parameters.NativeImpactEffect=[bool]$NativeImpactEffect
     $parameters.CockpitTextures=$CockpitTextures

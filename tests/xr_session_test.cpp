@@ -10,10 +10,18 @@ LUID adapterLuid{};
 XrSessionState eventState=XR_SESSION_STATE_READY;
 bool invalidTracking{},badAdapter{},zeroAdapter{},badSpace{},badLocate{},discard{},missingFunction{},protocolError{};
 unsigned instances{},sessions{},spaces{},waits{},ends{},phase{};
-std::array<ComPtr<ID3D11Texture2D>,3> eyeImages;
-std::array<unsigned,3> imagePhases{};
+std::array<ComPtr<ID3D11Texture2D>,4> eyeImages;
+std::array<unsigned,4> imagePhases{};
 unsigned swapchains{},projectionEnds{},screenEnds{},performanceEnds{},performanceAcquires{},lastLayerCount{};
 bool performanceCreateFail{},performanceAcquireFail{},performanceTimeout{};
+bool seatCreateFail{},seatAcquireFail{},seatTimeout{},seatBadIndex{},seatReady{},seatShown{};
+unsigned seatEnds{},seatAcquires{};
+uint64_t seatOpening=1;
+XrPosef lastSeatPose{};
+ComPtr<ID3D11Texture2D> seatSource;
+ID3D11Texture2D* SeatTexture(){return seatShown?seatSource.Get():nullptr;}
+uint64_t SeatOpening(){return seatOpening;}
+void SeatReady(bool ready){seatReady=ready;}
 bool fixedPerformance{};
 XrPosef lastPerformancePose{};
 bool hidden{};
@@ -43,6 +51,7 @@ void Reset() {
     eyeImages={};imagePhases={};swapchains=projectionEnds=screenEnds=0;hidden=false;
     performanceEnds=performanceAcquires=lastLayerCount=0;
     performanceCreateFail=performanceAcquireFail=performanceTimeout=false;
+    seatCreateFail=seatAcquireFail=seatTimeout=seatBadIndex=seatReady=seatShown=false;seatEnds=seatAcquires=0;seatOpening=1;lastSeatPose={};
     fixedPerformance=false;lastPerformancePose={};timeStep=1;
     headPose={{0,0,0,1},{0,0,0}};lastScreenPose={};lastScreenSize={};
 }
@@ -115,7 +124,7 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession,const XrFrameEndInfo* info) 
     if(phase!=2 || info->displayTime!=DisplayTime() || info->environmentBlendMode!=XR_ENVIRONMENT_BLEND_MODE_OPAQUE) protocolError=true;
     lastLayerCount=info->layerCount;
     if (info->layerCount) {
-        if (info->layerCount>2 || !info->layers || hidden || invalidTracking) protocolError=true;
+        if (info->layerCount>3 || !info->layers || hidden || invalidTracking) protocolError=true;
         else if(info->layers[0]->type==XR_TYPE_COMPOSITION_LAYER_QUAD) {
             const auto* q=reinterpret_cast<const XrCompositionLayerQuad*>(info->layers[0]);
             if(q->space!=4 || q->eyeVisibility!=XR_EYE_VISIBILITY_BOTH || q->subImage.swapchain!=10 ||
@@ -129,8 +138,15 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession,const XrFrameEndInfo* info) 
             else for (unsigned i=0;i<2;++i) if (p->views[i].subImage.swapchain!=10+i || p->views[i].pose.position.x!=(i?.032f:-.032f)) protocolError=true;
         }
         if(info->layers && info->layers[0]->type==XR_TYPE_COMPOSITION_LAYER_PROJECTION) ++projectionEnds;
-        if(info->layerCount==2 && info->layers) {
-            const auto* meter=reinterpret_cast<const XrCompositionLayerQuad*>(info->layers[1]);
+        for(uint32_t layer=1;info->layers && layer<info->layerCount;++layer) {
+            const auto* meter=reinterpret_cast<const XrCompositionLayerQuad*>(info->layers[layer]);
+            if(!meter){protocolError=true;continue;}
+            if(meter->subImage.swapchain==13) {
+                if(meter->type!=XR_TYPE_COMPOSITION_LAYER_QUAD || meter->space!=4 || meter->eyeVisibility!=XR_EYE_VISIBILITY_BOTH || !eyeImages[3] || imagePhases[3] ||
+                   meter->subImage.imageRect.extent.width!=768 || meter->subImage.imageRect.extent.height!=1024 || !Near(meter->size.width,.6f) || !Near(meter->size.height,.8f) ||
+                   meter->layerFlags!=(XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT|XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT))protocolError=true;
+                lastSeatPose=meter->pose;++seatEnds;continue;
+            }
             if(!meter || meter->type!=XR_TYPE_COMPOSITION_LAYER_QUAD || meter->space!=(fixedPerformance?4:5) ||
                 meter->eyeVisibility!=XR_EYE_VISIBILITY_BOTH || meter->subImage.swapchain!=12 || !eyeImages[2] ||
                 meter->subImage.imageRect.extent.width!=512 || meter->subImage.imageRect.extent.height!=64 ||
@@ -152,8 +168,10 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateSwapchain(XrSession,const XrSwapchainCrea
     // The optional panel is created before eye images. Give it a separate,
     // stable handle instead of making eye identity depend on creation order.
     const bool meter=info->usageFlags==XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+    const bool seat=info->width==768 && info->height==1024;
     if(meter && performanceCreateFail) return XR_ERROR_RUNTIME_FAILURE;
-    const unsigned eye=meter?2:(!eyeImages[0]?0:1);
+    if(seat && seatCreateFail)return XR_ERROR_RUNTIME_FAILURE;
+    const unsigned eye=seat?3:meter?2:(!eyeImages[0]?0:1);
     if(eyeImages[eye] || swapchains>=eyeImages.size()) return XR_ERROR_LIMIT_REACHED;
     if(meter && (info->width!=512 || info->height!=64)) protocolError=true;
     D3D11_TEXTURE2D_DESC d{};d.Width=info->width;d.Height=info->height;d.MipLevels=d.ArraySize=d.SampleDesc.Count=1;
@@ -162,27 +180,29 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateSwapchain(XrSession,const XrSwapchainCrea
     *out=10+eye;++swapchains;return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateSwapchainImages(XrSwapchain chain,uint32_t capacity,uint32_t* count,XrSwapchainImageBaseHeader* out) {
-    if(chain<10 || chain>12 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
+    if(chain<10 || chain>13 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
     *count=1;if(capacity) reinterpret_cast<XrSwapchainImageD3D11KHR*>(out)->texture=eyeImages[chain-10].Get();return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrAcquireSwapchainImage(XrSwapchain chain,const XrSwapchainImageAcquireInfo*,uint32_t* index) {
-    if(chain<10 || chain>12 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
+    if(chain<10 || chain>13 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
     if(phase!=2) protocolError=true;
     if(chain==12) {++performanceAcquires;if(performanceAcquireFail)return XR_ERROR_RUNTIME_FAILURE;}
-    auto& p=imagePhases[chain-10];if(phase!=2 || p) protocolError=true;p=1;*index=0;return XR_SUCCESS;
+    if(chain==13) {++seatAcquires;if(seatAcquireFail)return XR_ERROR_RUNTIME_FAILURE;}
+    auto& p=imagePhases[chain-10];if(phase!=2 || p) protocolError=true;p=1;*index=chain==13 && seatBadIndex?99:0;return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrWaitSwapchainImage(XrSwapchain chain,const XrSwapchainImageWaitInfo*) {
-    if(chain<10 || chain>12 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
+    if(chain<10 || chain>13 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
     auto& p=imagePhases[chain-10];if(p!=1) protocolError=true;
     if(chain==12 && performanceTimeout) return XR_TIMEOUT_EXPIRED;
+    if(chain==13 && seatTimeout)return XR_TIMEOUT_EXPIRED;
     p=2;return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrReleaseSwapchainImage(XrSwapchain chain,const XrSwapchainImageReleaseInfo*) {
-    if(chain<10 || chain>12 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
+    if(chain<10 || chain>13 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
     auto& p=imagePhases[chain-10];if(p!=2) protocolError=true;p=0;return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrDestroySwapchain(XrSwapchain chain) {
-    if(chain<10 || chain>12 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
+    if(chain<10 || chain>13 || !eyeImages[chain-10]) {protocolError=true;return XR_ERROR_HANDLE_INVALID;}
     if(imagePhases[chain-10] || !eyeImages[chain-10]) protocolError=true;
     eyeImages[chain-10].Reset();--swapchains;return XR_SUCCESS;
 }
@@ -502,6 +522,72 @@ int main(int argc,char** argv) {
     if(!fixed.Closed() || instances || sessions || spaces || phase || swapchains || protocolError)return 75;
     std::filesystem::remove(fixedRequest);
     std::filesystem::remove(performanceRequest);
+    // The seat tool has an independent, straight-alpha red panel for both eyes.
+    // It must neither change the projection poses nor depend on the meter layer.
+    D3D11_TEXTURE2D_DESC panelDesc{};panelDesc.Width=768;panelDesc.Height=1024;
+    panelDesc.MipLevels=panelDesc.ArraySize=panelDesc.SampleDesc.Count=1;
+    panelDesc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;panelDesc.BindFlags=D3D11_BIND_SHADER_RESOURCE;
+    std::vector<uint32_t> panelPixels(768*1024,0xeeee6f6b); // Premultiplied GRID2VR #ff7773, alpha 238.
+    D3D11_SUBRESOURCE_DATA panelData{panelPixels.data(),768*4,0};
+    if(FAILED(device->CreateTexture2D(&panelDesc,&panelData,&seatSource)))return 121;
+    for(unsigned test=0;test<7;++test) {
+        Reset();grid2vr::XrSessionProbe seated;
+        seatCreateFail=test==1;seatAcquireFail=test==2;seatTimeout=test==3 || test==4;seatBadIndex=test==5;
+        if(test==6)std::ofstream(performanceRequest)<<"1\n";
+        if(!seated.Initialize(device.Get(),manifest,folder))return 122;
+        seated.ConfigureSeatPanel(SeatTexture,SeatOpening,SeatReady);
+        if(!seated.InitializeImages(DrawNative,2,2) || seatReady || !seated.Poll())return 123;
+        eventState=XR_SESSION_STATE_FOCUSED;headPose={Orientation(pi/2,.3f,-.4f),{1,2,3}};seatShown=true;
+        if(!seated.Poll() || seatReady!=(test!=1) || !seated.BeginFrame(1) ||
+            !seated.FinishFrame(1,true,left.Get(),right.Get()) || projectionEnds!=1 || seated.Failed())return 124;
+        if(test==0 || test==6) {
+            if(lastLayerCount!=(test==6?3u:2u) || seatEnds!=1 || seatAcquires!=1 ||
+                !Near(lastSeatPose.position.x,0) || !Near(lastSeatPose.position.y,2) || !Near(lastSeatPose.position.z,3) ||
+                !Near(lastSeatPose.orientation.y,std::sqrt(.5f)) || !Near(lastSeatPose.orientation.w,std::sqrt(.5f)))return 125;
+            // Read the real WARP render target: straight alpha and sRGB must
+            // reproduce the red accent, rather than darkening it twice.
+            D3D11_TEXTURE2D_DESC readDesc{};eyeImages[3]->GetDesc(&readDesc);
+            readDesc.Usage=D3D11_USAGE_STAGING;readDesc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;readDesc.BindFlags=0;
+            ComPtr<ID3D11Texture2D> readback;
+            if(FAILED(device->CreateTexture2D(&readDesc,nullptr,&readback)))return 126;
+            context->CopyResource(readback.Get(),eyeImages[3].Get());D3D11_MAPPED_SUBRESOURCE pixels{};
+            if(FAILED(context->Map(readback.Get(),0,D3D11_MAP_READ,0,&pixels)))return 127;
+            const auto* rgba=static_cast<const uint8_t*>(pixels.pData);
+            const bool red=std::abs(int(rgba[0])-255)<=1 && std::abs(int(rgba[1])-119)<=1 &&
+                std::abs(int(rgba[2])-115)<=1 && std::abs(int(rgba[3])-238)<=1;
+            context->Unmap(readback.Get(),0);if(!red)return 128;
+            const auto anchor=lastSeatPose;headPose={{0,0,0,1},{2,1,4}};
+            if(!seated.BeginFrame(2) || !seated.FinishFrame(2,true,left.Get(),right.Get()) ||
+                memcmp(&anchor,&lastSeatPose,sizeof(anchor)))return 129;
+            ++seatOpening;
+            if(!seated.BeginFrame(3) || !seated.FinishFrame(3,true,left.Get(),right.Get()) ||
+                !Near(lastSeatPose.position.x,2) || !Near(lastSeatPose.position.y,1) || !Near(lastSeatPose.position.z,3))return 130;
+            seatShown=false;
+            if(!seated.BeginFrame(4) || !seated.FinishFrame(4,true,left.Get(),right.Get()) ||
+                lastLayerCount!=(test==6?2u:1u) || seatEnds!=3)return 131;
+            eventState=XR_SESSION_STATE_VISIBLE;if(!seated.Poll() || seatReady)return 132;
+            eventState=XR_SESSION_STATE_FOCUSED;if(!seated.Poll() || !seatReady)return 133;
+        } else {
+            if(lastLayerCount!=1 || seatEnds || seatAcquires!=(test==1?0u:1u) ||
+                ((test==2 || test==5) && seatReady))return 134;
+            if(test==3) {
+                seatTimeout=false;
+                if(!seated.BeginFrame(2) || !seated.FinishFrame(2,true,left.Get(),right.Get()) ||
+                    lastLayerCount!=2 || seatEnds!=1 || seatAcquires!=1)return 135;
+            }
+            if(test==4) {
+                seated.Shutdown();
+                if(seated.Closed() || seatReady || !instances || !sessions || !swapchains || !imagePhases[3])return 136;
+                seatTimeout=false;
+            }
+        }
+        seated.Shutdown();
+        if(!seated.Closed() || seatReady || instances || sessions || spaces || phase || swapchains || protocolError ||
+            eyeImages[0] || eyeImages[1] || eyeImages[2] || eyeImages[3] ||
+            imagePhases[0] || imagePhases[1] || imagePhases[2] || imagePhases[3])return 137;
+        std::filesystem::remove(performanceRequest);
+    }
+    seatSource.Reset();
     // Approved implicit-layer switches exist only while the instance is created; the
     // player's own values return afterwards. Malformed requests refuse before any change.
     runtimeName="SteamVR/test";expectedRuntimePath=manifest.wstring();
@@ -541,5 +627,5 @@ int main(int argc,char** argv) {
     expectedLayerSwitches.clear();
     std::filesystem::remove(layerRequest);
     SetEnvironmentVariableW(L"DISABLE_XR_APILAYER_NOVENDOR_OBSMirror",nullptr);
-    puts("Game-device/frame identity, stereo/menu transitions, following/fixed performance display, recenter, failures and cleanup pass.");
+    puts("Game-device/frame identity, stereo/menu transitions, performance and red seat layers, focus, timeout recovery, failures and cleanup pass.");
 }

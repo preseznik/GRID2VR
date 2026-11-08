@@ -1,9 +1,11 @@
 #include "dlc_cockpit.h"
+#include "seat_camera_host.h"
 #include <windows.h>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <thread>
 
 using namespace grid2vr::dlccockpit;
 #define CHECK(value) do {if(!(value))throw std::runtime_error("Failed line "+std::to_string(__LINE__)+": " #value);} while(false)
@@ -72,6 +74,34 @@ void RequestTests() {
         CHECK(!ParseRequest(invalid,request));CHECK(request.count==0);
     }
     CHECK(!ParseRequest(std::string(4097,'x'),request));
+    CHECK(ParseRequest("dlc-cockpit-desktop-v1 head-only 10\n240 .3611 1.0917 -.2968\n",request));
+    CHECK(request.desktop && request.fovOffset==10 && !request.hideDriver);
+    for(bool runtime:{false,true})for(bool xr:{false,true})for(bool projection:{false,true})
+        CHECK(ValidSession(request,runtime,xr,projection)==(runtime && !xr && !projection));
+    CHECK(ParseRequest("dlc-cockpit-v1 head-only\n240 .3611 1.0917 -.2968\n",request));
+    CHECK(!request.desktop && request.fovOffset==0);
+    for(bool runtime:{false,true})for(bool xr:{false,true})for(bool projection:{false,true})
+        CHECK(ValidSession(request,runtime,xr,projection)==(runtime && xr && projection));
+    for(const auto* value:{"31","-31","1.5","nan","10 extra"})
+        CHECK(!ParseRequest(std::string("dlc-cockpit-desktop-v1 head-only ")+value+"\n240 .3611 1.0917 -.2968\n",request));
+}
+
+void DesktopFovTests() {
+    constexpr uint32_t table=0x1109ef0;
+    for(size_t car=0;car<cars.size();++car)for(bool hide:{false,true})for(int fov:{-30,10,30}) {
+        auto forward=ObjectFor(car,0,table),reverse=ObjectFor(car,1,table),baseForward=forward,baseReverse=reverse;
+        const Row row{car,cars[car].seat};
+        CHECK(PatchPair(baseForward,baseReverse,table,row,hide));
+        CHECK(PatchPair(forward,reverse,table,row,hide,fov));
+        CHECK(PatchedPair(forward,reverse,table,row,hide,fov));
+        CHECK(FloatAt(forward,0x14)==cars[car].original[0].values[19]+fov);
+        CHECK(FloatAt(reverse,0x14)==cars[car].original[1].values[19]+fov);
+        for(size_t byte=0;byte<objectBytes;++byte)if(byte<0x14 || byte>=0x18) {
+            CHECK(forward[byte]==baseForward[byte]);CHECK(reverse[byte]==baseReverse[byte]);
+        }
+        forward=ObjectFor(car,0,table);reverse=ObjectFor(car,1,table);const auto a=forward,b=reverse;
+        CHECK(!PatchPair(forward,reverse,table,row,hide,31));CHECK(forward==a && reverse==b);
+    }
 }
 template<class T> void Put(uint8_t* bytes,size_t offset,T value) {std::memcpy(bytes+offset,&value,sizeof(value));}
 uint32_t Address(const void* p) {return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(p));}
@@ -108,6 +138,9 @@ struct alignas(16) LiveFixture {
     alignas(16) std::array<uint8_t,0x20> group{};
     alignas(16) std::array<uint8_t,0x44> local{};
     alignas(16) std::array<uint8_t,4> ai{};
+    alignas(16) std::array<uint8_t,0x14> root{};
+    alignas(16) std::array<uint8_t,0x1500> game{};
+    alignas(16) std::array<uint8_t,0x400> controller{};
     std::array<uint32_t,6> head{},node{};
     std::array<uint32_t,2> controls{},views{};
     std::array<uint32_t,1> vehicles{};
@@ -120,6 +153,10 @@ struct alignas(16) LiveFixture {
     }
     void Load(size_t index) {
         owner={};manager={};parent={};car={};replay={};group={};local={};ai={};
+        root={};game={};controller={};
+        Put(image,0xdef810,Address(root.data()));Put(root.data(),0x10,Address(game.data()));
+        Put(game.data(),0x14fc,Address(controller.data()));Put(controller.data(),0x33c,Address(manager.data()));
+        Put(manager.data(),0x748,Address(front.data()));
         Put(image,0xe61010,0u);Put(image,0xe5917c,2u);
         Put(image,0xd96808,Address(parent.data()));Put(image,0xdaa424,Address(parent.data()));
         Put(image,0xdef814,Address(owner.data()));
@@ -143,6 +180,88 @@ struct alignas(16) LiveFixture {
         Original(index);
     }
 };
+void SeatHostTests(uint8_t* image) {
+    namespace seat=grid2vr::seat;
+    LiveFixture graph(image);const auto table=graph.base+mountedTableRva;
+    Request dlc{};dlc.count=cars.size();
+    for(size_t i=0;i<cars.size();++i)dlc.rows[i]={i,cars[i].seat};
+    TestSetup(Address(image),dlc,true);
+    seat::SessionRequest request{};request.count=seat::CarCount;request.positions=true;
+    for(size_t car=0;car<seat::CarCount;++car)request.rows[car]={car,{3,-4,5}};
+    const auto load=[&](size_t car) {
+        graph.Load(0);std::memcpy(graph.owner.data()+0x564,seat::CarCode(car),4);
+        seat::CameraPair expected;CHECK(seat::ExpectedPair(request.Applied(car),table,expected));
+        graph.front=expected[0];graph.rear=expected[1];
+        Put(graph.front.data(),0x60,Address(graph.car.data())+0x12c);Put(graph.rear.data(),0x60,Address(graph.car.data())+0x12c);
+        graph.front[poseCacheValidOffset]=graph.rear[poseCacheValidOffset]=1;
+    };
+    for(bool desktop:{false,true}) {
+        request.desktop=desktop;request.fov=desktop?10:0;
+        load(0);seat::CameraHost host;CHECK(host.TestInitialize(Address(image),request));
+        const std::vector<uint8_t> codeBefore(image,image+imageBytes);
+        for(size_t car=0;car<seat::CarCount;++car) {
+            load(car);const auto a=graph.front,b=graph.rear;auto desired=request.Applied(car);++desired.position.height;
+            if(desktop)++desired.fov;
+            unsigned edits{};
+            CHECK(host.Update([&](size_t selected,bool changed){CHECK(selected==car && changed);++edits;return desired;}));
+            CHECK(edits==1 && graph.front[poseCacheValidOffset]==0 && graph.rear[poseCacheValidOffset]==0);
+            seat::CameraPair expected;CHECK(seat::ExpectedPair(desired,table,expected));
+            CHECK(seat::Matches(graph.front,expected[0],desired,0,table) && seat::Matches(graph.rear,expected[1],desired,1,table));
+            for(size_t byte=0;byte<objectBytes;++byte)if(byte!=poseCacheValidOffset &&
+                !(byte>=0x2230 && byte<0x223c) && !(byte>=0x14 && byte<0x18)) {
+                CHECK(graph.front[byte]==a[byte] && graph.rear[byte]==b[byte]);
+            }
+            graph.front[poseCacheValidOffset]=graph.rear[poseCacheValidOffset]=1;
+            CHECK(host.Update([&](size_t selected,bool changed){CHECK(selected==car && !changed);return desired;}));
+            CHECK(graph.front[poseCacheValidOffset]==1 && graph.rear[poseCacheValidOffset]==1);
+            // Initial DLC calibration must not overwrite a live seat edit.
+            if(car>=seat::baseCars.size()) {const auto front=graph.front,rear=graph.rear;Present();CHECK(graph.front==front && graph.rear==rear);}
+        }
+        // A restart can reload the launch values into the same two objects.
+        // Recognize only that complete admitted pair and reselect the car.
+        load(seat::CarCount-1);
+        CHECK(host.Update([&](size_t car,bool changed){CHECK(car==seat::CarCount-1 && changed);auto next=request.Applied(car);next.position.height+=2;return next;}));
+        // Only data objects changed; relocated native code remains byte-for-byte.
+        CHECK(std::equal(codeBefore.begin(),codeBefore.end(),image));host.Stop();
+        const auto initial=request.Applied(seat::CarCount-1);seat::CameraPair expected;
+        CHECK(seat::ExpectedPair(initial,table,expected));
+        CHECK(seat::Matches(graph.front,expected[0],initial,0,table) && seat::Matches(graph.rear,expected[1],initial,1,table));
+    }
+    load(0);seat::CameraHost host;CHECK(host.TestInitialize(Address(image),request));
+    unsigned edits{};
+    const auto edit=[&](size_t car,bool){++edits;auto next=request.Applied(car);++next.position.height;return next;};
+    const auto refused=[&] {const auto a=graph.front,b=graph.rear;const auto calls=edits;CHECK(!host.Update(edit));CHECK(edits==calls && graph.front==a && graph.rear==b);};
+    Put(graph.controller.data(),0x392,uint8_t(1));refused();
+    load(0);Put(graph.controller.data(),0x393,uint8_t(1));refused();
+    load(0);Put(graph.controller.data(),0x33c,Address(graph.manager.data())+16);refused();
+    load(0);Put(graph.manager.data(),0x748,Address(graph.front.data())+16);refused();
+    load(0);Put(graph.manager.data(),0x759,uint8_t(2));refused();
+    load(0);Put(graph.manager.data(),0x759,uint8_t(1));Put(graph.front.data(),0x70,Address(graph.front.data())+16);refused();
+    load(0);Put(graph.manager.data(),0x759,uint8_t(1));Put(graph.front.data(),0x70,Address(graph.rear.data()));CHECK(host.Update(edit));
+    load(0);Put(graph.car.data(),0xb0,1u);refused();
+    load(0);Put(graph.front.data(),0x60,Address(graph.car.data())+0x130);refused();
+    load(0);graph.rear[0x2233]^=0x40;refused();
+    load(0);graph.rear[poseCacheValidOffset]=2;refused();
+    load(0);std::thread other([&]{refused();});other.join();
+    // Revalidate after the callback: a car/selection change cannot receive even
+    // the first camera write from the old graph.
+    load(0);const auto a=graph.front,b=graph.rear;
+    CHECK(!host.Update([&](size_t car,bool){Put(graph.manager.data(),0x748,Address(graph.front.data())+16);return request.Applied(car);}));
+    CHECK(graph.front==a && graph.rear==b);host.Stop();
+    load(0);image[0x653b00]^=1;seat::CameraHost invalid;
+    CHECK(!invalid.TestInitialize(Address(image),request));image[0x653b00]^=1;
+    // Normal -> Custom Event is mode 0, never a direct benchmark launch. It
+    // requires the separate seat-only opt-in and still validates both views.
+    load(0);Put(image,0xe5917c,0u);TestSetup(Address(image),dlc,true);
+    seat::CameraHost unmarked;CHECK(unmarked.TestInitialize(Address(image),request));
+    CHECK(!unmarked.Update(edit));unmarked.Stop();
+    TestSetup(Address(image),dlc,true,true);
+    seat::CameraHost normal;CHECK(normal.TestInitialize(Address(image),request));
+    CHECK(normal.Update(edit));normal.Stop();
+    // Initial DLC calibration in Normal uses that same opted-in owner graph.
+    graph.Load(0);Put(image,0xe5917c,0u);TestSetup(Address(image),dlc,true,true);
+    Present();CHECK(TestCounts(0)[0]==1 && TestCounts(0)[1]==0);Stop();
+}
 void LiveTests(uint8_t* image) {
     static_assert(sizeof(void*)==4,"Live graph test must use the Win32 target");
     LiveFixture graph(image);Request request{};request.count=cars.size();
@@ -210,10 +329,15 @@ void LiveTests(uint8_t* image) {
     Put(graph.parent.data(),0,0u);unchanged();
     graph.Load(0);Stop();unchanged();
     graph.Load(0);image[0x653b00]^=1;TestSetup(Address(image),request);unchanged();image[0x653b00]^=1;
+    graph.Load(0);request.desktop=true;request.fovOffset=10;TestSetup(Address(image),request);
+    Present();CHECK(TestCounts(0)[0]==1);
+    CHECK(FloatAt(graph.front,0x14)==cars[0].original[0].values[19]+10);
+    CHECK(FloatAt(graph.rear,0x14)==cars[0].original[1].values[19]+10);
+    Present();CHECK(TestCounts(0)[0]==1 && TestCounts(0)[1]==0);Stop();
 }
 int main(int argc,char** argv) {
     try {
-        CHECK(argc==2);RequestTests();PairTests();auto* image=Image(argv[1]);LiveTests(image);VirtualFree(image,0,MEM_RELEASE);
+        CHECK(argc==2);RequestTests();PairTests();DesktopFovTests();auto* image=Image(argv[1]);LiveTests(image);SeatHostTests(image);VirtualFree(image,0,MEM_RELEASE);
         std::cout<<"25 car pairs, 32 relocated code guards, one-time pose cache refresh, unchanged executable bytes, readiness, live ownership, AI/provider refusal and reloaded graph tests passed.\n";return 0;
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}
 }

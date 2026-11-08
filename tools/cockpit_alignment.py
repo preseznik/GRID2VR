@@ -14,7 +14,9 @@ import struct
 from session_config import plain_path
 
 
-def adjust(source, car, height=0, forward=0, right=0):
+def adjust(source, car, height=0, forward=0, right=0, fov_offset=0):
+    if type(fov_offset) is not int or not -30 <= fov_offset <= 30:
+        raise ValueError('Desktop FOV adjustment must be whole degrees within -30..30')
     for value in (height, forward, right):
         if type(value) is not int or not -50 <= value <= 50:
             raise ValueError('Seat adjustments must be whole centimetres within -50..50')
@@ -79,6 +81,14 @@ def adjust(source, car, height=0, forward=0, right=0):
                 strings.append(value_text)
                 attributes[attrs(node)[axis]][1]=len(strings)-1
                 changed+=1
+        if fov_offset:
+            fields=[i for i in children(views[0]) if get(i,'name')=='fov' and get(i,'type')=='scalar']
+            if len(fields)!=1: raise ValueError('Missing cockpit FOV')
+            field=fields[0]; value=float(get(field,'value'))+fov_offset
+            if not math.isfinite(value) or not 15 <= value <= 140: raise ValueError('Desktop cockpit FOV is outside 15..140 degrees')
+            strings.append(f'{value:.4f}')
+            attributes[attrs(field)['value']][1]=len(strings)-1
+            changed+=1
     if not changed: return source
     pool=bytearray();locations=[]
     for value in strings:
@@ -95,10 +105,11 @@ if __name__=='__main__':
     p.add_argument('--source',type=Path,required=True);p.add_argument('--sha256',required=True)
     p.add_argument('--car',required=True)
     for axis in ('height','forward','right'): p.add_argument('--'+axis,type=int,default=0)
+    p.add_argument('--fov-offset',type=int,default=0)
     p.add_argument('--output',type=Path)
     a=p.parse_args();source=plain_path(a.source).read_bytes()
     if hashlib.sha256(source).hexdigest()!=a.sha256.lower(): raise ValueError('Approved camera changed')
-    result=adjust(source,a.car,a.height,a.forward,a.right)
+    result=adjust(source,a.car,a.height,a.forward,a.right,a.fov_offset)
     if a.output:
         target=plain_path(a.output)
         with target.open('xb') as f: f.write(result)

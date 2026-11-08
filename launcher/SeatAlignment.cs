@@ -14,11 +14,15 @@ internal sealed record SeatOffset(int Height = 0, int Forward = 0, int Right = 0
 internal sealed class SeatAlignment
 {
     public int Version { get; set; } = 1;
+    public bool ApplyToDesktop { get; set; }
+    public int DesktopFov { get; set; }
+    public bool InGameSeat { get; set; } = true;
     public Dictionary<string, SeatOffset> Cars { get; set; } = new(StringComparer.Ordinal);
     internal static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
     public void Validate()
     {
         if (Version != 1 || Cars is null || Cars.Count > 96) throw new IOException("Invalid cockpit alignments.");
+        if (DesktopFov is < -30 or > 30) throw new IOException("Desktop field of view must be within 30 degrees of the car's original view.");
         foreach (var (car, offset) in Cars)
         {
             if (!Regex.IsMatch(car, @"\A[a-z0-9]{3}\z") || offset is null) throw new IOException("Invalid cockpit car.");
@@ -48,6 +52,9 @@ internal sealed class SeatAlignmentPanel : UserControl
 {
     private readonly ComboBox car = new() { Name = "SeatCar", Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ValueSlider height = new("Seat height (cm)", -50, 50, 0), forward = new("Seat forward (cm)", -50, 50, 0), right = new("Seat right (cm)", -50, 50, 0);
+    private readonly CheckBox desktop = new() { Name = "DesktopSeatPosition", Text = "Use seat positions in Desktop", AutoSize = true };
+    private readonly ValueSlider fov = new("Desktop cockpit FOV", -30, 30, 0, suffix: "°");
+    private readonly CheckBox inGame = new() { Name = "InGameSeatAdjustment", Text = "In-game seat adjustment (Tab)", Checked = true, AutoSize = true };
     private SeatAlignment settings = new();
     private string? selected;
     private bool loading;
@@ -64,24 +71,32 @@ internal sealed class SeatAlignmentPanel : UserControl
         var reset = new Button { Text = "Reset this car's alignment", Name = "ResetSeat", AutoSize = true };
         reset.Click += (_, _) => { height.Value = forward.Value = right.Value = 0; Store(); };
         layout.Controls.Add(reset);
-        var hint = new Label { AutoSize = true, Text = "Negative height lowers the view. Positive values move up, forward and right. Saved separately for each car; Save settings or launch to apply on the next session, including Normal mode." };
+        layout.Controls.Add(desktop);
+        Label("Cockpit field of view (Desktop)"); layout.Controls.Add(fov);
+        layout.Controls.Add(inGame);
+        var hint = new Label { AutoSize = true, Text = "Positions are saved per car. Negative height lowers the view; positive values move up, forward and right. Desktop FOV applies to every car: negative is narrower, positive is wider, and 0° keeps the original FOV. It works independently of the Desktop seat checkbox. VR keeps the headset's FOV. Save settings or launch to apply on the next session. In the cockpit, Tab opens the seat panel; arrows move, Shift moves sideways, Enter saves and Esc cancels. Page Up/Down adjusts Desktop FOV. Enable Desktop seat positions to move the seat in game." };
         layout.Controls.Add(hint);
         layout.SizeChanged += (_, _) => hint.MaximumSize = new(Math.Max(1, layout.Width - 12), 0);
         car.SelectedIndexChanged += (_, _) => { if (loading) return; Store(); selected = (car.SelectedItem as ContentItem)?.Id; ShowOffset(); };
         foreach (var slider in new[] { height, forward, right }) slider.ValueChanged += (_, _) => Store();
+        desktop.CheckedChanged += (_, _) => Store(); fov.ValueChanged += (_, _) => Store();
+        inGame.CheckedChanged += (_, _) => Store();
         Controls.Add(layout);
     }
     public void LoadCars(ContentItem[] cars, string current, SeatAlignment value)
     {
         cars = cars.Where(c => c.CockpitAvailable).ToArray();
         loading = true; settings = value; selected = null;
-        try { car.Items.Clear(); car.Items.AddRange(cars); car.SelectedItem = cars.FirstOrDefault(c => c.Id == current) ?? cars.FirstOrDefault(); selected = (car.SelectedItem as ContentItem)?.Id; }
+        try { desktop.Checked = settings.ApplyToDesktop; fov.Value = settings.DesktopFov; inGame.Checked = settings.InGameSeat; car.Items.Clear(); car.Items.AddRange(cars); car.SelectedItem = cars.FirstOrDefault(c => c.Id == current) ?? cars.FirstOrDefault(); selected = (car.SelectedItem as ContentItem)?.Id; }
         finally { loading = false; }
         ShowOffset();
     }
     private void Store()
     {
-        if (loading || selected is null) return;
+        if (loading) return;
+        settings.ApplyToDesktop = desktop.Checked; settings.DesktopFov = fov.Value;
+        settings.InGameSeat = inGame.Checked;
+        if (selected is null) return;
         var value = new SeatOffset(height.Value, forward.Value, right.Value);
         if (value == new SeatOffset()) settings.Cars.Remove(selected); else settings.Cars[selected] = value;
     }
@@ -92,4 +107,5 @@ internal sealed class SeatAlignmentPanel : UserControl
         finally { loading = false; }
     }
     public void Save(string root) { Store(); settings.Save(root); }
+    public void Reload(string root) => LoadCars(car.Items.Cast<ContentItem>().ToArray(), selected ?? "", SeatAlignment.Load(root));
 }

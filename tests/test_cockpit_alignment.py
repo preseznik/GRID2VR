@@ -78,5 +78,24 @@ class AlignmentTests(unittest.TestCase):
         self.tree[0][0][0].set('y','1.05');self.tree[0].append(copy.deepcopy(self.tree[0][0]))
         with self.assertRaises(ValueError): adjust(encode(self.tree),'s20',height=1)
 
+    def test_desktop_fov_changes_only_both_cockpit_fov_values(self):
+        for ident, value in (('bonnet', '60'), ('bonnet_reverse', '65')):
+            view=self.tree.find(f".//View[@ident='{ident}']")
+            field=view.find("Parameter[@name='fov']")
+            if field is None: field=ET.SubElement(view,'Parameter')
+            field.attrib.update(name='fov',type='scalar',value=value)
+        source=encode(self.tree)
+        for delta in (-30, 10, 30):
+            actual=decode(adjust(source,'s20',fov_offset=delta))
+            expected=copy.deepcopy(decode(source))
+            for ident, value in (('bonnet', 60), ('bonnet_reverse', 65)):
+                expected.find(f".//View[@ident='{ident}']/Parameter[@name='fov']").set('value',f'{value+delta:.4f}')
+            self.assertEqual(ET.tostring(actual),ET.tostring(expected))
+        self.assertEqual(adjust(source,'s20',fov_offset=0),source)
+        for delta in (-31,31,1.5,True,None):
+            with self.assertRaises(ValueError): adjust(source,'s20',fov_offset=delta)
+        self.tree[0][0].find("Parameter[@name='fov']").set('value','nan')
+        with self.assertRaises(ValueError): adjust(encode(self.tree),'s20',fov_offset=10)
+
 
 if __name__=='__main__': unittest.main()

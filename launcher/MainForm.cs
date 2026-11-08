@@ -172,7 +172,7 @@ internal sealed partial class MainForm : LauncherForm
         Field(graphics, "Driver visibility", cockpitDriver);
         graphics.Controls.Add(cockpitExposure);
         graphics.Controls.Add(TextLabel("Keep the track's exposure ceiling in cockpit view so the dark interior cannot over-brighten the outside. Exposure still adapts below that limit. Applies on the next VR launch."));
-        vrCockpit.CheckedChanged += (_, _) => seatAlignment.Enabled = cockpitExposure.Enabled = cockpitDriver.Enabled = vrCockpit.Enabled && vrCockpit.Checked;
+        vrCockpit.CheckedChanged += (_, _) => cockpitExposure.Enabled = cockpitDriver.Enabled = vrCockpit.Enabled && vrCockpit.Checked;
         graphics.Controls.Add(TextLabel("Calibrated cars start VR in the cockpit. Use your camera-cycle control to change views. DLC cars without calibration keep their original cameras. Applies to the next VR launch, including cars chosen through the game's menus."));
         graphics.Controls.Add(HelpLink("VR cockpit"));
         graphics.Controls.Add(TextLabel("Adjust individual cars in Controls → Seat."));
@@ -651,7 +651,9 @@ internal sealed partial class MainForm : LauncherForm
             if (IsDisposed) return;
             if (ReferenceEquals(polledWorker, launchWorker)) UpdateLaunchProgress(data);
             var session = Child(data, "session"); var last = Child(data, "last"); var status = Child(data, "status");
+            var wasActive = active;
             pending = Flag(data, "pending"); active = Flag(session, "workerAlive") || (Flag(last, "workerAlive") && TextValue(last, "state") == "starting");
+            if (wasActive && !active) seatAlignment.Reload(client.Root);
             if (active && TextValue(last, "mode") == "VR" && Child(last, "headset").ValueKind == JsonValueKind.Object && TextValue(last, "runtime") == runtime.SelectedItem as string) {
                 headsetResolution = HeadsetResolution.Parse(Child(last, "headset").GetRawText(), TextValue(last, "runtime"));
                 UpdateResolutionLabels();
@@ -714,7 +716,7 @@ internal sealed partial class MainForm : LauncherForm
         performanceFollowView.Enabled = performanceDisplay.Enabled && performanceDisplay.Checked;
         cockpitDriver.Enabled = vrCockpit.Enabled && vrCockpit.Checked;
         cockpitExposure.Enabled = cockpitDriver.Enabled;
-        seatAlignment.Enabled = cockpitDriver.Enabled;
+        seatAlignment.Enabled = loaded && idle && !capturingRecenter;
         stop.Enabled = known && active && headset && !stopped && !busy;
         end.Enabled = known && active && pending && !busy;
         refreshHeadset.Enabled = loaded && !active && !pending && !busy && !capturingRecenter && !queryingHeadset;

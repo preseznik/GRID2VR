@@ -49,6 +49,21 @@ foreach($call in $diagnosticCalls) {
 }
 $defaultFlag=@($diagnosticCalls | ForEach-Object { $_.KeyValuePairs } | Where-Object { $_.Item1.Extent.Text -eq 'DefaultOpenXrRuntime' })
 if($defaultFlag.Count -ne 1) { throw 'Default OpenXR selection is not forwarded to the rendering diagnostic.' }
+$desktopCall=@($diagnosticCalls | Where-Object { @($_.KeyValuePairs | ForEach-Object { $_.Item1.Extent.Text }) -contains 'PlayerControlOnly' })
+if($desktopCall.Count -ne 1) { throw 'Missing Desktop diagnostic call.' }
+foreach($name in @('CockpitMode','DesktopSeatPosition','DesktopCockpitFov')) {
+    $entry=@($desktopCall[0].KeyValuePairs | Where-Object { $_.Item1.Extent.Text -eq $name })
+    if($entry.Count -ne 1 -or $entry[0].Item2.Extent.Text -ne ('$'+$name) -or $name -notin $forwarded) { throw "Desktop camera option lost in session chain: $name" }
+}
+$seatHandoffNode=$probeAst.Find({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$startInCockpit'},$true)
+if(!$seatHandoffNode) { throw 'Missing cockpit startup-view decision.' }
+$seatHandoff=[scriptblock]::Create($seatHandoffNode.Extent.Text)
+foreach($case in @(@('Preflight',$true,$false),@('Desktop',$true,$false),@('Preflight',$false,$true),@('Headset',$false,$true))) {
+    & { $CockpitAiDiagnostic=$false;$UntilExit=$true;$Mode=$case[0];$PlayerControlOnly=$case[1];$selectedSession=@{control='human'}
+        . $seatHandoff
+        if($startInCockpit -ne $case[2]) { throw 'Desktop forced a VR startup camera, or VR lost its startup camera.' }
+    }
+}
 $defaultExpression=[scriptblock]::Create($defaultFlag[0].Item2.Extent.Text)
 foreach($case in @(@('Headset','Default',$true),@('Desktop','Default',$false),@('Headset','VDXR',$false),@('Headset','SteamVR',$false))) {
     & { $Mode=$case[0];$XrRuntime=$case[1]
@@ -361,6 +376,33 @@ try {
     if(!$rejected) { throw 'Online launch accepted a selected session.' }
 
     $normalRequest=Find-TestStatement $diagnostic "'normal-launch.request'"
+    $seatNode=$diagnostic.Find({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Extent.Text.Contains('$seatSession=New-SeatSessionRequest')},$false)
+    if(!$seatNode) { throw 'Missing in-game seat session preparation.' }
+    $seatGuard=[scriptblock]::Create($seatNode.Clauses[0].Item1.Extent.Text)
+    foreach($online in @($false,$true)) {
+        foreach($runtime in @($false,$true)) {
+            foreach($until in @($false,$true)) {
+                $OnlineLaunch=$online;$RuntimeSession=$runtime;$UntilExit=$until;$CockpitMode='HeadOnly'
+                if([bool](& $seatGuard) -ne (!$online -and $runtime -and $until)) { throw 'Seat tool leaked into Online or a bounded/non-runtime run.' }
+            }
+        }
+    }
+    $RuntimeSession=$true;$UntilExit=$true;$OnlineLaunch=$false;$CockpitMode='Off'
+    if(& $seatGuard) { throw 'Original-camera mode armed the seat tool.' }
+    # Find the inner Normal-mode statement, without invoking deployment/helpers.
+    $inner=$seatNode.Find({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Extent.Text.StartsWith('if($inGameSeatRequested -and $NormalLaunch)')},$true)
+    if(!$inner) { throw 'Normal seat mode has no separate marker gate.' }
+    $nativeSeat=[scriptblock]::Create($inner.Extent.Text)
+    $run=Join-Path $fixture 'seat-native-entry';[IO.Directory]::CreateDirectory($run) | Out-Null
+    $proxy=Join-Path $run 'fixture.dll';[IO.File]::WriteAllText($proxy,'grid2vr-seat-menu-v1 grid2vr-seat-native-menus-v1')
+    $marker=Join-Path $run 'seat-native-menus.request'
+    $inGameSeatRequested=$true;$NormalLaunch=$false;. $nativeSeat
+    if([IO.File]::Exists($marker)) { throw 'Direct launch received a native-menu seat override.' }
+    $NormalLaunch=$true;. $nativeSeat
+    if([IO.File]::ReadAllText($marker) -cne "grid2vr-seat-native-menus-v1`n") { throw 'Normal seat protocol changed.' }
+    [IO.File]::Delete($marker);[IO.File]::WriteAllText($proxy,'grid2vr-seat-menu-v1')
+    $rejected=$false;try{. $nativeSeat}catch{$rejected=$true}
+    if(!$rejected -or [IO.File]::Exists($marker)) { throw 'Normal seat mode accepted an old renderer.' }
     $raceRequest=Find-TestStatement $diagnostic "'race-launch.request'"
     $replayRequest=Find-TestStatement $diagnostic "'flat-replays.request'"
     $garageRequest=Find-TestStatement $diagnostic "'flat-garage.request'"

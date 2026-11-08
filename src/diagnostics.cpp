@@ -22,6 +22,7 @@
 #include "focus_cockpit.h"
 #include "sponsor_depth.h"
 #include "dlc_cockpit.h"
+#include "seat_runtime.h"
 #include "replay_profile.h"
 #include "bounded_log.h"
 #include "flicker_capture.h"
@@ -209,7 +210,7 @@ const char* BeforeGameExit() {
     }
     runtimeStopped=true;
     frontendvideo::Stop();
-    playercontrol::Stop();backgroundplay::Stop();ffbobserver::Stop();flashbackobserver::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();dlccockpit::Stop();cockpitanimation::Stop();opponentlod::runtime::Stop();
+    playercontrol::Stop();backgroundplay::Stop();ffbobserver::Stop();flashbackobserver::Stop();drivingcontrols::Stop();chaseobserver::Stop();chasecamera::Stop();seat::Stop();dlccockpit::Stop();cockpitanimation::Stop();opponentlod::runtime::Stop();
     if (!flatMenuUi.Reset()) return "flat_menu_not_restored";
 #ifdef GRID2VR_ENABLE_XR_SESSION
     recenter::Enable(false);
@@ -428,6 +429,7 @@ void InitializeXr(ID3D11Device* device) {
     const bool closeReady=EnsureExitHandler() && processexit::AttachWindow(diagnosticWindow);
     Log("session close handler attached=%u",closeReady);
     bool initialized=closeReady && !std::filesystem::exists(output/L"recorded-views.request") && xrSession.Initialize(device,runtime,output);
+    if(initialized && seat::Requested())xrSession.ConfigureSeatPanel(seat::Texture,seat::Opening,seat::XrPanelReady);
     if (initialized && xrProjection) {
         unsigned width{},height{};std::ifstream settings(output/L"xr-projection.request");
         settings>>width>>height>>xrUnitsPerMetre;const bool parsed=bool(settings);settings>>std::ws;
@@ -764,6 +766,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     bool renderWindowReady=nativeWindowReady || normalXrStable;
     backgroundplay::ObserveWindow(windowState);
     dlccockpit::Present();
+    if(runtimeSession)seat::Present(chain,realDraw);
     LARGE_INTEGER now{},frequency{}; QueryPerformanceCounter(&now); QueryPerformanceFrequency(&frequency);
     static LONGLONG previous{};
     const double ms=previous ? 1000.0*(now.QuadPart-previous)/frequency.QuadPart : 0;
@@ -1855,6 +1858,7 @@ bool Active() {
 #endif
             gameBase=reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
             if(runtimeSession)dlccockpit::Prepare(gameBase,output);
+            if(runtimeSession)seat::Prepare(gameBase,output,Log);
             if(runtimeSession) {chaseobserver::Prepare(gameBase,output);chasecamera::Prepare(gameBase,output);}
             engine::ObserveFaults(gameBase,output);
             Log("GRID2VR diagnostic supported AVX host; engine replay and game-device OpenXR probe separately opt-in; no headset image submission");

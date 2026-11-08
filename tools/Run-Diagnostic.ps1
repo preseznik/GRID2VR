@@ -51,6 +51,8 @@ param(
     [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
+    [ValidateSet(0,1)][int]$DesktopSeatPosition=0,
+    [ValidateRange(-30,30)][int]$DesktopCockpitFov=0,
     [switch]$NativeCockpitExposure,
     [switch]$NativeImpactEffect,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
@@ -227,16 +229,18 @@ if($CockpitS2000 -ne 'Off') {
 $cockpitAssets=@()
 $dlcCockpit=$null
 $cockpitModeRequested=$CockpitMode
+$desktopCockpit=$RuntimeSession -and $UntilExit -and $PlayerControlOnly -and !$XrProjection -and !$XrSessionProbe -and ($DesktopSeatPosition -or $DesktopCockpitFov)
+if(($DesktopSeatPosition -or $DesktopCockpitFov) -and (!$desktopCockpit -or $CockpitMode -eq 'Off')) { throw 'Desktop seat/FOV requires a non-XR Desktop user session and cockpit camera.' }
 if($selectedSession.carContent.dlc -and !$selectedSession.carContent.cockpitAvailable) { $CockpitMode='Off' }
 if($CockpitMode -ne 'Off') {
-    if(!$RuntimeSession -or (!$ExposureAudit -and (!$UntilExit -or !$XrProjection)) -or $PlayerControlOnly -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off') { throw 'Launcher cockpit assets require a VR user session or bounded exposure audit.' }
+    if(!$RuntimeSession -or (!$desktopCockpit -and !$ExposureAudit -and (!$UntilExit -or !$XrProjection)) -or ($PlayerControlOnly -and !$desktopCockpit) -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off') { throw 'Cockpit assets require a VR user session, explicit Desktop seat/FOV or bounded exposure audit.' }
     if($NormalLaunch -or $selectedSession.carContent.dlc) {
         . (Join-Path $PSScriptRoot 'Dlc-Cockpit.ps1')
-        $dlcCockpit=Get-DlcCockpitRequest $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch)
-        if($dlcCockpit.cars.Count -and (!$UntilExit -or !$XrProjection)) { throw 'DLC cockpit cameras require a VR user session.' }
+        $dlcCockpit=Get-DlcCockpitRequest $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) -Desktop:([bool]$PlayerControlOnly) -ApplySeatPosition:(!$PlayerControlOnly -or [bool]$DesktopSeatPosition) -FovOffset:$DesktopCockpitFov
+        if($dlcCockpit.cars.Count -and (!$UntilExit -or (!$XrProjection -and !$desktopCockpit))) { throw 'DLC cockpit cameras require a VR or explicit Desktop user session.' }
     }
     $startInCockpit=$UntilExit -and $XrProjection -and $selectedSession.control -eq 'human'
-    $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) $startInCockpit ([bool]$selectedSession.carContent.dlc))
+    $cockpitAssets=@(Get-CockpitAssetSelection $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) $startInCockpit ([bool]$selectedSession.carContent.dlc) -ApplySeatPosition:(!$PlayerControlOnly -or [bool]$DesktopSeatPosition) -FovOffset:$DesktopCockpitFov -IncludeIntro:(!$PlayerControlOnly))
 }
 if ($PlayerControlProbe -ne 'Off' -and (!$RuntimeSession -or !$selectedSession -or $selectedSession.selection.mode -ne 'attract' -or (!$RecordedViewsFile -and !$PlayerControlOnly) -or $XrSessionProbe -or $XrProjection)) { throw 'Player input probes require a selected solo attract session and the desktop runtime.' }
 if ($selectedSession -and $selectedSession.control -eq 'human' -and (!$RuntimeSession -or $PlayerControlProbe -ne 'Off')) { throw 'Human practice uses the guarded runtime and native controls, with the old input probe off.' }
@@ -316,8 +320,19 @@ if($CockpitTextures -ne 'Off') {
 }
 $run=if($RunLogDirectory){Get-Grid2LogDirectory $root $RunLogDirectory}else{New-Grid2LogDirectory $root}
 if($headsetResolution) { Assert-HeadsetResolutionProxy $proxy }
-if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy }
+if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy ([bool]$PlayerControlOnly) }
 if(Test-Path -LiteralPath (Join-Path $run 'session.json')) { throw 'Diagnostic run already exists; retained its logs.' }
+$inGameSeatRequested=$false
+if($RuntimeSession -and $UntilExit -and $CockpitMode -ne 'Off' -and !$OnlineLaunch) {
+    . (Join-Path $PSScriptRoot 'Seat-Session.ps1')
+    $seatSession=New-SeatSessionRequest $root $run ([bool]$PlayerControlOnly) (!$PlayerControlOnly -or [bool]$DesktopSeatPosition) $DesktopCockpitFov ($CockpitMode -eq 'HideDriver')
+    $inGameSeatRequested=[bool]$seatSession.enabled
+    if($inGameSeatRequested -and ![Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($proxy)).Contains('grid2vr-seat-menu-v1')) { throw 'This renderer does not support in-game seat adjustment. Update GRID2VR or disable the in-game seat tool in Controls > Seat.' }
+    if($inGameSeatRequested -and $NormalLaunch) {
+        if(![Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($proxy)).Contains('grid2vr-seat-native-menus-v1')) { throw 'This renderer does not support seat adjustment in Normal launch. Update GRID2VR or disable the in-game seat tool in Controls > Seat.' }
+        [IO.File]::WriteAllText((Join-Path $run 'seat-native-menus.request'),"grid2vr-seat-native-menus-v1`n",[Text.Encoding]::ASCII)
+    }
+}
 $drivingControlsReceipt=Save-DrivingControls $validatedDrivingControls $run
 # Practice/Race skip Press Start; in Normal it finds no preset for many wheels.
 # The native claim only fills a keyboard-only profile map in either case.
@@ -350,7 +365,7 @@ if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$VrReplayCa
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$VrGarageMenus) { [IO.File]::WriteAllText((Join-Path $run 'flat-garage.request'),'Use the shared screen for the native garage menus.') }
 if($FrontendSceneAudit) { [IO.File]::WriteAllText((Join-Path $run 'frontend-scene-audit.request'),'Bounded passive frontend scene audit.') }
 if($ExposureAudit) { [IO.File]::WriteAllText((Join-Path $run 'exposure-audit.request'),'At most 600 luminance/constant rows; no full-size images.') }
-if($CockpitMode -ne 'Off' -and !$NativeCockpitExposure) { [IO.File]::WriteAllText((Join-Path $run 'cockpit-exposure.request'),'Retain the authored exposure ceiling in the exact cockpit camera only.') }
+if(!$PlayerControlOnly -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure) { [IO.File]::WriteAllText((Join-Path $run 'cockpit-exposure.request'),'Retain the authored exposure ceiling in the exact cockpit camera only.') }
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect) { [IO.File]::WriteAllText((Join-Path $run 'impact-interference.request'),'Hide the flat impact interference glitch in VR; the game shader takes its pass-through branch.') }
 if ($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) {
     $hudRequest=$HudDistance.ToString([Globalization.CultureInfo]::InvariantCulture)+" $HudFollowView $HudHiddenElements"
@@ -503,7 +518,10 @@ $receipt.cockpitTextures=$CockpitTextures
 $receipt.cockpitModeRequested=$cockpitModeRequested
 $receipt.cockpitApplied=($cockpitAssets.Count -gt 0 -or $dlcCockpit.cars.Count -gt 0)
 $receipt.dlcCockpit=$dlcCockpit
-$receipt.cockpitExposureLimit=($CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
+$receipt.cockpitExposureLimit=(!$PlayerControlOnly -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
+$receipt.desktopSeatPositionRequested=[bool]$DesktopSeatPosition
+$receipt.desktopCockpitFov=$DesktopCockpitFov
+$receipt.inGameSeatRequested=$inGameSeatRequested
 $receipt.hideImpactGlitch=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect)
 $receipt.exposureAudit=[bool]$ExposureAudit
 $receipt.removeCinemaMatte=[bool]$RemoveCinemaMatte

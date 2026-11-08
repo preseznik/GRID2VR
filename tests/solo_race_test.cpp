@@ -139,9 +139,22 @@ int main() {
     if(grid2vr::NormalLocalRaceReady(base))return 21;
     grid2vr::benchmarkModeClearedImage.store(0);put(0xe5917c,2);
     if(!grid2vr::NormalLocalRaceReady(base))return 22;
+    // Native-menu seat eligibility is separate: mode 0 needs its caller opt-in
+    // and full local/AI tree, including larger bounded custom fields.
+    for(unsigned count=1;count<=16;++count) {
+        localRace(count);put(0xe5917c,0);
+        if(grid2vr::NormalLocalRaceReady(base) || grid2vr::NormalSoloRaceReady(base) || !grid2vr::NativeMenuLocalRaceReady(base))return 29;
+        const auto role=car+(count-1)*0x100+0xb0;put(role,7);
+        if(grid2vr::NativeMenuLocalRaceReady(base))return 30;
+        put(role,count>1?1:0);put(0xe61010,1);
+        if(grid2vr::NativeMenuLocalRaceReady(base))return 31;
+        put(0xe61010,0);put(0xe5917c,1);
+        if(grid2vr::NativeMenuLocalRaceReady(base))return 32;
+    }
+    localRace(2);
     if(!VirtualProtect(memory+0x15000,0x1000,PAGE_NOACCESS,&previous))return 13;
     if(grid2vr::NormalLocalRaceReady(base))return 14;
     VirtualFree(memory,0,MEM_RELEASE);
-    std::puts("Solo readiness unchanged; local race readiness validates 1-8 owned cars and refuses malformed/foreign/loading/controller graphs without writes.");
+    std::puts("Direct readiness retains 1-8 owned cars; separate native-menu seat readiness validates 1-16 owned cars and refuses foreign roles, loading/replay and other modes without writes.");
     return 0;
 }

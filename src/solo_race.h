@@ -47,7 +47,7 @@ inline bool NormalSoloRaceReady(uintptr_t base) {
 // Read-only extension from the observed two- and eight-car stock races (2026-10-24).
 // The first car must own the local controller; all remaining cars must have
 // only their native AI controller. This is deliberately not a LAN/replay gate.
-inline bool NormalLocalRaceReady(uintptr_t base) {
+inline bool OwnedLocalRaceReady(uintptr_t base,bool nativeMenus) {
     const auto word=[](uintptr_t at,uint32_t expected) {
         uint32_t value{};return ReadMemory(reinterpret_cast<void*>(at),&value,sizeof(value)) && value==expected;
     };
@@ -59,12 +59,13 @@ inline bool NormalLocalRaceReady(uintptr_t base) {
             value<=UINTPTR_MAX-0x10000 && value%4==0;
     };
     uintptr_t parent{},otherParent{},begin{},end{};
-    if(!word(base+0xe61010,0) || !BenchmarkAttractLaunch(base) ||
+    const auto entry=[&] {return nativeMenus?word(base+benchmarkModeWordRva,0) && benchmarkModeClearedImage.load()!=base:BenchmarkAttractLaunch(base);};
+    if(!word(base+0xe61010,0) || !entry() ||
        !pointer(base+0xd96808,parent) || !pointer(base+0xdaa424,otherParent) || parent!=otherParent ||
        !word(parent,static_cast<uint32_t>(base+0xd1266c)) ||
-       !pointer(parent+0xa8,begin) || !pointer(parent+0xac,end) || end<=begin || (end-begin)%4 || (end-begin)/4>8) return false;
+       !pointer(parent+0xa8,begin) || !pointer(parent+0xac,end) || end<=begin || (end-begin)%4 || (end-begin)/4>(nativeMenus?16u:8u)) return false;
     const auto count=static_cast<unsigned>((end-begin)/4);
-    std::array<uintptr_t,8> cars{},seen{},groups{},controllers{};
+    std::array<uintptr_t,16> cars{},seen{},groups{},controllers{};
     for(unsigned i=0;i<count;++i) {
         // +0xb0 is the local/AI role, not the position in the car vector.
         if(!pointer(begin+i*4,cars[i]) || !word(cars[i],static_cast<uint32_t>(base+0xcdfeb4)) || !word(cars[i]+0xb0,i?1:0))return false;
@@ -77,7 +78,7 @@ inline bool NormalLocalRaceReady(uintptr_t base) {
        !pointer(manager+0x14,head) || !pointer(head+4,root) || root==head ||
        !pointer(head,first) || !pointer(head+8,last))return false;
     struct Pending { uintptr_t node,parent,lower,upper; };
-    std::array<Pending,8> pending{};unsigned queued=1,visited=0,owned=0;
+    std::array<Pending,16> pending{};unsigned queued=1,visited=0,owned=0;
     pending[0]={root,head,0,UINTPTR_MAX};
     uintptr_t minimum=UINTPTR_MAX,maximum=0,minimumNode{},maximumNode{},localController{};
     while(queued) {
@@ -116,6 +117,12 @@ inline bool NormalLocalRaceReady(uintptr_t base) {
     // Reject a graph that changed while the passive checks were in progress.
     return word(base+0xd96808,static_cast<uint32_t>(parent)) && word(base+0xdaa424,static_cast<uint32_t>(parent)) &&
         word(parent+0xa8,static_cast<uint32_t>(begin)) && word(parent+0xac,static_cast<uint32_t>(end)) && word(manager+0x18,count) &&
-        word(base+0xe61010,0) && BenchmarkAttractLaunch(base);
+        word(base+0xe61010,0) && entry();
 }
+// Existing consumers remain restricted to their admitted direct-launch path.
+inline bool NormalLocalRaceReady(uintptr_t base) {return OwnedLocalRaceReady(base,false);}
+// Seat-only opt-in: the caller must have the explicit offline Normal marker.
+// Bound larger native-menu fields to 16, retaining all owner, role, controller,
+// loading/replay and fresh-graph checks above. Never selects/enables input.
+inline bool NativeMenuLocalRaceReady(uintptr_t base) {return OwnedLocalRaceReady(base,true);}
 }

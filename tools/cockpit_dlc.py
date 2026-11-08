@@ -55,13 +55,15 @@ def available(root, installed):
     return result
 
 
-def request(game, mode, car=None, normal=False, alignments=None):
+def request(game, mode, car=None, normal=False, alignments=None, desktop=False, fov_offset=0):
     from session_config import installed_dlc, plain_path
     from game_executable import validate_avx
     game = plain_path(game)
     validate_avx(game / 'grid2_avx.exe')
     if mode not in ('head-only', 'hide-driver') or normal == bool(car):
         raise ValueError('Choose a DLC car or Normal mode')
+    if type(desktop) is not bool or type(fov_offset) is not int or not -30 <= fov_offset <= 30 or (fov_offset and not desktop):
+        raise ValueError('FOV adjustment requires Desktop and whole degrees within -30..30')
     rows = available(game, installed_dlc(game))
     if not normal:
         if car not in rows:
@@ -86,9 +88,9 @@ def request(game, mode, car=None, normal=False, alignments=None):
         x, y, z = row['position']
         seat = seats.get(code, dict(Height=0, Forward=0, Right=0))
         selected.append(dict(car=code, position=[round(x-seat['Right']/100,4), round(y+seat['Height']/100,4), round(z+seat['Forward']/100,4)]))
-    text = 'dlc-cockpit-v1 ' + mode + '\n'
+    text = (f'dlc-cockpit-desktop-v1 {mode} {fov_offset}' if desktop else 'dlc-cockpit-v1 ' + mode) + '\n'
     text += ''.join(r['car']+' '+ ' '.join(f'{v:.4f}' for v in r['position'])+'\n' for r in selected)
-    return dict(schema=1, cars=selected, text=text if selected else '')
+    return dict(schema=1, cars=selected, text=text if selected else '', desktop=desktop, fovOffset=fov_offset)
 
 
 if __name__ == '__main__':
@@ -99,5 +101,7 @@ if __name__ == '__main__':
     choice.add_argument('--car')
     choice.add_argument('--normal', action='store_true')
     parser.add_argument('--alignments', type=Path)
+    parser.add_argument('--desktop', action='store_true')
+    parser.add_argument('--fov-offset', type=int, default=0)
     args = parser.parse_args()
-    print(json.dumps(request(args.game_root, args.mode, args.car, args.normal, args.alignments)))
+    print(json.dumps(request(args.game_root, args.mode, args.car, args.normal, args.alignments, args.desktop, args.fov_offset)))

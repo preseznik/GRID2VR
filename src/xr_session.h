@@ -12,6 +12,7 @@
 #include "head_motion.h"
 #include "performance_display.h"
 #include "resolution_limits.h"
+#include "seat_xr.h"
 
 namespace grid2vr {
 // All calls, including explicit Shutdown, belong to the initializing render
@@ -27,6 +28,9 @@ public:
     };
     bool Initialize(ID3D11Device* device,const std::filesystem::path& runtime,const std::filesystem::path& output);
     bool InitializeImages(NativeEyeDraw draw,unsigned width,unsigned height);
+    void ConfigureSeatPanel(ID3D11Texture2D* (*texture)(),uint64_t (*opening)(),void (*ready)(bool)) {
+        seatTexture_=texture;seatOpening_=opening;seatReady_=ready;
+    }
     bool Poll();
     bool BeginFrame(uint64_t frame);
     const LocatedViews* Views() const { return frameOpen_?&located_:nullptr; }
@@ -69,6 +73,10 @@ private:
     LocatedViews located_;
     XrEyeImages images_;
     PerformanceDisplay performance_;
+    seat::XrPanel seatPanel_;
+    ID3D11Texture2D* (*seatTexture_)(){};
+    uint64_t (*seatOpening_)(){};
+    void (*seatReady_)(bool){};
     bool imagesAttempted_{},imagesReady_{};
     unsigned imagesSubmitted_{};
     unsigned screensSubmitted_{};
