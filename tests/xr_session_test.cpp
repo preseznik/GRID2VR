@@ -150,7 +150,8 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession,const XrFrameEndInfo* info) 
             if(!meter || meter->type!=XR_TYPE_COMPOSITION_LAYER_QUAD || meter->space!=(fixedPerformance?4:5) ||
                 meter->eyeVisibility!=XR_EYE_VISIBILITY_BOTH || meter->subImage.swapchain!=12 || !eyeImages[2] ||
                 meter->subImage.imageRect.extent.width!=512 || meter->subImage.imageRect.extent.height!=64 ||
-                !Near(meter->size.width,fixedPerformance?.8f:.6f) || !Near(meter->size.height,fixedPerformance?.1f:.075f) ||
+                // Fixed: 5% in front of the default 2 m HUD plane, at the same angular size.
+                !Near(meter->size.width,fixedPerformance?.76f:.6f) || !Near(meter->size.height,fixedPerformance?.095f:.075f) ||
                 meter->pose.orientation.x!=0 || meter->pose.orientation.z!=0 || imagePhases[2]==2)
                 protocolError=true;
             if(!fixedPerformance && (meter->pose.orientation.y!=0 || meter->pose.orientation.w!=1 ||
@@ -505,7 +506,7 @@ int main(int argc,char** argv) {
     if(!fixed.Initialize(device.Get(),manifest,folder) || !fixed.InitializeImages(DrawNative,2,2) || !fixed.Poll())return 68;
     eventState=XR_SESSION_STATE_FOCUSED;headPose={Orientation(pi/2,.3f,-.4f),{1,2,3}};
     if(!fixed.Poll() || !fixed.BeginFrame(1) || !fixed.FinishFrame(1,true,left.Get(),right.Get()) || lastLayerCount!=2 ||
-        !Near(lastPerformancePose.position.x,-1) || !Near(lastPerformancePose.position.y,1.4f) || !Near(lastPerformancePose.position.z,3))return 69;
+        !Near(lastPerformancePose.position.x,-.9f) || !Near(lastPerformancePose.position.y,1.43f) || !Near(lastPerformancePose.position.z,3))return 69;
     const auto placed=lastPerformancePose;
     headPose={Orientation(-.7f,-.3f,.5f),{2,1,4}};
     if(!fixed.PresentScreen(2,left.Get()) || memcmp(&placed,&lastPerformancePose,sizeof(placed)))return 70;
@@ -515,7 +516,7 @@ int main(int argc,char** argv) {
     if(!fixed.BeginFrame(4) || !fixed.FinishFrame(4,true,left.Get(),right.Get()) || memcmp(&placed,&lastPerformancePose,sizeof(placed)))return 72;
     fixed.ResetScreenAnchor();headPose={{0,0,0,1},{0,1,0}};
     if(!fixed.BeginFrame(5) || !fixed.FinishFrame(5,true,left.Get(),right.Get()) ||
-        !Near(lastPerformancePose.position.x,0) || !Near(lastPerformancePose.position.y,.4f) || !Near(lastPerformancePose.position.z,-2) ||
+        !Near(lastPerformancePose.position.x,0) || !Near(lastPerformancePose.position.y,.43f) || !Near(lastPerformancePose.position.z,-1.9f) ||
         !Near(lastPerformancePose.orientation.y,0) || !Near(lastPerformancePose.orientation.w,1))return 73;
     if(!fixed.PresentScreen(6,left.Get()) || protocolError || fixed.Failed())return 74;
     fixed.Shutdown();

@@ -5,6 +5,7 @@
 using Microsoft::WRL::ComPtr;
 namespace {
 ID3D11Device* device{};ComPtr<ID3D11Texture2D> image;
+bool Near(float a,float b) {return std::abs(a-b)<.0001f;}
 unsigned phase{},acquires{},releases{};bool error{},timeout{},createFail{};
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateSwapchainFormats(XrSession,uint32_t n,uint32_t* count,int64_t* out) {
@@ -48,6 +49,7 @@ int main(int argc,char** argv) {
     device=owner.Get();const auto path=std::filesystem::absolute(argv[1]);std::filesystem::create_directories(path);
     std::filesystem::remove(path/L"performance-display.request");
     std::filesystem::remove(path/L"performance-display-fixed.request");
+    std::filesystem::remove(path/L"vr-hud.request");
     grid2vr::PerformanceDisplay off;if(off.Initialize(3,5,4,device,path) || !off.Shutdown())return 5;
     std::ofstream(path/L"performance-display.request")<<"1\n";
     grid2vr::PerformanceDisplay panel;if(!panel.Initialize(3,5,4,device,path))return 6;
@@ -73,12 +75,34 @@ int main(int argc,char** argv) {
     grid2vr::PerformanceDisplay fixed;
     if(!fixed.Initialize(3,5,4,device,path) || fixed.FollowsView() || fixed.Layer(3000))return 17;
     const XrPosef anchor{{0,.70710678f,0,.70710678f},{-2,1,0}};
+    // Without a HUD request the stereo HUD uses its 2 m default: the fixed
+    // strip comes 5% nearer than that plane, along the line from the head
+    // (0,1,0) to the anchor, at the same angular size and lower placement.
     const auto* placed=fixed.Layer(3001,&anchor);
-    if(!placed || placed->space!=4 || std::abs(placed->pose.position.y-.4f)>.0001f ||
-       placed->pose.position.x!=-2 || placed->pose.orientation.y!=anchor.orientation.y ||
-       placed->size.width!=.8f || !fixed.Shutdown() || error)return 18;
+    if(!placed || placed->space!=4 || !Near(placed->pose.position.y,1-.6f*.95f) ||
+       !Near(placed->pose.position.x,-1.9f) || !Near(placed->pose.position.z,0) || placed->pose.orientation.y!=anchor.orientation.y ||
+       !Near(placed->size.width,.76f) || !Near(placed->size.height,.095f) || !Near(fixed.Distance(),1.9f) || !fixed.Shutdown() || error)return 18;
+    // A 1 m HUD (the launcher default) and a far one; an invalid request keeps the default.
+    struct Case {const char* hud;float distance,x,y,width;};
+    for(const auto& c:{Case{"1 0 0\n",.95f,-.95f,1-.6f*.475f,.38f},Case{"3 0 0\n",2,-2,.4f,.8f},Case{"x\n",1.9f,-1.9f,1-.6f*.95f,.76f}}) {
+        std::ofstream(path/L"vr-hud.request")<<c.hud;
+        grid2vr::PerformanceDisplay hud;if(!hud.Initialize(3,5,4,device,path))return 19;
+        const auto* l=hud.Layer(3002,&anchor);
+        if(!l || !Near(hud.Distance(),c.distance) || !Near(l->pose.position.x,c.x) || !Near(l->pose.position.y,c.y) ||
+           !Near(l->pose.position.z,0) || !Near(l->size.width,c.width) || !hud.Shutdown() || error)return 20;
+    }
     std::filesystem::remove(path/L"performance-display-fixed.request");
+    // Following the view: 1.5 m and 45 cm down, unless the HUD is nearer than 1.58 m.
+    for(const auto& c:{Case{"1 1 0\n",.95f,0,-.285f,.38f},Case{"1.5 1 0\n",1.425f,0,-.4275f,.57f},
+                       Case{"2 1 0\n",1.5f,0,-.45f,.6f},Case{"20 0 0\n",1.5f,0,-.45f,.6f}}) {
+        std::ofstream(path/L"vr-hud.request")<<c.hud;
+        grid2vr::PerformanceDisplay hud;if(!hud.Initialize(3,5,4,device,path) || !hud.FollowsView())return 21;
+        const auto* l=hud.Layer(3003);
+        if(!l || l->space!=5 || !Near(hud.Distance(),c.distance) || !Near(l->pose.position.z,-c.distance) || l->pose.position.x!=0 ||
+           !Near(l->pose.position.y,c.y) || !Near(l->size.width,c.width) || !Near(l->size.height,c.width/8) || !hud.Shutdown() || error)return 22;
+    }
+    std::filesystem::remove(path/L"vr-hud.request");
     createFail=true;grid2vr::PerformanceDisplay failed;if(failed.Initialize(3,5,4,device,path) || !failed.Shutdown())return 16;
     std::filesystem::remove(path/L"performance-display.request");
-    puts("Performance panel: aggregation, FPS, pixels, opt-out, timeout retry, state restoration and shutdown passed.");return 0;
+    puts("Performance panel: aggregation, FPS, pixels, opt-out, timeout retry, state restoration, in front of the HUD and shutdown passed.");return 0;
 }

@@ -1,4 +1,5 @@
 #include "performance_display.h"
+#include "screen_ui_projection.h"
 #include <dxgi.h>
 #include <pdh.h>
 #include <pdhmsg.h>
@@ -97,6 +98,12 @@ bool PerformanceDisplay::Initialize(XrSession session,XrSpace head,XrSpace local
     if(thread_ || !session || !head || !local || !device)return false;
     std::error_code error;if(!std::filesystem::exists(output/L"performance-display.request",error))return false;
     followView_=!std::filesystem::exists(output/L"performance-display-fixed.request",error);
+    // The same HUD distance the stereo HUD uses: its request, or the same
+    // request-less default when it is absent or invalid.
+    ScreenUiOptions hud;
+    if(std::filesystem::exists(output/L"vr-hud.request",error)) {std::ifstream request(output/L"vr-hud.request");ReadScreenUiOptions(request,hud);}
+    hudDistance_=hud.distanceMetres;
+    const float base=followView_?1.5f:2.f;scale_=Scale(hudDistance_,base);distance_=base*scale_;
     thread_=GetCurrentThreadId();output_=output;device->GetImmediateContext(&context_);
     uint32_t count{};if(xrEnumerateSwapchainFormats(session,0,&count,nullptr)!=XR_SUCCESS || !count || count>128)return false;
     std::vector<int64_t> formats(count);
@@ -117,7 +124,8 @@ bool PerformanceDisplay::Initialize(XrSession session,XrSpace head,XrSpace local
     const D3D11_QUERY_DESC completion{D3D11_QUERY_EVENT,0};if(FAILED(device->CreateQuery(&completion,&completion_)))return false;
     layer_.space=followView_?head:local;layer_.eyeVisibility=XR_EYE_VISIBILITY_BOTH;layer_.subImage.swapchain=chain_;
     layer_.subImage.imageRect.extent={width,height};layer_.pose.orientation.w=1;
-    layer_.pose.position={0,-.45f,-1.5f};layer_.size=followView_?XrExtent2Df{.6f,.075f}:XrExtent2Df{.8f,.1f};enabled_=true;
+    layer_.pose.position={0,-.45f*scale_,-1.5f*scale_};
+    layer_.size=followView_?XrExtent2Df{.6f*scale_,.075f*scale_}:XrExtent2Df{.8f*scale_,.1f*scale_};enabled_=true;
     gpu_.Start(device);
     WriteReceipt(-1);return true;
 }
@@ -127,6 +135,7 @@ void PerformanceDisplay::WriteReceipt(double gpu,bool stopped) {
     file<<std::fixed<<std::setprecision(2)<<"{\"enabled\":"<<(enabled_?"true":"false")<<",\"stopped\":"<<(stopped?"true":"false")
         <<",\"fps\":"<<(rate_.Fps()<0?"null":std::to_string(rate_.Fps()))<<",\"gpuPercent\":"<<(gpu<0?"null":std::to_string(gpu))
         <<",\"followView\":"<<(followView_?"true":"false")
+        <<",\"hudDistanceMetres\":"<<hudDistance_<<",\"distanceMetres\":"<<distance_
         <<",\"fpsSource\":\"submitted_application_frames\",\"gpuSource\":\"windows_adapter_busiest_engine\",\"display\":\"headset\"}\n";
 }
 bool PerformanceDisplay::Upload(uint64_t now) {
@@ -157,9 +166,14 @@ const XrCompositionLayerQuad* PerformanceDisplay::Layer(uint64_t now,const XrPos
     if(!enabled_ || thread_!=GetCurrentThreadId())return nullptr;
     if(!followView_) {
         if(!anchor)return nullptr;
-        // Share the retained, yaw-only LOCAL screen anchor. At two metres,
-        // this keeps the previous angular size and lower placement.
-        layer_.pose=*anchor;layer_.pose.position.y-=.6f;
+        // Share the retained, yaw-only LOCAL screen anchor, two metres ahead of
+        // the head where it was placed. Nearer than the HUD, it moves along that
+        // line toward the head, keeping its angular size and lower placement.
+        const auto& q=anchor->orientation;
+        const float forward[3]{-2*(q.x*q.z+q.w*q.y),-2*(q.y*q.z-q.w*q.x),-(1-2*(q.x*q.x+q.y*q.y))};
+        layer_.pose=*anchor;const float back=2*(1-scale_);
+        layer_.pose.position.x-=back*forward[0];layer_.pose.position.y-=back*forward[1]+.6f*scale_;
+        layer_.pose.position.z-=back*forward[2];
     }
     if(!Upload(now)) {enabled_=false;WriteReceipt(gpu_.Percent());return nullptr;}
     return ready_?&layer_:nullptr;

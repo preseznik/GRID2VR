@@ -4,7 +4,9 @@
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 #include <wrl/client.h>
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -36,6 +38,16 @@ public:
     bool Shutdown();
     bool Enabled() const {return enabled_;}
     bool FollowsView() const {return followView_;}
+    // The stereo HUD is drawn into the eye images on a plane at the HUD
+    // distance, and this quad is always composited over them. Behind or in
+    // that plane, it covers HUD that the eyes place in front of it, which reads
+    // as flicker where the two overlap. Keep it at most 95% of the HUD
+    // distance; nearer, its offsets and size scale with it, so it keeps its
+    // angular size and place in view. Further HUDs leave it unchanged.
+    static float Scale(float hudDistance,float panelDistance) {
+        return std::isfinite(hudDistance) && hudDistance>0 && panelDistance>0 ? std::min(1.f,.95f*hudDistance/panelDistance) : 1.f;
+    }
+    float Distance() const {return distance_;}
 private:
     void WriteReceipt(double gpu,bool stopped=false);
     bool Upload(uint64_t milliseconds);
@@ -50,6 +62,7 @@ private:
     DWORD thread_{};
     uint64_t updated_{};
     uint32_t index_{};
+    float hudDistance_{2},scale_{1},distance_{1.5f};
     bool followView_{true};
     bool enabled_{},ready_{},used_{},acquired_{},waited_{};
 };

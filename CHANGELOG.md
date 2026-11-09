@@ -4,6 +4,8 @@
 
 - **Wheel D-pad binding.** Binding menu directions to a wheel D-pad (such as a Logitech G920) now picks the D-pad even while an H-shifter gear is engaged, and finishes when the D-pad returns to center.
 
+- **FPS / GPU display in VR.** The FPS / GPU strip no longer flickers where it overlaps the HUD. It now always sits slightly in front of the HUD, at the same size in view.
+
 # GRID2VR 0.2.20 — Experimental
 
 - **Seat position in Desktop.** Use the saved per-car cockpit position in Desktop, with an independent cockpit field-of-view adjustment.
