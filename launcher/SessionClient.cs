@@ -36,6 +36,11 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public int ChaseMouseSensitivity { get; init; } = 100;
     public int ChaseStickSensitivity { get; init; } = 100;
     public bool ChaseInvertVertical { get; init; }
+    // Launcher Force Feedback: off keeps GRID 2's own Vibration & Feedback settings.
+    public bool ForceFeedbackOverride { get; init; }
+    public int ForceFeedbackStrength { get; init; } = 100;
+    public int ForceFeedbackWeight { get; init; } = 50;
+    public int ForceFeedbackEffects { get; init; } = 50;
 }
 internal sealed record ContentItem(string Id, string Label, string? ClassId = null, string? ClassName = null, bool CockpitAvailable = true, bool Dlc = false)
 {
@@ -85,6 +90,8 @@ internal sealed class SessionClient(string root)
         if (value.ChaseMouseMode is not ("left" or "right" or "always")) throw new ArgumentException("Choose Hold left, Hold right or Always on for mouse look.");
         if (value.ChaseMaxZoomOut is < 180 or > 1000 || value.ChaseMaxZoomOut % 10 != 0) throw new ArgumentException("Choose maximum zoom out between 180% and 1000%, in 10% steps.");
         if (value.ChaseMouseSensitivity is < 25 or > 300 || value.ChaseStickSensitivity is < 25 or > 300) throw new ArgumentException("Choose chase-camera sensitivity between 25% and 300%.");
+        if (value.ForceFeedbackStrength is < 0 or > 100 || value.ForceFeedbackWeight is < 1 or > 100 || value.ForceFeedbackEffects is < 0 or > 100)
+            throw new ArgumentException("Choose force feedback strength and vibration between 0% and 100%, and wheel weight between 1% and 100%.");
         value.Graphics.Validate();
         if (value.RecenterDevice is not null) DeviceRecenter.Validate(value.RecenterDevice);
     }
@@ -262,6 +269,12 @@ internal sealed class SessionClient(string root)
         if (vr && !value.CockpitExposureLimit) command.ArgumentList.Add("-NativeCockpitExposure");
         if (vr && !value.HideImpactGlitch) command.ArgumentList.Add("-NativeImpactEffect");
         if (vr && value.RecenterDevice is not null) { command.ArgumentList.Add("-RecenterDeviceBase64"); command.ArgumentList.Add(DeviceRecenter.Encode(value.RecenterDevice)); }
+        if (value.ForceFeedbackOverride)
+        {
+            command.ArgumentList.Add("-ForceFeedback");
+            command.ArgumentList.Add(string.Join(',', new[] { value.ForceFeedbackStrength, value.ForceFeedbackWeight, value.ForceFeedbackEffects }
+                .Select(n => n.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+        }
         if (value.SkipIntro) command.ArgumentList.Add("-SkipIntro");
         if (value.DiagnosticLogging) command.ArgumentList.Add("-DiagnosticLogging");
         if (value.CockpitTextures != "Off") { command.ArgumentList.Add("-CockpitTextures"); command.ArgumentList.Add(value.CockpitTextures); }

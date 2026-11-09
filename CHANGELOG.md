@@ -6,6 +6,8 @@
 
 - **FPS / GPU display in VR.** The FPS / GPU strip no longer flickers where it overlaps the HUD. It now always sits slightly in front of the HUD, at the same size in view.
 
+- **Force Feedback settings.** **Controls → Driving → Force Feedback** sets wheel weight, strength and vibration for every launch, in VR and Desktop. Turn on **Use launcher force feedback** to use them instead of GRID 2's own Vibration & Feedback settings, which stay unchanged and return when it is off.
+
 # GRID2VR 0.2.20 — Experimental
 
 - **Seat position in Desktop.** Use the saved per-car cockpit position in Desktop, with an independent cockpit field-of-view adjustment.

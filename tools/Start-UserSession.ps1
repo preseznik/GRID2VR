@@ -38,6 +38,7 @@ param(
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
+    [ValidatePattern('^$|^\d{1,3},\d{1,3},\d{1,3}$')][string]$ForceFeedback='',
     [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
@@ -138,6 +139,7 @@ try {
     $receipt.cockpitTextures=$CockpitTextures
     $receipt.cockpitExposureLimit=($Mode -eq 'VR' -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
     $receipt.hideImpactGlitch=($Mode -eq 'VR' -and !$NativeImpactEffect)
+    $receipt.forceFeedback=if($ForceFeedback){$ForceFeedback}else{$null}
     $receipt.vrReplayCameras=[bool]$VrReplayCameras
     $receipt.vrGarageMenus=[bool]$VrGarageMenus
     $receipt.nativeLeftEye=($Mode -eq 'VR' -and [bool]$NativeLeftEye)
@@ -233,6 +235,7 @@ try {
     $parameters.DesktopCockpitFov=$DesktopCockpitFov
     $parameters.NativeCockpitExposure=[bool]$NativeCockpitExposure
     $parameters.NativeImpactEffect=[bool]$NativeImpactEffect
+    $parameters.ForceFeedback=$ForceFeedback
     $parameters.CockpitTextures=$CockpitTextures
     if($Mode -eq 'VR') { $parameters.RecenterDeviceBase64=$RecenterDeviceBase64; $parameters.RecenterTilt=[bool]$RecenterTilt }
     $parameters.CareerProfile=$career.id
