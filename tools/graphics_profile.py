@@ -20,7 +20,7 @@ MAX_RECEIPT_BYTES = 32768
 def prepare(output, mode='VR', render_scale=100, desktop_vsync=1, desktop_msaa='off',
             tree_detail='ultra', object_detail='ultra', crowd_detail='ultra', texture_filtering='ultra',
             source=Path(__file__).with_name('practice-settings.xml'),
-            game_root=Path(r'E:\SteamLibrary\steamapps\common\grid 2'), vr_msaa='off', scene_width=0, scene_height=0,
+            game_root=None, vr_msaa='off', scene_width=0, scene_height=0,
             quality_base64=''):
     if any(type(value) is not str for value in (mode, desktop_msaa, vr_msaa, tree_detail, object_detail,
                                                crowd_detail, texture_filtering)):
@@ -43,6 +43,9 @@ def prepare(output, mode='VR', render_scale=100, desktop_vsync=1, desktop_msaa='
     # Existing flags are the sole authority for the original four fields.
     choices.update(TreeDetail=tree_detail, ObjectDetail=object_detail, CrowdDetail=crowd_detail,
                    TextureFiltering=texture_filtering)
+    if game_root is None:
+        from steam_game import game_root as installed_game
+        game_root = installed_game()
     source, output, game_root = map(plain_path, (source, output, game_root))
     if output.is_relative_to(game_root) or output == source:
         raise ValueError('Graphics output must be outside the game and baseline profile')
@@ -103,7 +106,7 @@ def prepare(output, mode='VR', render_scale=100, desktop_vsync=1, desktop_msaa='
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--game-root', type=Path, default=Path(r'E:\SteamLibrary\steamapps\common\grid 2'))
+    parser.add_argument('--game-root', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--mode', choices=('VR', 'Desktop'), default='VR')
     parser.add_argument('--render-scale', type=int, choices=RENDER_SCALES, default=100)

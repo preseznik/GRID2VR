@@ -1,10 +1,11 @@
 [CmdletBinding()]
 param(
-    [string]$GameRoot = 'E:\SteamLibrary\steamapps\common\grid 2',
+    [string]$GameRoot,
     [string]$Library = 'F:\Coding\Codex\Mods\DiRT2VR\artifacts\xml-convert\EgoEngineLibrary.dll',
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\build\cockpit-catalog-20261025')
 )
 $ErrorActionPreference = 'Stop'
+if(!$GameRoot) { . (Join-Path $PSScriptRoot 'Paths.ps1'); $GameRoot=Find-Grid2SteamGame }
 function Assert-GeometryPlainPath([string]$Path) {
     for ($part=[IO.Path]::GetFullPath($Path); $part; $part=[IO.Path]::GetDirectoryName($part)) {
         if ((Test-Path -LiteralPath $part) -and

@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import game_executable
 import session_config
+import steam_game
 
 STANDALONE = {
     'grid2.exe': 'd8ec0c631b453d6e5e9adebae4cfc9b612823fec316344c28544bc65245ba35d',
@@ -213,8 +214,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--native', type=Path)
     parser.add_argument('--launcher', type=Path)
-    parser.add_argument('--game-root', type=Path, default=Path(r'E:\SteamLibrary\steamapps\common\grid 2'))
+    parser.add_argument('--game-root', type=Path, default=None)
     parser.add_argument('--samples', type=Path)
     parser.add_argument('--standalone-root', type=Path)
     parser.add_argument('--receipt', type=Path)
-    run(parser.parse_args())
+    arguments = parser.parse_args()
+    arguments.game_root = arguments.game_root or steam_game.game_root()
+    run(arguments)

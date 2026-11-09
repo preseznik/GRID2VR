@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, str(Path(__file__).parents[1] / 'tools'))
 import graphics_profile as graphics
 import graphics_catalog as catalog_tools
+import steam_game
 
 ROOT = Path(__file__).parents[1]
 LEGACY_OPTIONS = {'TreeDetail': 'tree_detail', 'ObjectDetail': 'object_detail',
@@ -211,8 +212,13 @@ class GraphicsProfileTests(unittest.TestCase):
         self.assertEqual(archive.read_bytes(), original)
 
     def test_optional_installed_native_catalog_read_only_audit(self):
-        source = Path(os.environ.get('GRID2VR_NATIVE_OPTIONS_AUDIT',
-                      r'E:\SteamLibrary\steamapps\common\grid 2\system\hardware_settings_options.xml'))
+        source = os.environ.get('GRID2VR_NATIVE_OPTIONS_AUDIT')
+        if not source:
+            try:
+                source = steam_game.game_root()/'system'/'hardware_settings_options.xml'
+            except FileNotFoundError:
+                self.skipTest('Installed native options are optional')
+        source = Path(source)
         if not source.is_file():
             self.skipTest('Installed native options are optional')
         self.assertLessEqual(source.stat().st_size, 512 * 1024)

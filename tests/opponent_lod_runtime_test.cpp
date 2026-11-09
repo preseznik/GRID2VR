@@ -54,7 +54,10 @@ struct Image {
     bool Init(const char* path,const char* corrupt) {
         std::ifstream in(path,std::ios::binary);
         raw.assign(std::istreambuf_iterator<char>(in),{});
-        CHECK(raw.size()==15703608 && grid2vr::gameexe::Digest(raw.data(),static_cast<ULONG>(raw.size()))==native::ImageSha256);
+        // The exact audited Steam build, or another Steam install of it (same
+        // normalized bytes and Valve signature; see game_executable.h).
+        CHECK(raw.size()==15703608 && (grid2vr::gameexe::Digest(raw.data(),static_cast<ULONG>(raw.size()))==native::ImageSha256 ||
+            !grid2vr::gameexe::Validate(std::filesystem::path(path).c_str(),true).empty()));
         CHECK(base!=native::PreferredImageBase);
         const auto dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(raw.data());
         const auto pe=reinterpret_cast<const IMAGE_NT_HEADERS32*>(raw.data()+dos->e_lfanew);
@@ -865,9 +868,13 @@ bool ActivationCases(Image& image,const std::filesystem::path& folder,const char
 #endif
 }
 int main(int argc,char** argv) {
-    const char* path="E:\\SteamLibrary\\steamapps\\common\\grid 2\\grid2_avx.exe";
-    const char* mode=argc>1?argv[1]:"normal";
-    if(argc>2)path=argv[2];
+    // CTest passes the executable found by tools/steam_game.py.
+    if(argc<3) {
+        std::fprintf(stderr,"usage: %s <mode> <grid2_avx.exe>\n",argv[0]);
+        return 2;
+    }
+    const char* mode=argv[1];
+    const char* path=argv[2];
     try {
         const auto folder=std::filesystem::current_path()/(L"fixture-requests-"+std::to_wstring(GetCurrentProcessId()));
         std::filesystem::create_directories(folder);

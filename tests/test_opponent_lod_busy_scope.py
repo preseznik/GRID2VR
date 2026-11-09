@@ -12,7 +12,10 @@ import struct
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-GAME = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(r'E:\SteamLibrary\steamapps\common\grid 2\grid2_avx.exe')
+sys.path.insert(0, str(ROOT/'tools'))
+from game_executable import validate_avx
+from steam_game import game_executable
+GAME = Path(sys.argv[1]) if len(sys.argv) > 1 else game_executable()
 EXPECTED = {
     0xf0b60: 0x14cc, 0x17d040: 0x516, 0x7aa690: 0x1ce, 0x4eed0: 0xb2,
     0x282ed0: 0x7f, 0x3da040: 0x22, 0x6a260: 0x81, 0x215740: 0x16,
@@ -33,7 +36,8 @@ CALLS = ((0x1b378f, 0x392680, 0x1b3770), (0x1b37f7, 0x648910, 0x1b3770),
 TAILS = ((0x215751, 0x6032a0), (0x25a3de, 0x489160))
 
 data = GAME.read_bytes()
-assert hashlib.sha256(data).hexdigest() == '519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502'
+# Exact audited bytes, or another Steam install of that build (validate_avx).
+assert len(data) == 15703608 and validate_avx(GAME)
 pe = struct.unpack_from('<I', data, 0x3c)[0]
 opt = pe + 24
 optsize = struct.unpack_from('<H', data, pe + 20)[0]

@@ -321,7 +321,7 @@ def stage(game_root, session, run_directory):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--game-root', type=Path, default=Path(r'E:\SteamLibrary\steamapps\common\grid 2'))
+    parser.add_argument('--game-root', type=Path)
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('catalog')
     check = commands.add_parser('verify')
@@ -346,6 +346,9 @@ def main():
     args = vars(parser.parse_args())
     try:
         command = args.pop('command'); root = args.pop('game_root')
+        if root is None:
+            from steam_game import game_root
+            root = game_root()
         action = dict(catalog=catalog, verify=verify, prepare=prepare, stage=stage)[command]
         result = action(root, **args)
     except (ValueError, OSError) as error:

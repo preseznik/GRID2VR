@@ -203,7 +203,7 @@ $grandchild.WaitForExit(40000) | Out-Null
     New-Item -ItemType Directory -Path $run | Out-Null
     $session.backup=$backup; $session.run=$run; $session.workerStartedUtc=$worker.StartTime.ToUniversalTime().ToString('o')
     Write-SessionJson $journal $session
-    $game='E:\SteamLibrary\steamapps\common\grid 2'
+    $game=Get-Grid2GameRoot $fixture
     $fakeHash='a'*64
     $deployment=@{gameRoot=$game;run=$run;files=@(@{name='d3d11.dll';sha256=$fakeHash},@{name='GRID2VR.diagnostic-session';sha256=$fakeHash})}
     Write-SessionJson (Join-Path $artifacts 'diagnostic-pending.json') $deployment

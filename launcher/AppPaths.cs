@@ -16,7 +16,11 @@ internal static class BuildInfo
 internal static class AppPaths
 {
     public static bool Packaged(string root) => File.Exists(Path.Combine(root, "package.json"));
-    public static string Game(string root) => Packaged(root) ? Path.GetDirectoryName(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar))! : @"E:\SteamLibrary\steamapps\common\grid 2";
+    public static string Game(string root) => Packaged(root) ? Path.GetDirectoryName(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar))! : DevelopmentGame();
+    // A development checkout uses the Steam install (same rule as tools/Paths.ps1);
+    // GRID2VR_GAME_ROOT overrides it.
+    static readonly Lazy<string> SteamGame = new(() => Installation.Discover() ?? Path.Combine(ProfileService.SteamRoot(), "steamapps", "common", "grid 2"));
+    static string DevelopmentGame() => Environment.GetEnvironmentVariable("GRID2VR_GAME_ROOT") is { Length: > 0 } game ? Path.GetFullPath(game) : SteamGame.Value;
     public static string Data(string root)
     {
         if (!Packaged(root)) return Path.Combine(root, "artifacts");

@@ -1,11 +1,12 @@
 # Offline mesh export only. Never deploys, launches, or changes game assets.
 [CmdletBinding()]
 param(
- [string]$GameRoot='E:/SteamLibrary/steamapps/common/grid 2',
+ [string]$GameRoot,
  [string]$Library='F:/Coding/Codex/Mods/DiRT2VR/artifacts/xml-convert/EgoEngineLibrary.dll',
  [Parameter(Mandatory)][string]$OutputDirectory
 )
 $ErrorActionPreference='Stop'
+if(!$GameRoot) { . (Join-Path $PSScriptRoot 'Paths.ps1'); $GameRoot=Find-Grid2SteamGame }
 . (Join-Path $PSScriptRoot 'Cockpit-Camera.ps1')
 $game=[IO.Path]::GetFullPath($GameRoot)
 $out=[IO.Path]::GetFullPath($OutputDirectory)

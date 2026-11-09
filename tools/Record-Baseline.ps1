@@ -1,10 +1,11 @@
 param(
     [ValidateSet('Stock','ShippedBenchmark','Benchmark')][string]$Mode = 'Stock',
-    [string]$GameRoot = 'E:\SteamLibrary\steamapps\common\grid 2',
+    [string]$GameRoot,
     [string]$SteamRoot = 'C:\Program Files (x86)\Steam',
     [ValidateRange(30,900)][int]$TimeoutSeconds = 600
 )
 $ErrorActionPreference = 'Stop'
+if(!$GameRoot) { . (Join-Path $PSScriptRoot 'Paths.ps1'); $GameRoot=Find-Grid2SteamGame }
 $root = Split-Path $PSScriptRoot -Parent
 if (Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Close the existing GRID 2 session first.' }
 foreach ($name in @('d3d11.dll','dxgi.dll')) {

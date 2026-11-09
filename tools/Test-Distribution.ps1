@@ -5,7 +5,8 @@ $package=[IO.Path]::GetFullPath($PackageDirectory)
 $test=Join-Path $root 'build/distribution-verification'
 $game=Join-Path $test 'game with spaces'
 $userBase=Join-Path $test 'user-data'
-$originalGame='E:\SteamLibrary\steamapps\common\grid 2'
+. (Join-Path $PSScriptRoot 'Paths.ps1')
+$originalGame=Find-Grid2SteamGame
 New-Item -ItemType Directory -Force -Path $game,$userBase | Out-Null
 $env:GRID2VR_USER_BASE=$userBase
 $env:DOTNET_MULTILEVEL_LOOKUP='0'

@@ -1,11 +1,15 @@
 """Pin the game imports the force-feedback observer relies on to the exact PE."""
-import hashlib
 from pathlib import Path
 import struct
+import sys
 
-game = Path(r'E:\SteamLibrary\steamapps\common\grid 2\grid2_avx.exe')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
+from game_executable import validate_avx
+from steam_game import game_executable
+game = game_executable()
 data = game.read_bytes()
-assert hashlib.sha256(data).hexdigest() == '519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502'
+# Exact audited bytes, or another Steam install of that build (validate_avx).
+assert len(data) == 15703608 and validate_avx(game)
 pe = struct.unpack_from('<I', data, 0x3c)[0]
 optional = pe + 24
 count, size = struct.unpack_from('<H', data, pe + 6)[0], struct.unpack_from('<H', data, pe + 20)[0]

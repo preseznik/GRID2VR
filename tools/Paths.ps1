@@ -2,7 +2,32 @@
 function Test-Grid2Package([string]$Root) { return Test-Path -LiteralPath (Join-Path $Root 'package.json') -PathType Leaf }
 function Get-Grid2GameRoot([string]$Root) {
     if(Test-Grid2Package $Root) { return Split-Path ([IO.Path]::GetFullPath($Root).TrimEnd('\')) -Parent }
-    return 'E:\SteamLibrary\steamapps\common\grid 2'
+    return Find-Grid2SteamGame
+}
+# Development checkouts use the Steam install. GRID2VR_GAME_ROOT overrides the
+# lookup; otherwise the Steam library holding appmanifest_44350.acf names the
+# folder (same rule as tools/steam_game.py and the launcher's Installation.Discover).
+function Find-Grid2SteamGame {
+    if($env:GRID2VR_GAME_ROOT) { return [IO.Path]::GetFullPath($env:GRID2VR_GAME_ROOT) }
+    $steam=Get-Grid2SteamRoot
+    $libraries=[Collections.Generic.List[string]]::new(); $libraries.Add($steam)
+    $vdf=Join-Path $steam 'steamapps/libraryfolders.vdf'
+    if((Test-Path -LiteralPath $vdf -PathType Leaf) -and (Get-Item -LiteralPath $vdf).Length -lt 1MB) {
+        foreach($match in [regex]::Matches([IO.File]::ReadAllText($vdf),'"path"\s*"([^"]+)"')) {
+            $library=$match.Groups[1].Value.Replace('\\','\')
+            if(!($libraries -contains $library)) { $libraries.Add($library) }
+        }
+    }
+    foreach($library in $libraries) {
+        $manifest=Join-Path $library 'steamapps/appmanifest_44350.acf'
+        if(!(Test-Path -LiteralPath $manifest -PathType Leaf) -or (Get-Item -LiteralPath $manifest).Length -gt 64KB) { continue }
+        $match=[regex]::Match([IO.File]::ReadAllText($manifest),'"installdir"\s*"([^"]+)"')
+        if(!$match.Success -or [IO.Path]::GetFileName($match.Groups[1].Value) -ne $match.Groups[1].Value) { continue }
+        $game=Join-Path $library "steamapps\common\$($match.Groups[1].Value)"
+        if(Test-Path -LiteralPath (Join-Path $game 'grid2_avx.exe') -PathType Leaf) { return $game }
+    }
+    # Not installed: callers report the missing executable for the default library.
+    return Join-Path $steam 'steamapps\common\grid 2'
 }
 function Get-Grid2DataRoot([string]$Root) {
     if(!(Test-Grid2Package $Root)) { return Join-Path $Root 'artifacts' }

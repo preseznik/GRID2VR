@@ -6,6 +6,16 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+# Tests that read the installed game use the Steam install found by
+# tools/steam_game.py (set GRID2VR_GAME_ROOT in the environment to override).
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/steam_game.py"
+  OUTPUT_VARIABLE GRID2VR_TEST_GAME_ROOT ERROR_VARIABLE GRID2VR_TEST_GAME_ERROR
+  RESULT_VARIABLE GRID2VR_TEST_GAME_RESULT OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT GRID2VR_TEST_GAME_RESULT EQUAL 0)
+  message(WARNING "Game-reading tests will fail: ${GRID2VR_TEST_GAME_ERROR}")
+  set(GRID2VR_TEST_GAME_ROOT "${CMAKE_BINARY_DIR}/grid2-not-found")
+endif()
+file(TO_NATIVE_PATH "${GRID2VR_TEST_GAME_ROOT}/grid2_avx.exe" GRID2VR_TEST_GAME_EXE)
 option(GRID2VR_BUILD_XR_PROBE "Build the session-free OpenXR runtime compatibility query" OFF)
 option(GRID2VR_ENABLE_XR_SESSION "Build the opt-in game-device OpenXR session probe" OFF)
 option(GRID2VR_OPPONENT_LOD_SINGLE_ATTEMPT_DIAGNOSTIC "One quiescence probe only; no native pointer writes or LOD floors" OFF)
@@ -225,7 +235,7 @@ target_link_libraries(opponent_lod_runtime_test PRIVATE bcrypt)
 foreach(case normal body aux table bounded foreign-stop freed-stop active-wrapper owner-tls commit-notice restore-notice eye-replay status no-owned-stop
     header-rebased header-foreign-base header-dos header-offset header-signature header-machine header-magic header-image-size header-directory-count header-reloc-shape
     shared-enter-corrupt shared-leave-corrupt table-slot-3 table-slot-4 table-slot-5 table-slot-6 table-slot-7 table-slot-8 table-slot-9 table-slot-10)
-  add_test(NAME opponent_lod_runtime_${case} COMMAND opponent_lod_runtime_test ${case})
+  add_test(NAME opponent_lod_runtime_${case} COMMAND opponent_lod_runtime_test ${case} "${GRID2VR_TEST_GAME_EXE}")
 endforeach()
 add_test(NAME opponent_lod_runtime_loader-header COMMAND "${Python3_EXECUTABLE}"
   "${CMAKE_SOURCE_DIR}/tests/test_opponent_lod_image_mapping.py" "$<TARGET_FILE:opponent_lod_runtime_test>")
@@ -240,7 +250,7 @@ target_compile_definitions(opponent_lod_probe_runtime_test PRIVATE GRID2VR_OPPON
 target_compile_options(opponent_lod_probe_runtime_test PRIVATE /W4 /WX /fp:strict)
 target_link_libraries(opponent_lod_probe_runtime_test PRIVATE bcrypt)
 foreach(case probe-refused probe-safe probe-foreign probe-invalid probe-scope-unrelated probe-scope-target)
-  add_test(NAME opponent_lod_${case} COMMAND opponent_lod_probe_runtime_test ${case})
+  add_test(NAME opponent_lod_${case} COMMAND opponent_lod_probe_runtime_test ${case} "${GRID2VR_TEST_GAME_EXE}")
 endforeach()
 add_executable(opponent_lod_probe_bridge_test tests/opponent_lod_bridge_test.cpp src/opponent_lod_bridge.cpp src/quiesced_heap_transaction.cpp)
 target_include_directories(opponent_lod_probe_bridge_test PRIVATE src)
@@ -253,7 +263,7 @@ target_compile_definitions(opponent_lod_activation_runtime_test PRIVATE GRID2VR_
 target_compile_options(opponent_lod_activation_runtime_test PRIVATE /W4 /WX /fp:strict)
 target_link_libraries(opponent_lod_activation_runtime_test PRIVATE bcrypt)
 foreach(case activation-live activation-refused activation-owner-loss activation-foreign-after activation-restore-retry activation-commit-notice activation-foreign-before shared-enter-corrupt shared-leave-corrupt table-slot-5 table-slot-10)
-  add_test(NAME opponent_lod_controlled_${case} COMMAND opponent_lod_activation_runtime_test ${case})
+  add_test(NAME opponent_lod_controlled_${case} COMMAND opponent_lod_activation_runtime_test ${case} "${GRID2VR_TEST_GAME_EXE}")
 endforeach()
 add_executable(opponent_lod_activation_bridge_test tests/opponent_lod_bridge_test.cpp src/opponent_lod_bridge.cpp src/quiesced_heap_transaction.cpp)
 target_include_directories(opponent_lod_activation_bridge_test PRIVATE src)

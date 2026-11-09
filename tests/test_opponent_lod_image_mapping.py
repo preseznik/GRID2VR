@@ -6,17 +6,21 @@ Never infer runtime body qualification from that alias or remove live guards.
 """
 import ctypes as c
 from ctypes import wintypes as w
-import hashlib
 import json
 from pathlib import Path
 import struct
 import subprocess
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
+from game_executable import validate_avx
+from steam_game import game_executable
+
 
 def verify(fixture, game):
     raw = game.read_bytes()
-    assert hashlib.sha256(raw).hexdigest() == '519cd994d2ff92a2a7a2a784856854183f53e359b83f8b9563cc09a0ae91e502'
+    # Exact audited bytes, or another Steam install of that build (validate_avx).
+    assert len(raw) == 15703608 and validate_avx(game)
     nt = struct.unpack_from('<I', raw, 0x3c)[0]
     preferred = struct.unpack_from('<I', raw, nt + 24 + 28)[0]
     assert preferred == 0x400000
@@ -70,5 +74,4 @@ def verify(fixture, game):
 
 
 if __name__ == '__main__':
-    verify(Path(sys.argv[1]).resolve(), Path(sys.argv[2]) if len(sys.argv) > 2 else
-           Path(r'E:\SteamLibrary\steamapps\common\grid 2\grid2_avx.exe'))
+    verify(Path(sys.argv[1]).resolve(), Path(sys.argv[2]) if len(sys.argv) > 2 else game_executable())

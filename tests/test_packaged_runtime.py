@@ -6,7 +6,11 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
+from steam_game import game_root
 
 
 def verify(package, output, game):
@@ -78,5 +82,5 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--package',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
-    parser.add_argument('--game-root',type=Path,default=Path(r'E:\SteamLibrary\steamapps\common\grid 2'))
-    args=parser.parse_args();verify(args.package,args.output,args.game_root)
+    parser.add_argument('--game-root',type=Path,default=None)
+    args=parser.parse_args();verify(args.package,args.output,args.game_root or game_root())
