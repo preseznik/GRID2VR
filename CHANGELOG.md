@@ -2,6 +2,8 @@
 
 - **Garage floor in VR.** The shiny garage and online menu floors no longer show a reflection that slides around as you look. The game draws that reflection for its own camera, not your eyes, so VR now shows the plain floor. Desktop is unchanged.
 
+- **Wheel D-pad binding.** Binding menu directions to a wheel D-pad (such as a Logitech G920) now picks the D-pad even while an H-shifter gear is engaged, and finishes when the D-pad returns to center.
+
 # GRID2VR 0.2.20 — Experimental
 
 - **Seat position in Desktop.** Use the saved per-car cockpit position in Desktop, with an independent cockpit field-of-view adjustment.

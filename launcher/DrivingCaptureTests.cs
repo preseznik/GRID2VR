@@ -52,6 +52,34 @@ internal static class DrivingCaptureTests
         heldHat.Update(rest, 140); heldHat.Update(hat, 180);
         Check(heldHat.Detected?.Input == "di_dpad_0_up", "POV arms after neutral");
 
+        // A G920's H-shifter can report a gear button alongside the D-pad.
+        // Menu binding must keep the deliberate hat gesture, not that button.
+        foreach (var (direction, angle) in new[] { ("Up", 0u), ("Right", 9000u), ("Down", 18000u), ("Left", 27000u) })
+        {
+            var combined = rest.Copy(); combined.Pov[0] = angle; combined.Buttons[15] = 1; combined.Values[1] = -1;
+            foreach (var buttonsOnly in new[] { false, true })
+                Check(DrivingInput.Detect("Menu " + direction, wheel, rest, combined, buttonsOnly: buttonsOnly)?.Input == "di_dpad_0_" + direction.ToLowerInvariant(),
+                    "POV wins over gear button and incidental axis: " + direction);
+            Check(DrivingInput.Detect("Menu " + direction, wheel, rest, combined, axesOnly: true)?.Input == "di_y_axis", "axis-only filter ignores POV");
+        }
+        var gearHeld = rest.Copy(); gearHeld.Buttons[15] = 1;
+        var buttonFirst = new DrivingCapture(wheel, "Menu Up"); buttonFirst.Update(rest, 0); buttonFirst.Update(gearHeld, 40);
+        Check(buttonFirst.Detected?.Input == "di_button_15", "gear button initially waiting for release");
+        var gearAndHat = gearHeld.Copy(); gearAndHat.Pov[0] = 4500; buttonFirst.Update(gearAndHat, 80);
+        Check(buttonFirst.Detected?.Input == "di_button_15", "diagonal cannot replace pending button");
+        gearAndHat.Pov[0] = 0; buttonFirst.Update(gearAndHat, 120);
+        Check(buttonFirst.Detected?.Input == "di_dpad_0_up", "POV replaces an already pending gear button");
+        buttonFirst.Update(gearHeld, 160); buttonFirst.Update(gearHeld, 320);
+        Check(buttonFirst.Completed?.Input == "di_dpad_0_up", "POV release completes while gear button stays held");
+
+        var shiftRest = rest.Copy(); shiftRest.Axes = 0;
+        var shiftPressed = shiftRest.Copy(); shiftPressed.Buttons[15] = 1;
+        var menuShifter = new DrivingCapture(shifter, "Menu Right"); menuShifter.Update(shiftRest, 0); menuShifter.Update(shiftPressed, 40);
+        var menuWheel = new DrivingCapture(wheel, "Menu Right"); menuWheel.Update(rest, 0); hat.Pov[0] = 9000; menuWheel.Update(hat, 80);
+        Check(ReferenceEquals(DrivingCapture.ChooseActive([menuShifter, menuWheel], menuShifter), menuWheel), "all-device POV supersedes pending separate shifter button");
+        menuWheel.Update(rest, 120); menuWheel.Update(rest, 280);
+        Check(menuWheel.Completed?.Input == "di_dpad_0_right" && menuWheel.Completed.DeviceId == wheel.Id, "all-device selection retains wheel POV identity");
+
         var pedal = new DrivingCapture(wheel, "Brake"); pedal.Update(rest, 0); pedal.Update(rest, 600);
         Check(pedal.AxesReady, "pedal rest settles");
         var down = rest.Copy(); down.Values[1] = -1; pedal.Update(down, 640);
