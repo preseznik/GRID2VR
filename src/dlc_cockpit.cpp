@@ -16,9 +16,9 @@ std::filesystem::path folder;
 std::mutex mutex;
 Request request;
 std::atomic<bool> stopped{},enabled{};
-bool prepared{},requested{},failed{},finished{},nativeLaunch{},seatNativeMenus{};
+bool prepared{},requested{},failed{},finished{},nativeLaunch{},seatNativeMenus{},offlineNormal{};
 const char* reason="not_requested";
-std::array<uint64_t,25> applied{},rejected{};
+std::array<uint64_t,cars.size()> applied{},rejected{};
 struct Guard {uint32_t rva,length;const char* hash;std::vector<uint32_t> relocations;};
 // Complete native consumers/parsers, including all field offsets, are pinned.
 // Normalize only recorded PE HIGHLOW relocation operands for ASLR.
@@ -99,6 +99,7 @@ seat::CameraSettings seatOwnedSettings;
 bool seatOwnsPair{};
 bool SameCameraPair(Graph a,Graph b) {a.row=b.row=0;return a==b;}
 uint64_t appliedPairs{},rejectedPairs{},alreadyPatchedPairs{};
+uint64_t readyFrames{},verifiedCameraFrames{};
 void WriteStatus() {
     if(folder.empty())return;
     std::ofstream out(folder/L"dlc-cockpit.json",std::ios::trunc);
@@ -106,7 +107,8 @@ void WriteStatus() {
        <<",\"enabled\":"<<enabled.load()<<",\"desktop\":"<<request.desktop<<",\"fovOffset\":"<<request.fovOffset<<",\"nativeCodePatches\":0,\"failed\":"<<failed
        <<",\"stopped\":"<<stopped.load()<<",\"reason\":\""<<reason
        <<"\",\"archiveWrites\":0,\"saveWrites\":0,\"headsetValidated\":false,\"appliedPairs\":"<<appliedPairs
-       <<",\"rejectedPairs\":"<<rejectedPairs<<",\"alreadyPatchedPairs\":"<<alreadyPatchedPairs<<",\"cars\":[";
+       <<",\"rejectedPairs\":"<<rejectedPairs<<",\"alreadyPatchedPairs\":"<<alreadyPatchedPairs
+       <<",\"offlineNormal\":"<<offlineNormal<<",\"readyFrames\":"<<readyFrames<<",\"verifiedCameraFrames\":"<<verifiedCameraFrames<<",\"cars\":[";
     for(size_t i=0;i<request.count;++i) {
         auto index=request.rows[i].car;if(i)out<<',';
         out<<"{\"car\":\""<<cars[index].code<<"\",\"patchedPairs\":"<<applied[index]<<",\"rejectedPairs\":"<<rejected[index]<<'}';
@@ -121,7 +123,8 @@ bool Pointer(uintptr_t at,uintptr_t& value) {
 }
 bool Word(uintptr_t at,uintptr_t expected) {uint32_t value{};return Read(at,value) && value==expected;}
 bool ReadyParent(uintptr_t& parent) {
-    if(NormalLocalRaceReady(base) || NormalSoloRaceReady(base) || (seatNativeMenus && NativeMenuLocalRaceReady(base)))return Pointer(base+0xd96808,parent);
+    if(NormalLocalRaceReady(base) || NormalSoloRaceReady(base) ||
+       ((offlineNormal || seatNativeMenus) && NativeMenuLocalRaceReady(base)))return Pointer(base+0xd96808,parent);
     if(nativeLaunch)return false;
     // Same bounded solo-playback readiness used by diagnostics. Association to
     // the local car and its provider is independently checked below.
@@ -189,18 +192,25 @@ void Arm() {
     if(!CodeMatches(base)) {failed=true;reason="instruction_guard";WriteStatus();return;}
     enabled=true;reason="waiting_for_world";WriteStatus();
 }
+bool MarkerMatches(const std::filesystem::path& path,std::string_view expected) {
+    std::ifstream file(path,std::ios::binary);
+    std::array<char,64> bytes{};
+    file.read(bytes.data(),bytes.size());
+    return file.eof() && !file.bad() && std::string_view(bytes.data(),static_cast<size_t>(file.gcount()))==expected;
+}
 }
 void Prepare(uintptr_t gameBase,const std::filesystem::path& output) {
     std::lock_guard lock(mutex);if(prepared)return;prepared=true;base=gameBase;folder=output;
     std::error_code error;const auto path=output/L"dlc-cockpit.request";
     nativeLaunch=std::filesystem::is_regular_file(output/L"race-launch.request",error) ||
         std::filesystem::is_regular_file(output/L"normal-launch.request",error);
-    std::ifstream seatEntry(output/L"seat-native-menus.request",std::ios::binary);
-    std::array<char,64> entry{};seatEntry.read(entry.data(),entry.size());
-    seatNativeMenus=nativeLaunch && std::string_view(entry.data(),static_cast<size_t>(seatEntry.gcount()))=="grid2vr-seat-native-menus-v1\n";
+    const auto normalEntry=output/L"normal-launch.request";
+    const bool allowBaseArchives=MarkerMatches(normalEntry,"grid2vr-offline-normal-v2\n");
+    offlineNormal=allowBaseArchives || MarkerMatches(normalEntry,"grid2vr-offline-normal-v1\n");
+    seatNativeMenus=nativeLaunch && MarkerMatches(output/L"seat-native-menus.request","grid2vr-seat-native-menus-v1\n");
     if(!std::filesystem::exists(path,error))return;
     requested=true;std::array<char,4097> bytes{};std::ifstream in(path,std::ios::binary);in.read(bytes.data(),bytes.size());
-    if(!ParseRequest(std::string_view(bytes.data(),static_cast<size_t>(in.gcount())),request)) {
+    if(!ParseRequest(std::string_view(bytes.data(),static_cast<size_t>(in.gcount())),request,allowBaseArchives)) {
         failed=true;reason="invalid_camera_request";WriteStatus();return;
     }
     const bool xrSession=std::filesystem::is_regular_file(output/L"xr-session.request",error);
@@ -222,8 +232,10 @@ void Present() {
     std::lock_guard lock(mutex);if(stopped)return;
     uintptr_t parent{};
     if(!ReadyParent(parent)) {hasRejected=false;Status("waiting_for_world");return;}
+    ++readyFrames;
     Graph graph{};
     if(!Resolve(graph)) {Status("waiting_for_verified_camera_graph");return;}
+    ++verifiedCameraFrames;
     // The live tool validates every edited value itself. Calibrate a newly
     // loaded pair once, then leave its live adjustments to that owner.
     const auto& row=request.rows[graph.row];
@@ -281,8 +293,9 @@ void Stop() {
 }
 #ifdef GRID2VR_DLC_COCKPIT_TEST
 bool TestCodeMatches(uintptr_t image) {base=image;return CodeMatches(base);}
-void TestSetup(uintptr_t image,const Request& settings,bool normal,bool nativeMenus) {
-    base=image;request=settings;nativeLaunch=normal;seatNativeMenus=nativeMenus;stopped=false;enabled=false;failed=false;finished=false;requested=true;folder.clear();
+void TestSetup(uintptr_t image,const Request& settings,bool normal,bool nativeMenus,bool offline) {
+    base=image;request=settings;nativeLaunch=normal;seatNativeMenus=nativeMenus;offlineNormal=offline;stopped=false;enabled=false;failed=false;finished=false;requested=true;folder.clear();
+    readyFrames=verifiedCameraFrames=0;
     applied={};rejected={};appliedPairs=0;rejectedPairs=0;alreadyPatchedPairs=0;hasRejected=false;seatOwnsPair=false;Arm();
 }
 std::array<uint64_t,2> TestCounts(size_t car) {return {applied[car],rejected[car]};}

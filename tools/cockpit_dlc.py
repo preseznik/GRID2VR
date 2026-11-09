@@ -32,10 +32,18 @@ def calibrations():
     return data, result
 
 
-def available(root, installed):
+def matches_archive(root, archive):
     from session_config import plain_path
+    path = plain_path(root / archive['path'])
+    if not path.is_file() or path.stat().st_size != archive['bytes']:
+        return False
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest() == archive['sha256']
+
+
+def available(root, installed, *, offline_normal=False):
     data, rows = calibrations()
-    embedded_ok = None
+    embedded_ok = matches_archive(root, data['embeddedArchive']) if offline_normal else None
     result = {}
     for car in installed['cars']:
         row = rows.get(car['id'])
@@ -43,28 +51,28 @@ def available(root, installed):
             continue
         if row['embeddedSource']:
             if embedded_ok is None:
-                archive = data['embeddedArchive']
-                path = plain_path(root / archive['path'])
-                embedded_ok = path.is_file() and path.stat().st_size == archive['bytes']
-                if embedded_ok:
-                    with path.open('rb') as stream:
-                        embedded_ok = hashlib.file_digest(stream, 'sha256').hexdigest() == archive['sha256']
+                embedded_ok = matches_archive(root, data['embeddedArchive'])
             if not embedded_ok:
                 continue
         result[car['id']] = row
+    if offline_normal and embedded_ok:
+        # These factory banks occur both loose and inside the verified dr.nic.
+        # The launcher's loose-asset stage verifies this catalog and both files.
+        base = json.loads(CATALOG.with_name('cockpit-assets.json').read_bytes())
+        result.update((row['car'], row) for row in base['cars'] if row['car'] in ('css', 'z06'))
     return result
 
 
-def request(game, mode, car=None, normal=False, alignments=None, desktop=False, fov_offset=0):
+def request(game, mode, car=None, normal=False, alignments=None, desktop=False, fov_offset=0, offline_normal=False):
     from session_config import installed_dlc, plain_path
     from game_executable import validate_avx
     game = plain_path(game)
     validate_avx(game / 'grid2_avx.exe')
-    if mode not in ('head-only', 'hide-driver') or normal == bool(car):
+    if mode not in ('head-only', 'hide-driver') or normal == bool(car) or (offline_normal and not normal):
         raise ValueError('Choose a DLC car or Normal mode')
     if type(desktop) is not bool or type(fov_offset) is not int or not -30 <= fov_offset <= 30 or (fov_offset and not desktop):
         raise ValueError('FOV adjustment requires Desktop and whole degrees within -30..30')
-    rows = available(game, installed_dlc(game))
+    rows = available(game, installed_dlc(game), offline_normal=offline_normal)
     if not normal:
         if car not in rows:
             raise ValueError('DLC cockpit source is missing or changed')
@@ -100,8 +108,9 @@ if __name__ == '__main__':
     choice = parser.add_mutually_exclusive_group(required=True)
     choice.add_argument('--car')
     choice.add_argument('--normal', action='store_true')
+    parser.add_argument('--offline-normal', action='store_true', help='Include verified base cameras also present in dr.nic')
     parser.add_argument('--alignments', type=Path)
     parser.add_argument('--desktop', action='store_true')
     parser.add_argument('--fov-offset', type=int, default=0)
     args = parser.parse_args()
-    print(json.dumps(request(args.game_root, args.mode, args.car, args.normal, args.alignments, args.desktop, args.fov_offset)))
+    print(json.dumps(request(args.game_root, args.mode, args.car, args.normal, args.alignments, args.desktop, args.fov_offset, args.offline_normal)))

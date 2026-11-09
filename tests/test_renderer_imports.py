@@ -13,6 +13,7 @@ from pathlib import Path
 
 ALLOWED = {name.lower() for name in (
     'ADVAPI32.dll', 'bcrypt.dll', 'CRYPT32.dll', 'D3DCOMPILER_47.dll', 'DINPUT8.dll', 'KERNEL32.dll',
+    'gdiplus.dll',  # Windows GDI+ draws the in-game seat panel (src/seat_panel.cpp).
     'MSVCP140.dll', 'MSVCP140_ATOMIC_WAIT.dll', 'pdh.dll', 'USER32.dll', 'VCRUNTIME140.dll', 'WINTRUST.dll')}
 UNIVERSAL_CRT = re.compile(r'api-ms-win-crt-[a-z]+-l1-1-0\.dll')
 

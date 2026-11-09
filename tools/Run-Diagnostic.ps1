@@ -236,7 +236,7 @@ if($CockpitMode -ne 'Off') {
     if(!$RuntimeSession -or (!$desktopCockpit -and !$ExposureAudit -and (!$UntilExit -or !$XrProjection)) -or ($PlayerControlOnly -and !$desktopCockpit) -or $PlayerControlProbe -ne 'Off' -or $CockpitS2000 -ne 'Off') { throw 'Cockpit assets require a VR user session, explicit Desktop seat/FOV or bounded exposure audit.' }
     if($NormalLaunch -or $selectedSession.carContent.dlc) {
         . (Join-Path $PSScriptRoot 'Dlc-Cockpit.ps1')
-        $dlcCockpit=Get-DlcCockpitRequest $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) -Desktop:([bool]$PlayerControlOnly) -ApplySeatPosition:(!$PlayerControlOnly -or [bool]$DesktopSeatPosition) -FovOffset:$DesktopCockpitFov
+        $dlcCockpit=Get-DlcCockpitRequest $root $game $CockpitMode $selectedSession.selection.car ([bool]$NormalLaunch) -Desktop:([bool]$PlayerControlOnly) -ApplySeatPosition:(!$PlayerControlOnly -or [bool]$DesktopSeatPosition) -FovOffset:$DesktopCockpitFov -OfflineNormal:($NormalLaunch -and !$OnlineLaunch)
         if($dlcCockpit.cars.Count -and (!$UntilExit -or (!$XrProjection -and !$desktopCockpit))) { throw 'DLC cockpit cameras require a VR or explicit Desktop user session.' }
     }
     $startInCockpit=$UntilExit -and $XrProjection -and $selectedSession.control -eq 'human'
@@ -320,7 +320,7 @@ if($CockpitTextures -ne 'Off') {
 }
 $run=if($RunLogDirectory){Get-Grid2LogDirectory $root $RunLogDirectory}else{New-Grid2LogDirectory $root}
 if($headsetResolution) { Assert-HeadsetResolutionProxy $proxy }
-if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy ([bool]$PlayerControlOnly) }
+if($dlcCockpit.cars.Count) { Assert-DlcCockpitProxy $proxy ([bool]$PlayerControlOnly) ($NormalLaunch -and !$OnlineLaunch) }
 if(Test-Path -LiteralPath (Join-Path $run 'session.json')) { throw 'Diagnostic run already exists; retained its logs.' }
 $inGameSeatRequested=$false
 if($RuntimeSession -and $UntilExit -and $CockpitMode -ne 'Off' -and !$OnlineLaunch) {
@@ -359,7 +359,10 @@ if ($RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'runtime-session.
 if($dlcCockpit.cars.Count) { [IO.File]::WriteAllText((Join-Path $run 'dlc-cockpit.request'),$dlcCockpit.text,[Text.Encoding]::ASCII) }
 if($CockpitTextures -ne 'Off') { [IO.File]::WriteAllText((Join-Path $run 'cockpit-textures.request'),$CockpitTextures,[Text.Encoding]::ASCII) }
 if ($DiagnosticLogging -or !$UntilExit) { [IO.File]::WriteAllText((Join-Path $run 'diagnostic-logging.request'),'Enable additional bounded troubleshooting details; never disable recovery receipts.') }
-if($NormalLaunch) { [IO.File]::WriteAllText((Join-Path $run 'normal-launch.request'),'Native menus; no selected-session flow or configuration.') }
+if($NormalLaunch) {
+    $entry=if($OnlineLaunch){'Native menus; no selected-session flow or configuration.'}else{"grid2vr-offline-normal-v2`n"}
+    [IO.File]::WriteAllText((Join-Path $run 'normal-launch.request'),$entry,[Text.Encoding]::ASCII)
+}
 if($selectedSession -and $selectedSession.selection.mode -eq 'race') { [IO.File]::WriteAllText((Join-Path $run 'race-launch.request'),'Selected human race with AI opponents.') }
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$VrReplayCameras) { [IO.File]::WriteAllText((Join-Path $run 'flat-replays.request'),'Use the shared screen for native replay cameras.') }
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$VrGarageMenus) { [IO.File]::WriteAllText((Join-Path $run 'flat-garage.request'),'Use the shared screen for the native garage menus.') }

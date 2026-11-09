@@ -403,16 +403,32 @@ try {
     [IO.File]::Delete($marker);[IO.File]::WriteAllText($proxy,'grid2vr-seat-menu-v1')
     $rejected=$false;try{. $nativeSeat}catch{$rejected=$true}
     if(!$rejected -or [IO.File]::Exists($marker)) { throw 'Normal seat mode accepted an old renderer.' }
+    . (Join-Path $PSScriptRoot '../tools/Dlc-Cockpit.ps1')
+    [IO.File]::WriteAllText($proxy,'dlc-cockpit-v1 dlc-cockpit-desktop-v1')
+    Assert-DlcCockpitProxy $proxy
+    $rejected=$false;try { Assert-DlcCockpitProxy $proxy $false $true } catch { $rejected=$true }
+    if(!$rejected) { throw 'Offline Normal accepted a renderer missing native-menu DLC cockpit support.' }
+    [IO.File]::AppendAllText($proxy,' grid2vr-offline-normal-v1')
+    $rejected=$false;try { Assert-DlcCockpitProxy $proxy $false $true } catch { $rejected=$true }
+    if(!$rejected) { throw 'Offline Normal accepted a renderer without embedded base-car support.' }
+    [IO.File]::AppendAllText($proxy,' grid2vr-offline-normal-v2')
+    Assert-DlcCockpitProxy $proxy $false $true
+    Assert-DlcCockpitProxy $proxy $true $true
     $raceRequest=Find-TestStatement $diagnostic "'race-launch.request'"
     $replayRequest=Find-TestStatement $diagnostic "'flat-replays.request'"
     $garageRequest=Find-TestStatement $diagnostic "'flat-garage.request'"
-    foreach($sessionMode in @('normal','practice','race')) {
+    foreach($sessionMode in @('normal','online','practice','race')) {
         $run=Join-Path $fixture ('requests-'+$sessionMode)
         [IO.Directory]::CreateDirectory($run) | Out-Null
-        $NormalLaunch=$sessionMode -eq 'normal'; $selectedSession=if($NormalLaunch){$null}else{@{selection=@{mode=$sessionMode}}}
+        $OnlineLaunch=$sessionMode -eq 'online'; $NormalLaunch=$sessionMode -in @('normal','online')
+        $selectedSession=if($NormalLaunch){$null}else{@{selection=@{mode=$sessionMode}}}
         . $normalRequest; . $raceRequest
         if([IO.File]::Exists((Join-Path $run 'normal-launch.request')) -ne $NormalLaunch -or
            [IO.File]::Exists((Join-Path $run 'race-launch.request')) -ne ($sessionMode -eq 'race')) { throw 'Native launch-mode marker differs.' }
+        if($NormalLaunch) {
+            $offline=[IO.File]::ReadAllText((Join-Path $run 'normal-launch.request')) -ceq "grid2vr-offline-normal-v2`n"
+            if($offline -ne (!$OnlineLaunch)) { throw "Wrong offline cockpit permission for $sessionMode." }
+        }
     }
     $RuntimeSession=$true; $ReplayStereo=$true; $PlayerControlOnly=$false; $VrReplayCameras=1
     . $replayRequest

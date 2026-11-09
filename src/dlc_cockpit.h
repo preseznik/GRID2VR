@@ -17,7 +17,7 @@ void Stop();
 #ifdef GRID2VR_DLC_COCKPIT_TEST
 struct Request;
 bool TestCodeMatches(uintptr_t image);
-void TestSetup(uintptr_t image,const Request& settings,bool nativeLaunch=false,bool nativeMenus=false);
+void TestSetup(uintptr_t image,const Request& settings,bool nativeLaunch=false,bool nativeMenus=false,bool offlineNormal=false);
 std::array<uint64_t,2> TestCounts(size_t car);
 #endif
 
@@ -40,7 +40,7 @@ struct Car {const char* code;std::array<float,3> seat;std::array<Original,2> ori
 // Native source fingerprints and field provenance are recorded in
 // docs/evidence/dlc-cockpit-native-20261026.json. Seats come from the authored
 // driver animation and steering-dummy alignment, not a guessed bonnet offset.
-inline constexpr std::array<Car,25> cars{{
+inline constexpr std::array<Car,27> cars{{
     {"240",{0.3611f,1.0917f,-0.2968f},{{{{0.f,1.0561f,0.8473f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0}},{{0.f,1.1952f,-1.2507f,0.1228f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.1423f,60.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0}}}}},
     {"370",{0.3608f,1.1138f,-0.3119f},{{{{0.f,1.1223f,0.5402f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0}},{{0.f,1.2202f,-1.3271f,0.085f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.1423f,60.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0}}}}},
     {"722",{0.3594f,1.0163f,-0.8145f},{{{{0.f,1.0475f,0.655f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}},{{0.f,1.578f,-0.97f,0.0444f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.142f,65.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}}}}},
@@ -66,9 +66,14 @@ inline constexpr std::array<Car,25> cars{{
     {"z22",{0.3674f,1.1081f,-0.2973f},{{{{0.f,1.095f,1.038f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}},{{0.f,1.1818f,-1.4808f,0.2103f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.1423f,65.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}}}}},
     {"zig",{0.3347f,1.0414f,-0.443f},{{{{0.f,1.0319f,0.6898f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0}},{{0.f,1.2694f,-1.0635f,0.1872f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.142f,60.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,0,0,0}}}}},
     {"zon",{0.3121f,0.9896f,0.306f},{{{{0.f,0.95f,1.294f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}},{{0.f,1.267f,-0.687f,0.022f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.142f,65.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}}}}},
+    // These two base cars also have stock cameras in dr.nic. Only accept their
+    // rows for offline Normal. The prepared loose pairs already match the target.
+    {"css",{0.4114f,1.1315f,-0.1064f},{{{{0.f,1.1859f,0.9661f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}},{{0.f,1.2598f,-1.584f,0.093f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.142f,65.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}}}}},
+    {"z06",{0.4379f,1.0799f,-0.4141f},{{{{0.f,1.0814f,0.6086f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}},{{0.f,1.1784f,-1.7511f,0.2008f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.142f,65.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}}}}},
 }};
+inline constexpr auto dlcCars=std::span{cars}.first<25>();
 struct Row {size_t car{};std::array<float,3> seat{};};
-struct Request {bool hideDriver{},desktop{};int fovOffset{};std::array<Row,25> rows{};size_t count{};};
+struct Request {bool hideDriver{},desktop{};int fovOffset{};std::array<Row,cars.size()> rows{};size_t count{};};
 inline bool ValidSession(const Request& request,bool runtime,bool xrSession,bool xrProjection) {
     return runtime && (request.desktop?(!xrSession && !xrProjection):(xrSession && xrProjection));
 }
@@ -84,7 +89,7 @@ inline bool ValidSeat(size_t car,const std::array<float,3>& seat) {
            std::abs(seat[i]-cars[car].seat[i])>.50001f)return false;
     return true;
 }
-inline bool ParseRequest(std::string_view text,Request& result) {
+inline bool ParseRequest(std::string_view text,Request& result,bool allowBaseArchives=false) {
     result={};if(text.empty() || text.size()>4096 || text.back()!='\n')return false;
     for(unsigned char c:text)if(c!=10 && c!=13 && (c<32 || c>126))return false;
     std::istringstream input{std::string(text)};input.imbue(std::locale::classic());
@@ -101,7 +106,8 @@ inline bool ParseRequest(std::string_view text,Request& result) {
         if(parsed.count==parsed.rows.size())return false;
         std::istringstream values(line);values.imbue(std::locale::classic());std::string code,extra;
         Row row{};if(!(values>>code>>row.seat[0]>>row.seat[1]>>row.seat[2]) || (values>>extra))return false;
-        row.car=FindCar(code);if(!ValidSeat(row.car,row.seat))return false;
+        row.car=FindCar(code);
+        if((!allowBaseArchives && row.car>=dlcCars.size()) || !ValidSeat(row.car,row.seat))return false;
         for(size_t i=0;i<parsed.count;++i)if(parsed.rows[i].car==row.car)return false;
         parsed.rows[parsed.count++]=row;
     }

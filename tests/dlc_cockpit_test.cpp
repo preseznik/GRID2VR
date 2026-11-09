@@ -65,6 +65,9 @@ void PairTests() {
 void RequestTests() {
     Request request;CHECK(ParseRequest("dlc-cockpit-v1 head-only\n240 .3611 1.0917 -.2968\n",request));
     CHECK(request.count==1 && !request.hideDriver);
+    const auto corvette="dlc-cockpit-v1 head-only\nz06 .4379 1.0799 -.4141\n";
+    CHECK(!ParseRequest(corvette,request));
+    CHECK(ParseRequest(corvette,request,true) && request.rows[0].car==FindCar("z06"));
     CHECK(ParseRequest("dlc-cockpit-v1 hide-driver\r\n240 .3611 1.0917 -.2968\r\n",request));CHECK(request.hideDriver);
     for(const auto* invalid:{"", "dlc-cockpit-v1 head-only\n", "dlc-cockpit-v1 head-only\n240 .3611 1.0917 -.2968",
         "dlc-cockpit-v1 head-only\n240 nan 1 -.2\n", "dlc-cockpit-v1 head-only\n240 0 99 0\n",
@@ -183,8 +186,8 @@ struct alignas(16) LiveFixture {
 void SeatHostTests(uint8_t* image) {
     namespace seat=grid2vr::seat;
     LiveFixture graph(image);const auto table=graph.base+mountedTableRva;
-    Request dlc{};dlc.count=cars.size();
-    for(size_t i=0;i<cars.size();++i)dlc.rows[i]={i,cars[i].seat};
+    Request dlc{};dlc.count=dlcCars.size();
+    for(size_t i=0;i<dlc.count;++i)dlc.rows[i]={i,cars[i].seat};
     TestSetup(Address(image),dlc,true);
     seat::SessionRequest request{};request.count=seat::CarCount;request.positions=true;
     for(size_t car=0;car<seat::CarCount;++car)request.rows[car]={car,{3,-4,5}};
@@ -258,9 +261,13 @@ void SeatHostTests(uint8_t* image) {
     TestSetup(Address(image),dlc,true,true);
     seat::CameraHost normal;CHECK(normal.TestInitialize(Address(image),request));
     CHECK(normal.Update(edit));normal.Stop();
-    // Initial DLC calibration in Normal uses that same opted-in owner graph.
+    // Older launchers can still opt in through the seat marker.
     graph.Load(0);Put(image,0xe5917c,0u);TestSetup(Address(image),dlc,true,true);
     Present();CHECK(TestCounts(0)[0]==1 && TestCounts(0)[1]==0);Stop();
+    // The offline Normal entry alone must not enable the seat editor.
+    load(0);Put(image,0xe5917c,0u);TestSetup(Address(image),dlc,true,false,true);
+    seat::CameraHost withoutSeat;CHECK(withoutSeat.TestInitialize(Address(image),request));
+    CHECK(!withoutSeat.Update(edit));withoutSeat.Stop();
 }
 void LiveTests(uint8_t* image) {
     static_assert(sizeof(void*)==4,"Live graph test must use the Win32 target");
@@ -273,8 +280,31 @@ void LiveTests(uint8_t* image) {
     TestSetup(Address(image),request);CHECK(std::equal(beforeArm.begin(),beforeArm.end(),image));
     CHECK(graph.front==oldFront && graph.rear==oldRear);
     Put(image,0xe5917c,0u);Present();CHECK(graph.front==oldFront && graph.rear==oldRear && TestCounts(0)[0]==0);
-    Put(image,0xe5917c,2u);
+    // Native career enters with mode 0. Every requested DLC pair, including
+    // the Season 3 Camaro (z22), should calibrate with the seat tool off.
+    TestSetup(Address(image),request,true);
     for(size_t car=0;car<cars.size();++car) {
+        graph.Load(car);Put(image,0xe5917c,0u);
+        const auto a=graph.front,b=graph.rear;Present();
+        CHECK(graph.front==a && graph.rear==b && TestCounts(car)[0]==0);
+    }
+    TestSetup(Address(image),request,true,false,true);
+    for(size_t car=0;car<cars.size();++car) {
+        graph.Load(car);Put(image,0xe5917c,0u);Present();Present();
+        CHECK(TestCounts(car)[0]==1 && TestCounts(car)[1]==0);
+        CHECK(PatchedPair(graph.front,graph.rear,graph.base+mountedTableRva,request.rows[car],false));
+    }
+    graph.Load(0);Put(image,0xe5917c,0u);const auto originalFront=graph.front,originalRear=graph.rear;
+    Put(image,0xe61010,Address(graph.replay.data()));Present();
+    CHECK(graph.front==originalFront && graph.rear==originalRear);
+    Put(image,0xe61010,0u);Put(graph.car.data(),0xb0,1u);Present();
+    CHECK(graph.front==originalFront && graph.rear==originalRear);
+    Put(graph.car.data(),0xb0,0u);TestSetup(Address(image),request,true);Present();
+    CHECK(graph.front==originalFront && graph.rear==originalRear && TestCounts(0)[0]==0);
+    request.count=dlcCars.size(); // Direct launches carry only explicitly selected DLC.
+    TestSetup(Address(image),request);
+    Put(image,0xe5917c,2u);
+    for(size_t car=0;car<request.count;++car) {
         graph.Load(car);const auto a=graph.front,b=graph.rear;
         const std::vector<uint8_t> codeBefore(image,image+imageBytes);
         Present();CHECK(TestCounts(car)[0]==1);
@@ -338,6 +368,6 @@ void LiveTests(uint8_t* image) {
 int main(int argc,char** argv) {
     try {
         CHECK(argc==2);RequestTests();PairTests();DesktopFovTests();auto* image=Image(argv[1]);LiveTests(image);SeatHostTests(image);VirtualFree(image,0,MEM_RELEASE);
-        std::cout<<"25 car pairs, 32 relocated code guards, one-time pose cache refresh, unchanged executable bytes, readiness, live ownership, AI/provider refusal and reloaded graph tests passed.\n";return 0;
+        std::cout<<"25 DLC and 2 embedded base-car pairs, 32 relocated code guards, one-time pose cache refresh, unchanged executable bytes, readiness, live ownership, AI/provider refusal and reloaded graph tests passed.\n";return 0;
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}
 }

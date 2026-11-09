@@ -42,8 +42,12 @@ class DlcCockpitTests(unittest.TestCase):
         data['embeddedArchive'].update(bytes=source.stat().st_size, sha256=hashlib.sha256(source.read_bytes()).hexdigest())
         with patch.object(cockpit, 'calibrations', return_value=(data, self.rows)):
             self.assertEqual(len(cockpit.available(self.game, self.installed)), 25)
+            normal = cockpit.available(self.game, self.installed, offline_normal=True)
+            self.assertEqual(set(normal) - set(self.rows), {'css', 'z06'})
+            self.assertEqual(normal['z06']['position'], [.4379, 1.0799, -.4141])
             source.write_bytes(b'X' * source.stat().st_size)
             self.assertEqual(len(cockpit.available(self.game, self.installed)), 22)
+            self.assertEqual(set(cockpit.available(self.game, self.installed, offline_normal=True)), set(normal) - {'css', 'z06', '722', 'gtr', 'mpg'})
 
     def test_request_filters_selected_car_and_applies_same_centimetre_axes(self):
         self.enterContext(patch.object(game_executable, 'validate_avx', return_value='supported'))
@@ -58,7 +62,7 @@ class DlcCockpitTests(unittest.TestCase):
         normal = cockpit.request(self.game, 'hide-driver', normal=True)
         self.assertEqual(len(normal['cars']), 22)
         self.assertLess(len(normal['text']), 4096)
-        for args in (dict(car='unknown'), dict(car='mpg'), dict(car='240', normal=True), dict()):
+        for args in (dict(car='unknown'), dict(car='mpg'), dict(car='240', normal=True), dict(car='240', offline_normal=True), dict()):
             with self.assertRaises(ValueError): cockpit.request(self.game, 'head-only', **args)
         for value in (51, -51, 1.5, True, '5'):
             seats.write_text(json.dumps(dict(Version=1, Cars={'240': dict(Height=value, Forward=0, Right=0)})))

@@ -3,8 +3,8 @@
 #include "seat_menu.h"
 
 namespace grid2vr::seat {
-inline constexpr size_t CarCount=baseCars.size()+dlccockpit::cars.size();
-inline const char* CarCode(size_t car) {return car<baseCars.size()?baseCars[car].code:car<CarCount?dlccockpit::cars[car-baseCars.size()].code:"";}
+inline constexpr size_t CarCount=baseCars.size()+dlccockpit::dlcCars.size();
+inline const char* CarCode(size_t car) {return car<baseCars.size()?baseCars[car].code:car<CarCount?dlccockpit::dlcCars[car-baseCars.size()].code:"";}
 inline const wchar_t* CarLabel(size_t car) {
     for(const auto& label:carLabels)if(std::string_view(label.first)==CarCode(car))return label.second;
     return L"Car not identified";
@@ -29,7 +29,7 @@ inline bool ExpectedPair(const CameraSettings& settings,uint32_t table,CameraPai
         const auto name=view?"bonnet_reverse":"bonnet";
         std::memcpy(object.data()+0x19,name,std::strlen(name)+1);
         const auto hash=dlccockpit::NameHash(name);std::memcpy(object.data()+0x98,&hash,4);
-        const auto& original=base?baseCars[settings.car].views[view]:dlccockpit::cars[settings.car-baseCars.size()].original[view];
+        const auto& original=base?baseCars[settings.car].views[view]:dlccockpit::dlcCars[settings.car-baseCars.size()].original[view];
         for(size_t i=0;i<dlccockpit::floatOffsets.size();++i)
             std::memcpy(object.data()+dlccockpit::floatOffsets[i],&original.values[i],4);
         for(size_t i=0;i<dlccockpit::flagOffsets.size();++i)
@@ -47,7 +47,7 @@ inline bool ExpectedPair(const CameraSettings& settings,uint32_t table,CameraPai
         }
     }
     if(!base) {
-        const auto car=settings.car-baseCars.size();auto position=dlccockpit::cars[car].seat;
+        const auto car=settings.car-baseCars.size();auto position=dlccockpit::dlcCars[car].seat;
         position[0]-=settings.position.right/100.f;position[1]+=settings.position.height/100.f;position[2]+=settings.position.forward/100.f;
         if(!dlccockpit::PatchPair(next[0],next[1],table,{car,position},settings.hideDriver,settings.fov))return false;
     }
@@ -63,7 +63,7 @@ inline bool Matches(std::span<const uint8_t> object,const CameraObject& expected
         const auto value=dlccockpit::FloatAt(object,at);
         if(!std::isfinite(value) || std::abs(value-dlccockpit::FloatAt(expected,at))>.0001f)return false;
     }
-    const auto& flags=settings.car<baseCars.size()?baseCars[settings.car].views[view].flags:dlccockpit::cars[settings.car-baseCars.size()].original[view].flags;
+    const auto& flags=settings.car<baseCars.size()?baseCars[settings.car].views[view].flags:dlccockpit::dlcCars[settings.car-baseCars.size()].original[view].flags;
     for(size_t i=0;i<flags.size();++i)
         if(flags[i]>=0 && object[dlccockpit::flagOffsets[i]]!=expected[dlccockpit::flagOffsets[i]])return false;
     return true;

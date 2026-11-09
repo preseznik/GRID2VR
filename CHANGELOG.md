@@ -1,8 +1,14 @@
-# GRID2VR 0.2.20 — Unreleased
+# GRID2VR 0.2.20 — Experimental
 
 - **Seat position in Desktop.** Use the saved per-car cockpit position in Desktop, with an independent cockpit field-of-view adjustment.
 
 - **In-game seat adjustment.** Press Tab in an offline cockpit to move the seat, save or cancel without relaunching. The panel uses GRID2VR red accents and supports Normal-menu races as well as direct launches. Desktop can adjust FOV too; VR keeps the headset FOV.
+
+- **100% career profiles.** Choose **Profile → Create new profile → 100% career** to start a completed career under your chosen driver name on Steam or a supported standalone installation.
+
+- **OpenXR runtime selection.** The launcher labels the system runtime **OpenXR (system Default)**.
+
+- **Cockpits in offline Normal races.** DLC cars now use the calibrated cockpit with in-game seat adjustment turned off. The Corvette Z06 and Camaro SS also use it when the game loads their archived hood camera.
 
 # GRID2VR 0.2.19 — Experimental
 

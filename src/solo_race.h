@@ -121,7 +121,7 @@ inline bool OwnedLocalRaceReady(uintptr_t base,bool nativeMenus) {
 }
 // Existing consumers remain restricted to their admitted direct-launch path.
 inline bool NormalLocalRaceReady(uintptr_t base) {return OwnedLocalRaceReady(base,false);}
-// Seat-only opt-in: the caller must have the explicit offline Normal marker.
+// Offline Normal cameras require an explicit launcher opt-in.
 // Bound larger native-menu fields to 16, retaining all owner, role, controller,
 // loading/replay and fresh-graph checks above. Never selects/enables input.
 inline bool NativeMenuLocalRaceReady(uintptr_t base) {return OwnedLocalRaceReady(base,true);}
