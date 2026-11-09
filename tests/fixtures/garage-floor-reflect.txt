@@ -1,0 +1,17 @@
+garage-floor-reflect.dxbc and garage-floor-reflect-refract.dxbc: the shipped
+garage_floor_reflect.fx.fp (ps_5_0, 11,592 bytes) and
+garage_floor_reflect_refract.fx.fp (ps_5_0, 11,828 bytes) pixel shaders,
+extracted read-only from GRID 2's shaderpack/dx11/shaderpack.pssg (SHA-256
+8c86662ffdf412a6f00cafeaf325d5ce47f8ed93bf149db2217d671303df8f0a) at byte
+offsets 762551 and 376495. Their renderer fingerprints (FNV-1a 64 of the
+bytecode, as passed to CreatePixelShader) are d9571afb84cec177 and
+79da3d0d7215a660. The same extraction reproduces the known runtime
+fingerprints 2d81beb22b54d6cc, 922a49bc5dcd4775 and 287dc592430a7323.
+
+Both sample a planar reflection map (TReflectionMap/TReflectionMap2, t4/t5 and
+t3/t4) at the pixel's screen position and blend
+lerp(surface, reflection, lerp(FresnelMin, FresnelMax, f) * specular), plus a
+glow of max(reflection - 1, 0) * 0.2. FresnelMin/FresnelMax are $Globals bytes
+240..247 in both layouts. The test renders each shader on WARP and requires the
+patched draw to match the shader's own output with zero Fresnel and black
+reflection inputs byte for byte.

@@ -1,3 +1,7 @@
+# GRID2VR 0.2.21 — Unreleased
+
+- **Garage floor in VR.** The shiny garage and online menu floors no longer show a reflection that slides around as you look. The game draws that reflection for its own camera, not your eyes, so VR now shows the plain floor. Desktop is unchanged.
+
 # GRID2VR 0.2.20 — Experimental
 
 - **Seat position in Desktop.** Use the saved per-car cockpit position in Desktop, with an independent cockpit field-of-view adjustment.

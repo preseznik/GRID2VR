@@ -338,6 +338,14 @@ try {
         if((Test-Path -LiteralPath $impactRequest) -ne $case.written) { throw "Impact glitch request routing changed: stereo=$($case.stereo) native=$($case.native)" }
         if(Test-Path -LiteralPath $impactRequest) { Remove-Item -LiteralPath $impactRequest }
     }
+    # The VR garage floor reflection removal is default on and never reaches desktop runs.
+    $floor=Find-TestStatement $diagnostic "'floor-reflection.request'"
+    $floorRequest=Join-Path $run 'floor-reflection.request'
+    foreach($case in @(@{stereo=$true;player=$false;written=$true},@{stereo=$false;player=$false;written=$false},@{stereo=$true;player=$true;written=$false})) {
+        & { $RuntimeSession=$true;$ReplayStereo=$case.stereo;$PlayerControlOnly=$case.player; . $floor }
+        if((Test-Path -LiteralPath $floorRequest) -ne $case.written) { throw "Floor reflection request routing changed: stereo=$($case.stereo) desktop=$($case.player)" }
+        if(Test-Path -LiteralPath $floorRequest) { Remove-Item -LiteralPath $floorRequest }
+    }
     . (Join-Path $root 'tools/Launch-Backend.ps1')
     function Get-Grid2SteamRoot { return 'C:\Fixture Steam' }
     $plan=Get-Grid2LaunchPlan -Game 'C:\Fixture Game' -Backend Steam -NormalLaunch

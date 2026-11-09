@@ -370,6 +370,7 @@ if($FrontendSceneAudit) { [IO.File]::WriteAllText((Join-Path $run 'frontend-scen
 if($ExposureAudit) { [IO.File]::WriteAllText((Join-Path $run 'exposure-audit.request'),'At most 600 luminance/constant rows; no full-size images.') }
 if(!$PlayerControlOnly -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure) { [IO.File]::WriteAllText((Join-Path $run 'cockpit-exposure.request'),'Retain the authored exposure ceiling in the exact cockpit camera only.') }
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect) { [IO.File]::WriteAllText((Join-Path $run 'impact-interference.request'),'Hide the flat impact interference glitch in VR; the game shader takes its pass-through branch.') }
+if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) { [IO.File]::WriteAllText((Join-Path $run 'floor-reflection.request'),'Remove the garage floor reflection in VR; it is drawn for the game camera, not the posed eye.') }
 if ($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) {
     $hudRequest=$HudDistance.ToString([Globalization.CultureInfo]::InvariantCulture)+" $HudFollowView $HudHiddenElements"
     [IO.File]::WriteAllText((Join-Path $run 'vr-hud.request'),$hudRequest,[Text.Encoding]::ASCII)
@@ -526,6 +527,7 @@ $receipt.desktopSeatPositionRequested=[bool]$DesktopSeatPosition
 $receipt.desktopCockpitFov=$DesktopCockpitFov
 $receipt.inGameSeatRequested=$inGameSeatRequested
 $receipt.hideImpactGlitch=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect)
+$receipt.hideFloorReflection=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly)
 $receipt.exposureAudit=[bool]$ExposureAudit
 $receipt.removeCinemaMatte=[bool]$RemoveCinemaMatte
 $receipt.diagnosticLogging=[bool]$DiagnosticLogging

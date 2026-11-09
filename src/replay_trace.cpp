@@ -6,6 +6,7 @@
 #include "shadow_pass.h"
 #include "motion_blur.h"
 #include "impact_interference.h"
+#include "floor_reflection.h"
 #include "cockpit_exposure.h"
 #include "draw_witness.h"
 #include "flicker_capture.h"
@@ -68,6 +69,9 @@ bool removeImpactInterference{};
 ImpactInterference impactInterference;
 std::array<unsigned,3> impactDraws{};
 bool impactInterferenceLogged{};
+bool removeFloorReflection{};
+FloorReflection floorReflection;
+std::array<uint64_t,3> floorDraws{};
 CenterDrawWitness centerDraws;
 bool centerFailureDumped{},defaultShadowProofSaved{};
 bool isolateModels{};
@@ -462,6 +466,7 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
     disableMotionBlur=requested && std::filesystem::exists(folder/L"disable-motion-blur.request");nativeDispatch=dispatch;
     limitCockpitExposure=requested && runtimeSession && std::filesystem::exists(folder/L"cockpit-exposure.request");
     removeImpactInterference=requested && runtimeSession && dispatch && std::filesystem::exists(folder/L"impact-interference.request");
+    removeFloorReflection=requested && runtimeSession && dispatch && std::filesystem::exists(folder/L"floor-reflection.request");
     compact=requested && std::filesystem::exists(folder/L"compact-stereo.request") && std::filesystem::exists(folder/L"stereo-eyes.request");
     isolateModels=requested && std::filesystem::exists(folder/L"isolate-models.request");
     restoreComputeState=requested && std::filesystem::exists(folder/L"restore-compute-state.request");
@@ -621,7 +626,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
 bool CancelBeforeReplay() {
     const auto scene=engine::CurrentScene();
     if (!runtimeSession || !enabled || GetCurrentThreadId()!=ownerThread || !sceneOpen || eyeReplayStarted ||
-        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() ||
+        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() || floorReflection.Pending() ||
         screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // No eye state was applied. Missing race-only passes in a native menu do
@@ -632,7 +637,7 @@ bool CancelBeforeReplay() {
 }
 bool ResetHistory() {
     if (!enabled || GetCurrentThreadId()!=ownerThread || sceneOpen || !pairHealthy || motionBlur.Pending() || cockpitExposure.Pending() ||
-        impactInterference.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
+        impactInterference.Pending() || floorReflection.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // The verified normal Quit path suspends and resets on the render owner.
     // Flush cumulative counts here rather than leaving the last periodic sample.
@@ -753,6 +758,10 @@ void AfterDraw(ID3D11DeviceContext* context) {
     if (impactInterference.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=impactInterference.Restore(context);pairHealthy&=restored;
         if(!restored) {log<<"impact_interference restored=0\n";log.FlushNow();}
+    }
+    if (floorReflection.Pending() && GetCurrentThreadId()==ownerThread) {
+        const bool restored=floorReflection.Restore(context);pairHealthy&=restored;
+        if(!restored) {log<<"floor_reflection restored=0\n";log.FlushNow();}
     }
     if (screenUi.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=screenUi.Restore(context);pairHealthy&=restored;
@@ -954,6 +963,23 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
             if (applied && !impactInterferenceLogged) {
                 impactInterferenceLogged=true;
                 log << "impact_interference applied=1 first_scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+            }
+        }
+    }
+    if (removeFloorReflection && kind[0]!='C') {
+        ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
+        const auto hash=ShaderHash(shader.Get());
+        if (FloorReflection::Find(hash)) {
+            // The garage floor's planar reflection is drawn for the game's
+            // camera, not the posed eye. Remove it from every pass alike;
+            // a refusal changes no binding and falls back to native.
+            if (floorReflection.Apply(context,hash,nativeDispatch)) {
+                if (pass<floorDraws.size() && !floorDraws[pass]++) {
+                    log << "floor_reflection applied=1 scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << '\n';log.FlushNow();
+                }
+            } else {
+                removeFloorReflection=false;
+                log << "floor_reflection disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
             }
         }
     }
