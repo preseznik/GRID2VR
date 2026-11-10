@@ -1,4 +1,4 @@
-# GRID2VR 0.2.22 — Unreleased
+# GRID2VR 0.2.22 — Experimental
 
 - **Force Feedback settings.** **Controls → Driving → Force Feedback** adjusts the force GRID 2 sends to your wheel, in VR and Desktop. Turn on **Use launcher force feedback**, then set **Wheel weight** (the steady steering force), **Vibration** (kerbs, road surface and impacts) and **Strength** (both). 100% is GRID 2's force unchanged. GRID 2's own Vibration & Feedback settings still apply and are not changed.
 
