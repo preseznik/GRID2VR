@@ -2,6 +2,14 @@
 
 - **Force Feedback settings.** **Controls → Driving → Force Feedback** adjusts the force GRID 2 sends to your wheel, in VR and Desktop. Turn on **Use launcher force feedback**, then set **Wheel weight** (the steady steering force), **Vibration** (kerbs, road surface and impacts) and **Strength** (both). 100% is GRID 2's force unchanged. GRID 2's own Vibration & Feedback settings still apply and are not changed.
 
+- **Menu cards in VR.** The see-through cards in the menus, such as the endgame garage car list and the post-race rewards, no longer show a ghost of the car behind them that moves with your head. The game blends in a copy of its own screen, not your eyes' view, so VR now shows the cards plain. Desktop is unchanged.
+
+- **Chase camera: Horizontal only.** **Controls → General → Chase camera → Horizontal only** turns the camera around the car with the mouse or right stick without tilting it up or down. **Invert vertical** is greyed out while it is on.
+
+- **Steering wheel rotation hint.** **Controls → Driving → Driving controls** now suggests setting your wheel to 180° in its own software (G HUB, Fanatec, Thrustmaster), so the in-car steering wheel turns with yours. GRID 2 reaches full lock at the ends of that range.
+
+- **Cockpit texture updates.** Installing a newer cockpit texture pack now removes the earlier version's folder, once its files are confirmed to be the unchanged GRID2VR pack. Anything else in that folder is left alone.
+
 # GRID2VR 0.2.21 — Experimental
 
 - **Garage floor in VR.** The shiny garage and online menu floors no longer show a reflection that slides around as you look. The game draws that reflection for its own camera, not your eyes, so VR now shows the plain floor. Desktop is unchanged.
