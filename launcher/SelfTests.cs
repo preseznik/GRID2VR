@@ -358,7 +358,7 @@ internal static class SelfTests
             InstallationTests.Run(fixture);
             PreparationCacheTests.Run(fixture);
             SessionRecoveryTests.Run(fixture);
-            DrivingControlsTests.Run(fixture);
+            DrivingControlsTests.Run(fixture, root);
             ChaseCameraTests.Run(root, client);
             ForceFeedbackTests.Run(root, client);
             ResponsiveLayoutTests.Run(root, client);

@@ -5,7 +5,7 @@ namespace GRID2VR;
 
 internal static class DrivingControlsTests
 {
-    internal static void Run(string fixture)
+    internal static void Run(string fixture, string? captureRoot = null)
     {
         DrivingCaptureTests.Run();
         static void Check(bool condition) { if (!condition) throw new Exception("Driving controls regression failed."); }
@@ -168,7 +168,7 @@ internal static class DrivingControlsTests
             }
             finally { form.Controls.Add(layout); }
         }
-        DrivingControlsLayoutTests.Run(viewRoot);
+        DrivingControlsLayoutTests.Run(viewRoot, captureRoot);
         using (var wizard = new DrivingBindingForm(null, false)) Check(!wizard.Visible && wizard.ListenAllDevices);
         using (var singleDevice = new DrivingBindingForm("Gear 1", false, listenAllDevices: false)) Check(!singleDevice.ListenAllDevices);
         var precise = wheelThrottle with { DeadZone = .12345m, Saturation = .98765m };

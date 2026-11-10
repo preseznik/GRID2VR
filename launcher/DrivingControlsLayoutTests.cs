@@ -2,7 +2,7 @@ namespace GRID2VR;
 
 internal static class DrivingControlsLayoutTests
 {
-    internal static void Run(string root)
+    internal static void Run(string root, string? captureRoot = null)
     {
         static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
         using (var form = new DrivingControlsForm(root))
@@ -64,6 +64,17 @@ internal static class DrivingControlsLayoutTests
                         Check(save.Top == cancel.Top && save.Right <= cancel.Left && save.Parent == cancel.Parent, "Save and Cancel must stay together.");
                         Check(layout.Controls.OfType<ListView>().Single().Height >= 60 * scale,
                             $"The toolbar layout left no usable binding list: {layout.Controls.OfType<ListView>().Single().Height}px at {size.Width}px / {dpi} DPI / modern={modern}.");
+                        var hint = (Label)layout.Controls.Find("SteeringLinearityHint", true).Single();
+                        Check(hint.Text.EndsWith(DrivingControlsForm.WheelRotationHint, StringComparison.Ordinal) && hint.Right <= hint.Parent!.ClientSize.Width &&
+                            hint.Bottom <= hint.Parent.ClientSize.Height &&
+                            TextRenderer.MeasureText(hint.Text, hint.Font, new Size(hint.Width, int.MaxValue), TextFormatFlags.WordBreak).Height <= hint.Height,
+                            $"Wheel rotation hint clipped: {hint.Bounds} at {size.Width}px / {dpi} DPI / modern={modern}.");
+                        if (dpi == 96 && captureRoot is not null)
+                        {
+                            using var capture = new Bitmap(layout.Width, layout.Height);
+                            layout.DrawToBitmap(capture, new Rectangle(Point.Empty, layout.Size));
+                            capture.Save(Path.Combine(captureRoot, "build", $"driving-controls-{size.Width}-{(modern ? "modern" : "classic")}.png"));
+                        }
                     }
                     finally { form.Controls.Add(layout); }
                     Check(!form.Visible, "DPI layout fixture must not show a window.");

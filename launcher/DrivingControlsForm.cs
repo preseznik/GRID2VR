@@ -17,6 +17,8 @@ internal sealed class DrivingControlsForm : LauncherForm
     private readonly Label clutchShiftValue = new() { Name = "ClutchShiftThresholdValue", Text = "50%", AutoSize = true, Anchor = AnchorStyles.Right, Margin = new(8, 0, 4, 0) };
     private readonly ComboBox directDevice = new() { Name = "DrivingDirectLaunchDevice", AccessibleName = "Practice and Race controls device", DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
     private sealed record DeviceChoice(string Value, string Label) { public override string ToString() => Label; }
+    // Every installed car's in-car wheel animation spans ±90° (docs/evidence/wheel-rotation-20261110).
+    internal const string WheelRotationHint = "Set your wheel's rotation to 180° in its driver software (G HUB, Fanatec, Thrustmaster) so the in-car wheel turns with yours; GRID 2 reaches full lock at the ends of that range.";
     private readonly ListView rows = new() { View = View.Details, FullRowSelect = true, MultiSelect = false, Dock = DockStyle.Fill, HideSelection = false, ShowItemToolTips = true };
     private readonly Button bindKeyboard, bindDevice, calibrate, removeBinding, resetAction;
     public DrivingControlsForm(string workspaceRoot)
@@ -61,7 +63,8 @@ internal sealed class DrivingControlsForm : LauncherForm
         header.Controls.Add(new Label { Text = "When the game's Controls preset is Keyboard, this device is claimed for driving so its rumble/force feedback works, in every launch mode. A wheel or controller preset you chose in the game is kept.",
             AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
         header.Controls.Add(linearity);
-        header.Controls.Add(new Label { Text = "Assigned wheel steering only. 0 is linear; negative values respond faster near the centre.", AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
+        header.Controls.Add(new Label { Name = "SteeringLinearityHint", Text = "Assigned wheel steering only. 0 is linear; negative values respond faster near the centre. " + WheelRotationHint,
+            AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
         header.Controls.Add(clutchThreshold);
         header.Controls.Add(new Label { Text = "A held gear engages at this clutch level. Analogue response is unchanged.", AutoSize = true, MaximumSize = new(900, 0), Tag = "hint" });
         layout.Controls.Add(header, 0, 0);
