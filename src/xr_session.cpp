@@ -276,9 +276,27 @@ bool XrSessionProbe::BeginFrame(uint64_t frame) {
     bool valid=Check(xrLocateViews(session_,&locate,&viewState,2,&count,views.data()),"locate_views") && count==2 &&
         Check(xrLocateSpace(head_,local_,displayTime_,&head),"locate_head");
     if (count!=2) failed_=true;
-    constexpr XrViewStateFlags viewFlags=XR_VIEW_STATE_ORIENTATION_VALID_BIT|XR_VIEW_STATE_POSITION_VALID_BIT|XR_VIEW_STATE_ORIENTATION_TRACKED_BIT|XR_VIEW_STATE_POSITION_TRACKED_BIT;
-    constexpr XrSpaceLocationFlags headFlags=XR_SPACE_LOCATION_ORIENTATION_VALID_BIT|XR_SPACE_LOCATION_POSITION_VALID_BIT|XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT|XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
-    valid=valid && (viewState.viewStateFlags&viewFlags)==viewFlags && (head.locationFlags&headFlags)==headFlags;
+    constexpr XrViewStateFlags viewValid=XR_VIEW_STATE_ORIENTATION_VALID_BIT|XR_VIEW_STATE_POSITION_VALID_BIT;
+    constexpr XrViewStateFlags viewTracked=XR_VIEW_STATE_ORIENTATION_TRACKED_BIT|XR_VIEW_STATE_POSITION_TRACKED_BIT;
+    constexpr XrSpaceLocationFlags headValid=XR_SPACE_LOCATION_ORIENTATION_VALID_BIT|XR_SPACE_LOCATION_POSITION_VALID_BIT;
+    constexpr XrSpaceLocationFlags headTracked=XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT|XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
+    const bool located=valid;
+    const bool poseValid=located && (viewState.viewStateFlags&viewValid)==viewValid && (head.locationFlags&headValid)==headValid;
+    const bool poseTracked=poseValid && (viewState.viewStateFlags&viewTracked)==viewTracked && (head.locationFlags&headTracked)==headTracked;
+    if (poseTracked) {
+        // Tracking (again): the usual rule, and any later untracked spell waits the full grace.
+        untrackedSince_=0;untrackedAccepted_=false;
+    } else if (poseValid && sampledFocused_ && state.shouldRender==XR_TRUE) {
+        if (!untrackedSince_) untrackedSince_=displayTime_;
+        if (!untrackedAccepted_ && displayTime_-untrackedSince_>=untrackedGrace) {
+            untrackedAccepted_=true;
+            Log("untracked poses accepted: focused %.1f s with valid poses the runtime never reports as tracked view_flags=%llu head_flags=%llu",
+                (displayTime_-untrackedSince_)*1e-9,viewState.viewStateFlags,head.locationFlags);
+        }
+    } else if (!untrackedAccepted_) untrackedSince_=0; // out of focus or invalid: the grace starts over
+    valid=poseTracked || (untrackedAccepted_ && poseValid);
+    if (valid) lastWait_=~0ull;
+    else if (located) ReportWait(state.shouldRender==XR_TRUE,viewState.viewStateFlags,head.locationFlags);
     // The game projection, the submitted layer and the logged poses all read the turned views.
     if (valid && motionEnabled_) {
         if (!motionStarted_) {motionStarted_=true;motionStart_=displayTime_;}
@@ -294,8 +312,8 @@ bool XrSessionProbe::BeginFrame(uint64_t frame) {
            resolution::CropAngle(f.angleUp,y),resolution::CropAngle(f.angleDown,y)};
     }
     located_.tracked=valid;located_.head=head.pose;
-    Log("sample tracked=%u should_render=%u display_time=%lld period=%lld view_flags=%llu head_flags=%llu",
-        valid,state.shouldRender,displayTime_,state.predictedDisplayPeriod,viewState.viewStateFlags,head.locationFlags);
+    Log("sample tracked=%u should_render=%u display_time=%lld period=%lld view_flags=%llu head_flags=%llu untracked_accepted=%u",
+        valid,state.shouldRender,displayTime_,state.predictedDisplayPeriod,viewState.viewStateFlags,head.locationFlags,untrackedAccepted_);
     auto pose=[&](const char* kind,unsigned eye,const XrPosef& p) {
         Log("pose kind=%s eye=%u qx=%.9g qy=%.9g qz=%.9g qw=%.9g x=%.9g y=%.9g z=%.9g",kind,eye,
             p.orientation.x,p.orientation.y,p.orientation.z,p.orientation.w,p.position.x,p.position.y,p.position.z);
@@ -310,6 +328,15 @@ bool XrSessionProbe::BeginFrame(uint64_t frame) {
     }
     if (failed_) {EndFrame();return false;}
     return true;
+}
+// Why no frame renders yet (focus, shouldRender, pose flags): once per change, at
+// most 24 times a session, also in user sessions where per-frame samples are off.
+void XrSessionProbe::ReportWait(bool shouldRender,XrViewStateFlags view,XrSpaceLocationFlags head) {
+    const uint64_t state=(uint64_t(view&0xf)<<6)|(uint64_t(head&0xf)<<2)|(shouldRender?2u:0u)|(sampledFocused_?1u:0u);
+    if (state==lastWait_ || waitReports_>=24) return;
+    lastWait_=state;++waitReports_;
+    Log("waiting for tracked views: focused=%u should_render=%u view_flags=%llu head_flags=%llu untracked_for=%.1f",
+        sampledFocused_,shouldRender,view,head,untrackedSince_?(displayTime_-untrackedSince_)*1e-9:0.);
 }
 bool XrSessionProbe::Sample(uint64_t frame) {
     if (!BeginFrame(frame)) return false;

@@ -8,6 +8,7 @@ namespace {
 ID3D11Device* expectedDevice{};
 LUID adapterLuid{};
 XrSessionState eventState=XR_SESSION_STATE_READY;
+bool untrackedOnly{};
 bool invalidTracking{},badAdapter{},zeroAdapter{},badSpace{},badLocate{},discard{},missingFunction{},protocolError{};
 unsigned instances{},sessions{},spaces{},waits{},ends{},phase{};
 std::array<ComPtr<ID3D11Texture2D>,4> eyeImages;
@@ -46,7 +47,7 @@ XrTime timeStep=1;
 XrTime DisplayTime() {return 12345+waits*timeStep;}
 void STDMETHODCALLTYPE DrawNative(ID3D11DeviceContext* c,UINT count,UINT first) {c->Draw(count,first);}
 void Reset() {
-    eventState=XR_SESSION_STATE_READY;invalidTracking=badAdapter=zeroAdapter=badSpace=badLocate=discard=missingFunction=protocolError=false;
+    untrackedOnly=false;eventState=XR_SESSION_STATE_READY;invalidTracking=badAdapter=zeroAdapter=badSpace=badLocate=discard=missingFunction=protocolError=false;
     instances=sessions=spaces=waits=ends=phase=0;
     eyeImages={};imagePhases={};swapchains=projectionEnds=screenEnds=0;hidden=false;
     performanceEnds=performanceAcquires=lastLayerCount=0;
@@ -111,14 +112,14 @@ XRAPI_ATTR XrResult XRAPI_CALL xrBeginFrame(XrSession,const XrFrameBeginInfo*) {
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrLocateViews(XrSession,const XrViewLocateInfo* info,XrViewState* state,uint32_t,uint32_t* count,XrView* out) {
     if(phase!=2 || info->displayTime!=DisplayTime() || info->space!=4) protocolError=true;
-    *count=2;state->viewStateFlags=invalidTracking?0:15;
+    *count=2;state->viewStateFlags=invalidTracking?0:untrackedOnly?3:15;
     for(unsigned i=0;i<2;++i) {out[i].pose.orientation.w=1;out[i].pose.position.x=i?.032f:-.032f;out[i].fov={-.8f,.8f,.7f,-.7f};}
     return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrLocateSpace(XrSpace space,XrSpace base,XrTime time,XrSpaceLocation* out) {
     if(phase!=2 || time!=DisplayTime() || space!=5 || base!=4) protocolError=true;
     if(badLocate) return XR_ERROR_RUNTIME_FAILURE;
-    out->locationFlags=15;out->pose=headPose;return XR_SUCCESS;
+    out->locationFlags=untrackedOnly?3:15;out->pose=headPose;return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrEndFrame(XrSession,const XrFrameEndInfo* info) {
     if(phase!=2 || info->displayTime!=DisplayTime() || info->environmentBlendMode!=XR_ENVIRONMENT_BLEND_MODE_OPAQUE) protocolError=true;
@@ -436,6 +437,33 @@ int main(int argc,char** argv) {
     if(warmup.Closed() || !warmup.Running() || !instances || !sessions || !swapchains) return 44;
     warmup.Shutdown();
     if(!warmup.Closed() || warmup.ReadyForViews() || instances || sessions || spaces || phase || swapchains || protocolError) return 26;
+    // Valid poses the runtime never reports as tracked (Pico Neo 3 over SteamVR
+    // DisplayPort): nothing renders until 3 s focused, then valid poses render;
+    // tracking restarts the grace, and out of focus it never starts.
+    Reset();timeStep=1000000000;untrackedOnly=true;grid2vr::XrSessionProbe untracked;
+    if (!untracked.Initialize(device.Get(),manifest,folder) || !untracked.InitializeImages(DrawNative,2,2) || !untracked.Poll()) return 90;
+    eventState=XR_SESSION_STATE_VISIBLE;
+    if (!untracked.Poll() || untracked.Focused()) return 91;
+    for (uint64_t f=1;f<=5;++f) if (untracked.Sample(f) || untracked.ReadyForViews()) return 92; // 5 s visible, unfocused
+    eventState=XR_SESSION_STATE_FOCUSED;
+    if (!untracked.Poll() || !untracked.Focused()) return 93;
+    for (uint64_t f=6;f<=8;++f) if (untracked.Sample(f) || untracked.ReadyForViews(true)) return 94; // 0, 1, 2 s focused
+    if (!untracked.Sample(9) || !untracked.ReadyForViews(true)) return 95;                          // 3 s: accepted
+    if (!untracked.BeginFrame(10) || !untracked.Views()->tracked || !untracked.FinishFrame(10,true,left.Get(),right.Get()) ||
+        projectionEnds!=1 || untracked.Failed()) return 96;
+    untrackedOnly=false;
+    if (!untracked.Sample(11) || !untracked.ReadyForViews(true)) return 97;                         // tracked: as before
+    untrackedOnly=true;
+    if (untracked.Sample(12) || untracked.Sample(13) || untracked.ReadyForViews()) return 98;      // grace starts over
+    invalidTracking=true;
+    if (untracked.Sample(14) || untracked.Sample(15)) return 99;                                   // invalid poses never render
+    untracked.Shutdown();
+    if (!untracked.Closed() || protocolError) return 100;
+    {
+        std::ifstream log(folder/L"openxr-session.log");std::string text((std::istreambuf_iterator<char>(log)),{});
+        if (text.find("untracked poses accepted: focused 3.0 s")==std::string::npos || text.find("waiting for tracked views: focused=1")==std::string::npos) return 101;
+    }
+    timeStep=1;untrackedOnly=false;invalidTracking=false;
     // First Present can keep the same XR session alive through startup, a
     // stereo race, a native menu, an invisible headset and stereo resumption.
     Reset();grid2vr::XrSessionProbe menus;

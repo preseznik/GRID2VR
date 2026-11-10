@@ -10,6 +10,8 @@
 
 - **Pre-race shots in VR.** The camera shots that circle your car before a race, and race replays, no longer cut the ground away just below the camera. The game draws them with a 20 cm near clip, which the headset's wider view exposes; VR now uses 5 cm during these shots only.
 
+- **VR on headsets that don't report tracking.** Some headsets, such as a Pico Neo 3 over SteamVR with DisplayPort, never report the head as tracked, so VR never started and the game stayed on the monitor. If the headset is focused for 3 seconds with valid poses that are never reported as tracked, GRID2VR now uses them, and the session log says so. Headsets that report tracking behave as before.
+
 # GRID2VR 0.2.20 — Experimental
 
 - **Seat position in Desktop.** Use the saved per-car cockpit position in Desktop, with an independent cockpit field-of-view adjustment.

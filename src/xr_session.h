@@ -56,6 +56,7 @@ private:
     bool Check(XrResult result,const char* operation);
     bool EndFrame(const XrCompositionLayerBaseHeader* layer=nullptr);
     bool OnThread() const { return thread_==GetCurrentThreadId(); }
+    void ReportWait(bool shouldRender,XrViewStateFlags view,XrSpaceLocationFlags head);
     bool Visible() const { return state_==XR_SESSION_STATE_VISIBLE || state_==XR_SESSION_STATE_FOCUSED; }
     BoundedLog log_;
     Microsoft::WRL::ComPtr<ID3D11Device> device_;
@@ -88,5 +89,13 @@ private:
     headmotion::Sweep motion_{};
     bool motionEnabled_{},motionStarted_{};
     XrTime motionStart_{};
+    // Runtimes that report valid poses but never set the tracked bits (a Pico
+    // Neo 3 over SteamVR DisplayPort; DIRT3VR 49dd62e, #e7d536b4): once focused
+    // for this long with only such poses, valid poses render. Tracking resets it.
+    static constexpr XrTime untrackedGrace=3000000000;
+    XrTime untrackedSince_{};
+    bool untrackedAccepted_{};
+    uint64_t lastWait_{~0ull};
+    unsigned waitReports_{};
 };
 }
