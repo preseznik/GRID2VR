@@ -1,0 +1,18 @@
+ui-frosted-glass.dxbc, ui-frosted-glass-image.dxbc and ui-frosted-glass-text.dxbc:
+the shipped ui_frosted_glass.cg.fp (ps_5_0, 2,160 bytes),
+ui_frosted_glass_image.cg.fp (ps_5_0, 2,404 bytes) and
+ui_frosted_glass_text.cg.fp (ps_5_0, 3,248 bytes) pixel shaders, extracted
+read-only from GRID 2's shaderpack/dx11/ui.pssg (SHA-256
+e1225583f8d8c3ed7495869dc7115fed83a64cc79d128af1456c53d00b6a25d4) at byte
+offsets 666464, 57815 and 1066660. Their renderer fingerprints (FNV-1a 64 of the
+bytecode, as passed to CreatePixelShader) are 7899d0ed7e9690dd,
+98f5a937f5cf8201 and 25d30096ffcb1ec4.
+
+The menu cards (endgame garage car list, post-race rewards) blend
+lerp(panel colour, background, FrostedGlassIntensity * 0.01), where background
+samples TFrostedGlassBackground (t0, or t1 after the artwork) at the card's
+position on the game's canvas plus FrostedGlassOffsetX/Y. FrostedGlassIntensity
+is $Globals byte 152 (frosted glass, image; 160-byte buffer) or 168 (text;
+208-byte buffer). The test renders each shader on WARP and requires the patched
+draw to match the shader's own output with FrostedGlassIntensity 0 byte for
+byte.

@@ -7,6 +7,7 @@
 #include "motion_blur.h"
 #include "impact_interference.h"
 #include "floor_reflection.h"
+#include "frosted_glass.h"
 #include "cockpit_exposure.h"
 #include "draw_witness.h"
 #include "flicker_capture.h"
@@ -72,6 +73,9 @@ bool impactInterferenceLogged{};
 bool removeFloorReflection{};
 FloorReflection floorReflection;
 std::array<uint64_t,3> floorDraws{};
+bool removeFrostedGlass{};
+FrostedGlass frostedGlass;
+std::array<uint64_t,3> frostedDraws{};
 CenterDrawWitness centerDraws;
 bool centerFailureDumped{},defaultShadowProofSaved{};
 bool isolateModels{};
@@ -467,6 +471,8 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
     limitCockpitExposure=requested && runtimeSession && std::filesystem::exists(folder/L"cockpit-exposure.request");
     removeImpactInterference=requested && runtimeSession && dispatch && std::filesystem::exists(folder/L"impact-interference.request");
     removeFloorReflection=requested && runtimeSession && dispatch && std::filesystem::exists(folder/L"floor-reflection.request");
+    // The same VR menu request removes the frosted-glass card background (ProJict fdaf3851).
+    removeFrostedGlass=removeFloorReflection;
     compact=requested && std::filesystem::exists(folder/L"compact-stereo.request") && std::filesystem::exists(folder/L"stereo-eyes.request");
     isolateModels=requested && std::filesystem::exists(folder/L"isolate-models.request");
     restoreComputeState=requested && std::filesystem::exists(folder/L"restore-compute-state.request");
@@ -626,7 +632,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
 bool CancelBeforeReplay() {
     const auto scene=engine::CurrentScene();
     if (!runtimeSession || !enabled || GetCurrentThreadId()!=ownerThread || !sceneOpen || eyeReplayStarted ||
-        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() || floorReflection.Pending() ||
+        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() || floorReflection.Pending() || frostedGlass.Pending() ||
         screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // No eye state was applied. Missing race-only passes in a native menu do
@@ -637,7 +643,7 @@ bool CancelBeforeReplay() {
 }
 bool ResetHistory() {
     if (!enabled || GetCurrentThreadId()!=ownerThread || sceneOpen || !pairHealthy || motionBlur.Pending() || cockpitExposure.Pending() ||
-        impactInterference.Pending() || floorReflection.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
+        impactInterference.Pending() || floorReflection.Pending() || frostedGlass.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // The verified normal Quit path suspends and resets on the render owner.
     // Flush cumulative counts here rather than leaving the last periodic sample.
@@ -762,6 +768,10 @@ void AfterDraw(ID3D11DeviceContext* context) {
     if (floorReflection.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=floorReflection.Restore(context);pairHealthy&=restored;
         if(!restored) {log<<"floor_reflection restored=0\n";log.FlushNow();}
+    }
+    if (frostedGlass.Pending() && GetCurrentThreadId()==ownerThread) {
+        const bool restored=frostedGlass.Restore(context);pairHealthy&=restored;
+        if(!restored) {log<<"frosted_glass restored=0\n";log.FlushNow();}
     }
     if (screenUi.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=screenUi.Restore(context);pairHealthy&=restored;
@@ -980,6 +990,23 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
             } else {
                 removeFloorReflection=false;
                 log << "floor_reflection disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+            }
+        }
+    }
+    if (removeFrostedGlass && kind[0]!='C') {
+        ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
+        const auto hash=ShaderHash(shader.Get());
+        if (FrostedGlass::Find(hash)) {
+            // Menu cards blend a blurred copy of the game's own screen, which
+            // is not the eye's view. Show the plain card in every pass alike;
+            // a refusal changes no binding and falls back to native.
+            if (frostedGlass.Apply(context,hash,nativeDispatch)) {
+                if (pass<frostedDraws.size() && !frostedDraws[pass]++) {
+                    log << "frosted_glass applied=1 scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << '\n';log.FlushNow();
+                }
+            } else {
+                removeFrostedGlass=false;
+                log << "frosted_glass disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
             }
         }
     }
