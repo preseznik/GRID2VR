@@ -638,7 +638,10 @@ target_link_libraries(frosted_glass_test PRIVATE d3dcompiler)
 add_test(NAME scoped_menu_frosted_glass COMMAND frosted_glass_test
     "${CMAKE_SOURCE_DIR}/tests/fixtures/ui-frosted-glass.dxbc"
     "${CMAKE_SOURCE_DIR}/tests/fixtures/ui-frosted-glass-image.dxbc"
-    "${CMAKE_SOURCE_DIR}/tests/fixtures/ui-frosted-glass-text.dxbc")
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/ui-frosted-glass-text.dxbc"
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/ui-bokeh-reflection.dxbc"
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/ui-bokeh-image.dxbc"
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/ui-bokeh-text.dxbc")
 add_executable(draw_witness_test tests/draw_witness_test.cpp)
 target_include_directories(draw_witness_test PRIVATE src)
 add_test(NAME bounded_center_draw_witness COMMAND draw_witness_test)

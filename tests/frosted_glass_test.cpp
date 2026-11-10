@@ -50,10 +50,11 @@ ComPtr<ID3D11VertexShader> Vertex(bool text) {
 }
 }
 int main(int argc,char** argv) {
-    if (argc!=4) return 20;
-    const std::array<std::vector<unsigned char>,3> code{Load(argv[1]),Load(argv[2]),Load(argv[3])};
-    constexpr std::array<size_t,3> sizes{2160,2404,3248};
-    for (size_t i=0;i<3;++i) if (code[i].size()!=sizes[i] || Fnv(code[i])!=FrostedGlass::shaders[i].hash) return 21+int(i);
+    if (argc!=7) return 20;
+    std::array<std::vector<unsigned char>,6> code;for (size_t i=0;i<6;++i) code[i]=Load(argv[i+1]);
+    constexpr std::array<size_t,6> sizes{2160,2404,3248,2484,2728,3576};
+    for (size_t i=0;i<6;++i) if (code[i].size()!=sizes[i] || Fnv(code[i])!=FrostedGlass::shaders[i].hash) return 100+int(i);
+    for (auto mask:FrostedGlass::maskShaders) if (FrostedGlass::Find(mask) || !FrostedGlass::IsMask(mask)) return 25;
     if (FrostedGlass::Find(0xd9571afb84cec177ull) || FrostedGlass::Find(0)) return 24;
 
     const auto dll=LoadLibraryExW(L"d3d11.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);
@@ -71,11 +72,11 @@ int main(int argc,char** argv) {
     if (!background || !artwork) return 5;
 
     FrostedGlass control;
-    for (unsigned index=0;index<3;++index) {
+    for (unsigned index=0;index<6;++index) {
         const auto& shader=FrostedGlass::shaders[index];
-        const bool text=index==2;
-        // The plain card slot order: frosted background is t0 alone, or t1 after the artwork.
-        const unsigned backgroundSlot=index==0?0:1;
+        const bool text=index==2 || index==5;
+        // The background is t0 alone (frosted glass, bokeh reflection), or t1 after the artwork/text.
+        const unsigned backgroundSlot=index==0 || index==3?0:1;
         ComPtr<ID3D11PixelShader> pixel;
         if (FAILED(device->CreatePixelShader(code[index].data(),code[index].size(),nullptr,&pixel))) return 30+index;
         // A larger native $Globals allocation than declared is accepted as is.

@@ -75,7 +75,24 @@ FloorReflection floorReflection;
 std::array<uint64_t,3> floorDraws{};
 bool removeFrostedGlass{};
 FrostedGlass frostedGlass;
-std::array<uint64_t,3> frostedDraws{};
+std::array<std::array<uint64_t,3>,FrostedGlass::shaders.size()> frostedDraws{};
+std::array<std::array<uint64_t,3>,FrostedGlass::maskShaders.size()> frostedMaskDraws{};
+std::string Hex(uint64_t value);
+// Small receipt beside the bounded log, so early first-sightings survive rotation.
+void WriteFrostedReceipt(const std::filesystem::path& folder) {
+    std::ofstream out(folder/L"menu-card-background.json",std::ios::trunc);
+    out << "{\"schema\":1,\"applied\":{";
+    for (size_t i=0;i<FrostedGlass::shaders.size();++i) {
+        const auto& d=frostedDraws[i];
+        out << (i?",":"") << '"' << FrostedGlass::shaders[i].name << "\":[" << d[0] << ',' << d[1] << ',' << d[2] << ']';
+    }
+    out << "},\"maskObserved\":{";
+    for (size_t i=0;i<FrostedGlass::maskShaders.size();++i) {
+        const auto& d=frostedMaskDraws[i];
+        out << (i?",":"") << '"' << Hex(FrostedGlass::maskShaders[i]) << "\":[" << d[0] << ',' << d[1] << ',' << d[2] << ']';
+    }
+    out << "},\"note\":\"Counts are per pass (native, left, right) and only grow when a first sighting is written.\"}\n";
+}
 CenterDrawWitness centerDraws;
 bool centerFailureDumped{},defaultShadowProofSaved{};
 bool isolateModels{};
@@ -996,17 +1013,26 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
     if (removeFrostedGlass && kind[0]!='C') {
         ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
         const auto hash=ShaderHash(shader.Get());
-        if (FrostedGlass::Find(hash)) {
+        if (const auto* card=FrostedGlass::Find(hash)) {
             // Menu cards blend a blurred copy of the game's own screen, which
             // is not the eye's view. Show the plain card in every pass alike;
             // a refusal changes no binding and falls back to native.
             if (frostedGlass.Apply(context,hash,nativeDispatch)) {
-                if (pass<frostedDraws.size() && !frostedDraws[pass]++) {
+                const size_t cardIndex=card-FrostedGlass::shaders.data();
+                if (pass<3 && !frostedDraws[cardIndex][pass]++) {
                     log << "frosted_glass applied=1 scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << '\n';log.FlushNow();
+                    WriteFrostedReceipt(output);
                 }
             } else {
                 removeFrostedGlass=false;
                 log << "frosted_glass disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+            }
+        } else if (FrostedGlass::IsMask(hash) && pass<3) {
+            // Observed only: these output the background itself (no intensity).
+            size_t maskIndex=0;while (FrostedGlass::maskShaders[maskIndex]!=hash) ++maskIndex;
+            if (!frostedMaskDraws[maskIndex][pass]++) {
+                log << "frosted_glass mask_observed=1 scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << '\n';log.FlushNow();
+                WriteFrostedReceipt(output);
             }
         }
     }

@@ -16,3 +16,12 @@ is $Globals byte 152 (frosted glass, image; 160-byte buffer) or 168 (text;
 208-byte buffer). The test renders each shader on WARP and requires the patched
 draw to match the shader's own output with FrostedGlassIntensity 0 byte for
 byte.
+
+ui-bokeh-reflection.dxbc, ui-bokeh-image.dxbc and ui-bokeh-text.dxbc: the shipped
+ui_bokeh_reflection.cg.fp (2,484 bytes), ui_bokeh_image.cg.fp (2,728 bytes) and
+ui_bokeh_text.cg.fp (3,576 bytes) from the same ui.pssg at byte offsets 678911,
+1858381 and 1744775; fingerprints 5eb4ebd096e2b07b, dc6f3d48c65d8c90 and
+dcb92a30d574cfe3. They blend the max of three TBokehReflection samples at the
+card's canvas position with _BokehReflectIntensity * 0.01, at the same $Globals
+offsets (152, or 168 for text). The two ui_bokeh_fake_mask shaders output that
+background directly with no intensity and are not patched.
