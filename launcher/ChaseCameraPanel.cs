@@ -9,10 +9,12 @@ internal sealed class ChaseCameraPanel : VerticalStack
     private readonly ValueSlider mouse = new("ChaseMouseSensitivity", 25, 300, 100, suffix: "%");
     private readonly ValueSlider stick = new("ChaseStickSensitivity", 25, 300, 100, suffix: "%");
     private readonly CheckBox invert = new() { Name = "ChaseInvertVertical", Text = "Mouse and right stick", AutoSize = true };
+    private readonly CheckBox horizontalOnly = new() { Name = "ChaseHorizontalOnly", Text = "Left / right only", AutoSize = true };
     internal const string Instructions = "Enable Free look for close and far chase views while driving or watching an offline race replay, on desktop or in VR. " +
         "Choose Hold left or Hold right to require a mouse button, or Always on to look around without holding a button. You can also use the controller's right stick. Scroll to zoom without holding a mouse button. " +
         "Hold R3 to look behind; release returns to the ordinary chase angle, even with Keep camera angle enabled. " +
         "Keep camera angle retains your selected orbit while driving. Invert vertical applies to mouse and stick. " +
+        "Horizontal only turns the camera around the car without raising or lowering it. " +
         "Zoom changes distance while preserving the native field of view; obstructions can keep the camera closer. " +
         "Menus and loss of focus suspend camera input. Release camera inputs before resuming. " +
         "You can move the camera during paused replay. Pause and rewind suspend automatic camera return; native replay controls still work. " +
@@ -31,18 +33,22 @@ internal sealed class ChaseCameraPanel : VerticalStack
         Controls.Add(new SettingRow("Maximum zoom out", maxZoom));
         Controls.Add(new SettingRow("Mouse sensitivity", mouse));
         Controls.Add(new SettingRow("Right-stick sensitivity", stick));
+        Controls.Add(new SettingRow("Horizontal only", horizontalOnly));
         Controls.Add(new SettingRow("Invert vertical", invert));
         Controls.Add(new Label { Text = "Save settings or launch to keep your choices. Changes apply on the next launch.", AutoSize = true });
         var instructions = new LinkLabel { Name = "ChaseInstructions", Text = "Instructions", AutoSize = true, Margin = new Padding(0, 8, 0, 12) };
         instructions.LinkClicked += (_, _) => MessageBox.Show(FindForm(), Instructions, "Chase camera", MessageBoxButtons.OK, MessageBoxIcon.Information);
         Controls.Add(instructions);
         freeLook.CheckedChanged += (_, _) => RefreshEnabled();
+        horizontalOnly.CheckedChanged += (_, _) => RefreshEnabled();
         RefreshEnabled();
     }
 
     private void RefreshEnabled()
     {
-        foreach (var control in new Control[] { keepAngle, mouseMode, maxZoom, mouse, stick, invert }) control.Enabled = freeLook.Checked;
+        foreach (var control in new Control[] { keepAngle, mouseMode, maxZoom, mouse, stick, horizontalOnly }) control.Enabled = freeLook.Checked;
+        // Vertical inversion has nothing to act on while the orbit is horizontal only.
+        invert.Enabled = freeLook.Checked && !horizontalOnly.Checked;
     }
 
     internal void LoadChoices(Choices value)
@@ -50,6 +56,7 @@ internal sealed class ChaseCameraPanel : VerticalStack
         freeLook.Checked = value.ChaseFreeLook; keepAngle.Checked = value.ChaseKeepAngle;
         mouseMode.SelectedMode = value.ChaseMouseMode; maxZoom.Value = value.ChaseMaxZoomOut;
         mouse.Value = value.ChaseMouseSensitivity; stick.Value = value.ChaseStickSensitivity; invert.Checked = value.ChaseInvertVertical;
+        horizontalOnly.Checked = value.ChaseHorizontalOnly;
         RefreshEnabled();
     }
 
@@ -57,6 +64,6 @@ internal sealed class ChaseCameraPanel : VerticalStack
     {
         ChaseFreeLook = freeLook.Checked, ChaseKeepAngle = keepAngle.Checked, ChaseMouseMode = mouseMode.SelectedMode,
         ChaseMaxZoomOut = maxZoom.Value, ChaseMouseSensitivity = mouse.Value, ChaseStickSensitivity = stick.Value,
-        ChaseInvertVertical = invert.Checked
+        ChaseInvertVertical = invert.Checked, ChaseHorizontalOnly = horizontalOnly.Checked
     };
 }

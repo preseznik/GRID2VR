@@ -47,6 +47,7 @@ param(
     [ValidateRange(25,300)][int]$ChaseMouseSensitivity=100,
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
+    [ValidateSet(0,1)][int]$ChaseHorizontalOnly=0,
     [string]$DrivingControls='',
     [ValidatePattern('^$|^\d{1,3},\d{1,3},\d{1,3}$')][string]$ForceFeedback='',
     [string]$DeviceClaim='',
@@ -121,7 +122,7 @@ $ErrorActionPreference='Stop'
 if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
 if($ChaseFreeLook -and (!$RuntimeSession -or $ProxyMode -ne 'Active')) { throw 'Chase-camera controls require an active user runtime session.' }
 . (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
-$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
+$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical -ChaseHorizontalOnly $ChaseHorizontalOnly
 if($Action -eq 'Run' -and $NormalLaunch -and ($SessionDirectory -or !$RuntimeSession -or $PlayerControlProbe -ne 'Off' -or $RunKind -ne 'Probe')) { throw 'Normal launch requires the guarded runtime without a selected session or input probe.' }
 if($OnlineLaunch -and !$NormalLaunch) { throw 'Online launch uses the native menus of a Normal launch.' }
 if($HeadMotion -and (!$XrSessionProbe -or !$XrProjection -or !$RuntimeSession -or !$AutoCaptureFlicker -or $UntilExit -or $NormalLaunch -or $RecordedViewsFile)) { throw 'Head motion is for unattended fake-VR flicker runs only.' }

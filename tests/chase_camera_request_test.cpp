@@ -6,7 +6,10 @@ int main() {
     ChaseCameraConfig value{};
     if(!ParseChaseCameraRequest("chase-v1 0 0 1 180 100 100 0\n",value) || value.enabled || value.keepAngle ||
         value.mouseMode!=ChaseMouseMode::Right || value.maxZoomOutPercent!=180)return 1;
-    if(!ParseChaseCameraRequest("chase-v1 1 1 2 1000 25 300 1\n",value) || !value.enabled || !value.invertVertical)return 2;
+    // Optional eighth field: horizontal-only orbit. Seven fields keep the previous behaviour.
+    if(!ParseChaseCameraRequest("chase-v1 1 0 1 180 100 100 0 1\n",value) || !value.horizontalOnly || value.invertVertical)return 6;
+    if(!ParseChaseCameraRequest("chase-v1 1 0 1 180 100 100 1 0\n",value) || value.horizontalOnly || !value.invertVertical)return 7;
+    if(!ParseChaseCameraRequest("chase-v1 1 1 2 1000 25 300 1\n",value) || !value.enabled || !value.invertVertical || value.horizontalOnly)return 2;
     constexpr const char* invalid[]{"", "chase-v2 1 0 1 180 100 100 0\n", "chase-v1 1 0 1 180 100 100 0",
         "chase-v1 2 0 1 180 100 100 0\n", "chase-v1 1 0 3 180 100 100 0\n",
         "chase-v1 1 0 1 181 100 100 0\n", "chase-v1 1 0 1 170 100 100 0\n",
@@ -14,7 +17,9 @@ int main() {
         "chase-v1 1 0 1 180 100 301 0\n", "chase-v1 1 0 1 180 100 100 2\n",
         "chase-v1 +1 0 1 180 100 100 0\n", "chase-v1 -1 0 1 180 100 100 0\n",
         "chase-v1 1  0 1 180 100 100 0\n", "chase-v1 1 0 1 180 100 100 0 \n",
-        "chase-v1 1 0 1 180 100 100 0\nextra", "chase-v1 1 0 1 180 100 100 0\r\n"};
+        "chase-v1 1 0 1 180 100 100 0\nextra", "chase-v1 1 0 1 180 100 100 0\r\n",
+        "chase-v1 1 0 1 180 100 100 0 2\n", "chase-v1 1 0 1 180 100 100 0 1 0\n", "chase-v1 1 0 1 180 100 100 0 1 \n",
+        "chase-v1 1 0 1 180 100 100\n"};
     for(const auto text:invalid)if(ParseChaseCameraRequest(text,value)) { std::cerr<<text;return 3; }
     std::string nul="chase-v1 1 0 1 180 100 100 0\n";nul[12]='\0';
     if(ParseChaseCameraRequest(nul,value) || ParseChaseCameraRequest(std::string(81,'1'),value))return 4;

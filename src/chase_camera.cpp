@@ -120,7 +120,38 @@ bool InputAvailable() {
     std::unique_lock lock(inputMutex,std::try_to_lock);
     return lock.owns_lock() && (pendingInput.mouseAvailable || pendingInput.stickAvailable);
 }
-void Suspend(const char* why) {behavior.Suspend();reason=lastRefusal=why;++refused;havePosition=false;}
+// Bounded diagnostics (ProJict 624ddb99): which suspensions discard a turned
+// orbit, i.e. visibly snap the camera behind the car, and whether it was moving.
+struct ReasonCount {const char* reason;uint64_t all,snapped;};
+std::array<ReasonCount,48> reasonCounts{};
+uint64_t reasonOverflow{},selectionSnaps{},teleportSnaps{},snapsMoving{},snapsStationary{},lookPassthrough{};
+std::array<uint64_t,7> lookPassthroughStage{};
+constexpr std::array<const char*,lookPassthroughStage.size()> lookStageNames{"not_fresh","disabled_or_stopping","unfocused","input_unavailable",
+    "camera_inactive","record_flags","other"};
+enum class EpochCause : unsigned {Refusal,InputThread,Unfocused,Foreground,MouseLost,Controller,Contention,LookRefusal,Count};
+constexpr std::array<const char*,static_cast<size_t>(EpochCause::Count)+1> epochCauseNames{"selection_refusal","input_thread","unfocused",
+    "foreground_change","mouse_lost","controller_change","evaluation_contention","look_refusal","unknown"};
+std::array<std::atomic<uint64_t>,static_cast<size_t>(EpochCause::Count)> epochCauses{};
+std::atomic<unsigned> lastEpochCause{static_cast<unsigned>(EpochCause::Count)};
+std::array<uint64_t,epochCauseNames.size()> epochSnaps{};
+float lastSpeedKmh{};
+void BumpEpoch(EpochCause cause) {
+    ++epochCauses[static_cast<size_t>(cause)];lastEpochCause=static_cast<unsigned>(cause);++suspensionEpoch;
+}
+bool OrbitTurned() {return behavior.orbit.yaw!=0 || behavior.orbit.pitch!=0;}
+bool NoteSnap() {
+    if(!OrbitTurned())return false;
+    if(lastSpeedKmh>=3)++snapsMoving;else ++snapsStationary;
+    return true;
+}
+void CountReason(const char* why,bool snapped) {
+    for(auto& entry:reasonCounts) {
+        if(!entry.reason)entry.reason=why;
+        if(entry.reason==why || !std::strcmp(entry.reason,why)) {++entry.all;if(snapped)++entry.snapped;return;}
+    }
+    ++reasonOverflow;
+}
+void Suspend(const char* why) {CountReason(why,NoteSnap());behavior.Suspend();reason=lastRefusal=why;++refused;havePosition=false;}
 const char* LocalTargetRefusal(const chaseobserver::PreQueryObservation& snapshot,ReplayPlayback* playback=nullptr);
 void TrackSelection() {
     std::lock_guard lock(mutex);
@@ -140,10 +171,11 @@ void TrackSelection() {
     target.camera=selected;target.provider=provider;target.entity=entity;
     if(Read(provider+0xc,car))target.provider0c=car;
     if(const auto refusal=LocalTargetRefusal(target,&playback)) {
-        ++suspensionEpoch;Suspend(refusal);replayClock.Leave();
+        BumpEpoch(EpochCause::Refusal);Suspend(refusal);replayClock.Leave();
     }
     const bool replay=playback.Ui()!=0;
     if(selected!=presentedSelection || entity!=presentedEntity || replay!=presentedReplay) {
+        if(NoteSnap())++selectionSnaps;
         presentedSelection=selected;presentedEntity=entity;++selectionEpoch;behavior.Reset();havePosition=false;
         replayClock.Leave();presentedReplay=replay;
     }
@@ -155,15 +187,15 @@ void ReleaseMouse() {
 void PollInput() {
     if(!inputThread)inputThread=GetCurrentThreadId();
     if(inputThread!=GetCurrentThreadId()) {
-        ++suspensionEpoch;std::lock_guard lock(inputMutex);pendingInput={};return;
+        BumpEpoch(EpochCause::InputThread);std::lock_guard lock(inputMutex);pendingInput={};return;
     }
     ChaseCameraInput value{};
     if(!Focused()) {
-        ReleaseMouse();inputWindow=nullptr;mouseWasAvailable=false;++suspensionEpoch;
+        ReleaseMouse();inputWindow=nullptr;mouseWasAvailable=false;BumpEpoch(EpochCause::Unfocused);
         std::lock_guard lock(inputMutex);pendingInput={};return;
     }
     const auto foreground=GetForegroundWindow();
-    if(inputWindow!=foreground) {ReleaseMouse();inputWindow=foreground;mouseWasAvailable=false;++suspensionEpoch;}
+    if(inputWindow!=foreground) {ReleaseMouse();inputWindow=foreground;mouseWasAvailable=false;BumpEpoch(EpochCause::Foreground);}
     if(!directInput)DirectInput8Create(GetModuleHandleW(nullptr),DIRECTINPUT_VERSION,IID_IDirectInput8W,
         reinterpret_cast<void**>(&directInput),nullptr);
     if(directInput && !mouse) {
@@ -177,7 +209,7 @@ void PollInput() {
     if(mouse) {
         auto result=mouse->GetDeviceState(sizeof(state),&state);
         if(FAILED(result)) {
-            if(mouseWasAvailable)++suspensionEpoch;
+            if(mouseWasAvailable)BumpEpoch(EpochCause::MouseLost);
             if(SUCCEEDED(mouse->Acquire()))mouse->GetDeviceState(sizeof(state),&state);
             state={}; // Discard the acquisition click/deltas.
         } else {
@@ -198,7 +230,7 @@ void PollInput() {
             controller=UINT32_MAX;
             for(DWORD slot=0;slot<4;++slot)if(getController(slot,&pad)==ERROR_SUCCESS) {controller=slot;break;}
         }
-        if(previous!=controller)++suspensionEpoch;
+        if(previous!=controller)BumpEpoch(EpochCause::Controller);
         if(controller!=UINT32_MAX) {
             value.stickAvailable=true;
             value.stickX=pad.Gamepad.sThumbRX/32768.f;value.stickY=pad.Gamepad.sThumbRY/32768.f;
@@ -238,7 +270,7 @@ struct Evaluation {
         std::lock_guard lock(mutex);
         const auto active=++evaluations;
         sole=active==1 && !engine::ReplayingEye();
-        if(!sole) {++suspensionEpoch;++contention;}
+        if(!sole) {BumpEpoch(EpochCause::Contention);++contention;}
         token=suspensionEpoch;
     }
     ~Evaluation(){std::lock_guard lock(mutex);--evaluations;}
@@ -321,7 +353,10 @@ void Apply(void* provider,void* output,uintptr_t returned,uintptr_t caller) {
     ChaseVector pivot{};
     if(!VehicleOrbitPivot(snapshot,pivot)) {Suspend("invalid_native_pivot");return;}
     Pose source{};std::memcpy(source.data(),snapshot.recordWords.data(),sizeof(source));
-    if(seenSuspension!=suspensionEpoch) {behavior.Suspend();seenSuspension=suspensionEpoch;}
+    if(seenSuspension!=suspensionEpoch) {
+        if(NoteSnap())++epochSnaps[std::min<size_t>(lastEpochCause.load(),epochSnaps.size()-1)];
+        behavior.Suspend();seenSuspension=suspensionEpoch;
+    }
     const auto inputFrame=frame.load();
     ChaseCameraInput input{};
     float dt{};
@@ -353,9 +388,10 @@ void Apply(void* provider,void* output,uintptr_t returned,uintptr_t caller) {
         // for return-to-centre speed; ReplayClock handles replay discontinuities.
         const double travelTime=replay?std::abs(playback.clock.time-lastReplayTime):dt;
         speed=travelTime>1e-6?static_cast<float>(std::sqrt(dx*dx+dy*dy+dz*dz)/travelTime*3.6):0;
-        if(!std::isfinite(speed) || (!replay && speed>500)) {behavior.Reset();speed=0;}
+        if(!std::isfinite(speed) || (!replay && speed>500)) {if(NoteSnap())++teleportSnaps;behavior.Reset();speed=0;}
         else if(replay)speed=std::min(speed,500.f);
     }
+    lastSpeedKmh=speed;
     ChaseCameraContext context{stage->camera,snapshot.entity,(selectionEpoch<<32)|snapshot.nameHash,inputFrame,dt,speed,true,true,true,replay,!replay || playbackStep.forward};
     const auto result=behavior.Step(config,context,input);
     if(result==ChaseCameraStep::Duplicate)++duplicate;
@@ -540,9 +576,21 @@ uintptr_t __fastcall Look(void* self,void*,void* packet) {
            Read(reinterpret_cast<uintptr_t>(packet),input) && Read(reinterpret_cast<uintptr_t>(packet),again) && input==again) {
             chaseobserver::PreQueryObservation target{};target.camera=camera;target.provider=provider;target.provider0c=car;target.entity=entity;
             ReplayPlayback playback{};
-            if(const auto refusal=LocalTargetRefusal(target,&playback)) {++suspensionEpoch;Suspend(refusal);}
+            if(const auto refusal=LocalTargetRefusal(target,&playback)) {BumpEpoch(EpochCause::LookRefusal);Suspend(refusal);}
             else if(WorldRunning(base,Reader,playback.Ui()!=0))neutral=NeutralLookPacket(base,input,copy);
             if(neutral)++neutralLookCalls;
+        }
+        // Diagnostic only: a directional look reaching the selected chase camera
+        // unchanged leaves native look state that suspends the orbit next frame.
+        LookPacket seen{};uintptr_t owner{};float horizontal{},vertical{};
+        if(!neutral && enabled && Read(reinterpret_cast<uintptr_t>(packet),seen) && seen[1]==1) {
+            std::memcpy(&horizontal,&seen[2],4);std::memcpy(&vertical,&seen[3],4);
+            if((horizontal!=0 || vertical!=0) && SelectedOwner(base,camera,Reader,owner)) {
+                uint8_t cameraInactive{};uint32_t recordFlags{};
+                const size_t lookStage=!scope.Fresh()?0:stopping?1:!Focused()?2:!InputAvailable()?3:
+                    (!Read(camera+0xa4,cameraInactive) || cameraInactive)?4:(!Read(camera+0xb0+0x1a4,recordFlags) || (recordFlags&6))?5:6;
+                ++lookPassthrough;++lookPassthroughStage[lookStage];
+            }
         }
     }
     // A private packet is consumed synchronously. Preserve type/vtable/flag and
@@ -582,7 +630,23 @@ Receipt StatusLocked() {
         out<<"{\"enabled\":"<<config.enabled<<",\"keepAngle\":"<<config.keepAngle
            <<",\"mouseMode\":"<<static_cast<int>(config.mouseMode)<<",\"maxZoomOutPercent\":"<<config.maxZoomOutPercent
            <<",\"mouseSensitivityPercent\":"<<config.mouseSensitivityPercent<<",\"stickSensitivityPercent\":"<<config.stickSensitivityPercent
-           <<",\"invertVertical\":"<<config.invertVertical<<"}";
+           <<",\"invertVertical\":"<<config.invertVertical<<",\"horizontalOnly\":"<<config.horizontalOnly<<"}";
+    };
+    const auto diagnostics=[&] {
+        out<<",\"snapDiagnostics\":{\"snapsMoving\":"<<snapsMoving<<",\"snapsStationary\":"<<snapsStationary
+           <<",\"selectionSnaps\":"<<selectionSnaps<<",\"teleportSnaps\":"<<teleportSnaps<<",\"refusalsByReason\":{";
+        bool first=true;
+        for(const auto& entry:reasonCounts) {
+            if(!entry.reason)break;
+            out<<(first?"":",")<<"\""<<entry.reason<<"\":{\"all\":"<<entry.all<<",\"snapped\":"<<entry.snapped<<"}";first=false;
+        }
+        out<<"},\"reasonOverflow\":"<<reasonOverflow<<",\"epochCauses\":{";
+        for(size_t i=0;i<epochCauses.size();++i)out<<(i?",":"")<<"\""<<epochCauseNames[i]<<"\":"<<epochCauses[i].load();
+        out<<"},\"epochSnaps\":{";
+        for(size_t i=0;i<epochSnaps.size();++i)out<<(i?",":"")<<"\""<<epochCauseNames[i]<<"\":"<<epochSnaps[i];
+        out<<"},\"lookPassthrough\":"<<lookPassthrough<<",\"lookPassthroughStage\":{";
+        for(size_t i=0;i<lookPassthroughStage.size();++i)out<<(i?",":"")<<"\""<<lookStageNames[i]<<"\":"<<lookPassthroughStage[i];
+        out<<"}}";
     };
     out<<std::boolalpha<<"{\"schema\":1,\"requested\":";settings();
     out<<",\"applied\":";if(updated)settings();else out<<"null";
@@ -592,8 +656,9 @@ Receipt StatusLocked() {
        <<",\"outstandingTransactions\":"<<outstandingTransactions.load()<<",\"poseCleanupDeferred\":"<<stopPending.load()
        <<",\"contention\":"<<contention.load()<<",\"neutralLookCalls\":"<<neutralLookCalls<<",\"collisionTargets\":"<<collisionTargets
        <<",\"collisionCallInstalled\":"<<targetCallInstalled<<",\"controllerImplemented\":true,\"recordedReplayEnabled\":true"
-       <<",\"replayUpdates\":"<<replayUpdates<<",\"replayResets\":"<<replayResets<<",\"lastReplayRefusal\":\""<<lastReplayRefusal<<"\""
-       <<",\"desktopAccepted\":false,\"headsetAccepted\":false}\n";
+       <<",\"replayUpdates\":"<<replayUpdates<<",\"replayResets\":"<<replayResets<<",\"lastReplayRefusal\":\""<<lastReplayRefusal<<"\"";
+    diagnostics();
+    out<<",\"desktopAccepted\":false,\"headsetAccepted\":false}\n";
     return {out.str(),++receiptRevision};
 }
 void WriteStatus(const Receipt& receipt) {

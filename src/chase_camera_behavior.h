@@ -15,6 +15,7 @@ struct ChaseCameraConfig {
     ChaseMouseMode mouseMode{ChaseMouseMode::Right};
     int maxZoomOutPercent{180},mouseSensitivityPercent{100},stickSensitivityPercent{100};
     bool invertVertical{};
+    bool horizontalOnly{}; // Mouse and right stick turn the camera around the car only; pitch stays native.
     bool Valid() const {
         return (mouseMode==ChaseMouseMode::Right || mouseMode==ChaseMouseMode::Left || mouseMode==ChaseMouseMode::Always) &&
             maxZoomOutPercent>=180 && maxZoomOutPercent<=1000 && maxZoomOutPercent%10==0 &&
@@ -119,6 +120,7 @@ inline bool DecodeChaseCameraInput(const ChaseCameraConfig& config,const ChaseCa
         }
     }
     if(config.invertVertical)result.vertical=-result.vertical;
+    if(config.horizontalOnly)result.vertical=0;
     if(!std::isfinite(result.horizontal) || !std::isfinite(result.vertical))return false;
     output=result;
     return true;

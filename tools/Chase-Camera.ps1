@@ -7,15 +7,19 @@ function Get-Grid2ChaseConfiguration {
         [ValidateRange(180,1000)][ValidateScript({ $_ % 10 -eq 0 })][int]$ChaseMaxZoomOut=180,
         [ValidateRange(25,300)][int]$ChaseMouseSensitivity=100,
         [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
-        [ValidateSet(0,1)][int]$ChaseInvertVertical=0
+        [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
+        [ValidateSet(0,1)][int]$ChaseHorizontalOnly=0
     )
     $mouse=$ChaseMouseMode.ToLowerInvariant()
     $mode=@{left=0;right=1;always=2}[$mouse]
-    $line="chase-v1 $ChaseFreeLook $ChaseKeepAngle $mode $ChaseMaxZoomOut $ChaseMouseSensitivity $ChaseStickSensitivity $ChaseInvertVertical`n"
+    $line="chase-v1 $ChaseFreeLook $ChaseKeepAngle $mode $ChaseMaxZoomOut $ChaseMouseSensitivity $ChaseStickSensitivity $ChaseInvertVertical"
+    # Optional eighth field; omitted when off so the request matches older runtimes.
+    if($ChaseHorizontalOnly) { $line+=" 1" }
+    $line+="`n"
     if($line.Length -gt 64) { throw 'Chase request exceeds its size limit.' }
     return @{
         requested=[ordered]@{freeLook=[bool]$ChaseFreeLook;keepAngle=[bool]$ChaseKeepAngle;mouseMode=$mouse;
-            maxZoomOut=$ChaseMaxZoomOut;mouseSensitivity=$ChaseMouseSensitivity;stickSensitivity=$ChaseStickSensitivity;invertVertical=[bool]$ChaseInvertVertical}
+            maxZoomOut=$ChaseMaxZoomOut;mouseSensitivity=$ChaseMouseSensitivity;stickSensitivity=$ChaseStickSensitivity;invertVertical=[bool]$ChaseInvertVertical;horizontalOnly=[bool]$ChaseHorizontalOnly}
         text=$line
     }
 }

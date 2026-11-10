@@ -8,7 +8,7 @@ internal static class ChaseCameraTests
         try
         {
             var defaults = new Choices();
-            Require(!defaults.ChaseFreeLook && !defaults.ChaseKeepAngle && !defaults.ChaseInvertVertical && defaults.ChaseMouseMode == "right" &&
+            Require(!defaults.ChaseFreeLook && !defaults.ChaseKeepAngle && !defaults.ChaseInvertVertical && !defaults.ChaseHorizontalOnly && defaults.ChaseMouseMode == "right" &&
                 defaults.ChaseMaxZoomOut == 180 && defaults.ChaseMouseSensitivity == 100 && defaults.ChaseStickSensitivity == 100, "Chase defaults changed.");
             Require(SessionClient.ParseChoices("{}") == (defaults with { ModernInterface = false, Graphics = new() }), "Older settings did not gain disabled chase defaults.");
             var chosen = defaults with { ChaseFreeLook = true, ChaseKeepAngle = true, ChaseMouseMode = "always", ChaseMaxZoomOut = 1000,
@@ -18,9 +18,9 @@ internal static class ChaseCameraTests
                 foreach (var vr in new[] { false, true })
                     foreach (var mouseMode in new[] { "left", "right", "always" })
                     {
-                        var arguments = client.LaunchCommand(chosen with { LaunchMode = mode, ChaseMouseMode = mouseMode }, vr).ArgumentList;
+                        var arguments = client.LaunchCommand(chosen with { LaunchMode = mode, ChaseMouseMode = mouseMode, ChaseHorizontalOnly = true }, vr).ArgumentList;
                         foreach (var (key, value) in new[] { ("ChaseFreeLook", "1"), ("ChaseKeepAngle", "1"), ("ChaseMouseMode", mouseMode),
-                            ("ChaseMaxZoomOut", "1000"), ("ChaseMouseSensitivity", "25"), ("ChaseStickSensitivity", "300"), ("ChaseInvertVertical", "1") })
+                            ("ChaseMaxZoomOut", "1000"), ("ChaseMouseSensitivity", "25"), ("ChaseStickSensitivity", "300"), ("ChaseInvertVertical", "1"), ("ChaseHorizontalOnly", "1") })
                             Require(arguments[arguments.IndexOf("-" + key) + 1] == value, "Launch route lost " + key);
                     }
             foreach (var invalid in new[] { chosen with { ChaseMouseMode = "unknown" }, chosen with { ChaseMaxZoomOut = 170 }, chosen with { ChaseMaxZoomOut = 181 },
@@ -40,7 +40,7 @@ internal static class ChaseCameraTests
                     var toggle = (CheckBox)panel.Controls.Find("ChaseFreeLook", true).Single();
                     toggle.Checked = false;
                     Require(panel.ApplyTo(defaults) == (chosen with { ChaseFreeLook = false }), "Disabling chase discarded subordinate preferences.");
-                    foreach (var name in new[] { "ChaseKeepAngle", "ChaseMouseMode", "ChaseMaxZoomOut", "ChaseMouseSensitivity", "ChaseStickSensitivity", "ChaseInvertVertical" })
+                    foreach (var name in new[] { "ChaseKeepAngle", "ChaseMouseMode", "ChaseMaxZoomOut", "ChaseMouseSensitivity", "ChaseStickSensitivity", "ChaseInvertVertical", "ChaseHorizontalOnly" })
                         Require(!panel.Controls.Find(name, true).Single().Enabled, "Disabled chase control still enabled: " + name);
                     toggle.Checked = true;
                     var picker = (MouseLookPicker)panel.Controls.Find("ChaseMouseMode", true).Single();
@@ -62,6 +62,21 @@ internal static class ChaseCameraTests
                                 arguments[arguments.IndexOf("-ChaseInvertVertical") + 1] == (inverted ? "1" : "0"), "Saved mouse mode/inversion did not reach the session worker.");
                         }
                     }
+                    var horizontal = (CheckBox)panel.Controls.Find("ChaseHorizontalOnly", true).Single();
+                    inversion.Checked = chosen.ChaseInvertVertical;
+                    foreach (var only in new[] { true, false })
+                    {
+                        horizontal.Checked = only;
+                        Require(horizontal.Enabled && inversion.Enabled == !only, "Horizontal only must disable vertical inversion.");
+                        client.Save(panel.ApplyTo(defaults));
+                        using var reopened = new ChaseCameraPanel();
+                        reopened.LoadChoices(client.Load());
+                        var restored = reopened.ApplyTo(defaults);
+                        Require(restored == (chosen with { ChaseMouseMode = "always", ChaseHorizontalOnly = only }), "Horizontal only did not survive saving and reopening.");
+                        var arguments = client.LaunchCommand(restored, true).ArgumentList;
+                        Require(arguments[arguments.IndexOf("-ChaseHorizontalOnly") + 1] == (only ? "1" : "0"), "Saved horizontal only did not reach the session worker.");
+                    }
+                    ((RadioButton)picker.Controls.Find("ChaseMouse_always", true).Single()).Checked = true;
                     foreach (var logicalWidth in new[] { 460, 820, 1320 })
                     {
                         panel.Width = logicalWidth * dpi / 96; panel.PerformLayout();

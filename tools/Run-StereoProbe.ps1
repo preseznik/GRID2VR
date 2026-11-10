@@ -25,6 +25,7 @@ param(
     [ValidateRange(25,300)][int]$ChaseMouseSensitivity=100,
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
+    [ValidateSet(0,1)][int]$ChaseHorizontalOnly=0,
     [string]$DrivingControls='',
     [ValidatePattern('^$|^\d{1,3},\d{1,3},\d{1,3}$')][string]$ForceFeedback='',
     [string]$DeviceClaim='',
@@ -85,7 +86,7 @@ $ErrorActionPreference='Stop'
 if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
 if($ChaseFreeLook -and !$RuntimeSession) { throw 'Chase-camera controls require a user runtime session.' }
 . (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
-$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
+$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical -ChaseHorizontalOnly $ChaseHorizontalOnly
 if($VrMirrorBorderless -and ($Mode -notin @('Headset','Preflight') -or !$RuntimeSession -or !$UntilExit -or $PlayerControlOnly -or !$ForceSceneResolution)) { throw 'Borderless VR mirror requires a user VR session with scene resolution enforcement.' }
 if($NormalLaunch -and ($SessionDirectory -or !$RuntimeSession -or $PlayerControlProbe -ne 'Off')) { throw 'Normal launch requires the guarded runtime without a selected session or input probe.' }
 $RemoveCinemaMatte=$RemoveCinemaMatte -or ($Mode -eq 'Headset' -and $RuntimeSession)
@@ -426,7 +427,7 @@ try {
     $parameters.ChaseCameraObserver=[bool]$ChaseCameraObserver
     $parameters.ChaseFreeLook=$ChaseFreeLook; $parameters.ChaseKeepAngle=$ChaseKeepAngle; $parameters.ChaseMouseMode=$ChaseMouseMode
     $parameters.ChaseMaxZoomOut=$ChaseMaxZoomOut; $parameters.ChaseMouseSensitivity=$ChaseMouseSensitivity
-    $parameters.ChaseStickSensitivity=$ChaseStickSensitivity; $parameters.ChaseInvertVertical=$ChaseInvertVertical
+    $parameters.ChaseStickSensitivity=$ChaseStickSensitivity; $parameters.ChaseInvertVertical=$ChaseInvertVertical; $parameters.ChaseHorizontalOnly=$ChaseHorizontalOnly
     $parameters.CockpitTextures=$CockpitTextures
     # The non-rendering desktop branch also needs the explicitly selected DLL.
     if($ChaseCameraObserver -or $ChaseFreeLook -or $CockpitTextures -ne 'Off') { $parameters.DiagnosticProxy=$DiagnosticProxy }

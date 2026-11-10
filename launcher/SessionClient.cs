@@ -36,6 +36,7 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public int ChaseMouseSensitivity { get; init; } = 100;
     public int ChaseStickSensitivity { get; init; } = 100;
     public bool ChaseInvertVertical { get; init; }
+    public bool ChaseHorizontalOnly { get; init; }
     // Launcher Force Feedback: shapes GRID 2's wheel force; 100% each is unchanged.
     public bool ForceFeedbackOverride { get; init; }
     public int ForceFeedbackStrength { get; init; } = 100;
@@ -227,7 +228,7 @@ internal sealed class SessionClient(string root)
             "-ChaseMouseMode", value.ChaseMouseMode, "-ChaseMaxZoomOut", value.ChaseMaxZoomOut.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-ChaseMouseSensitivity", value.ChaseMouseSensitivity.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-ChaseStickSensitivity", value.ChaseStickSensitivity.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "-ChaseInvertVertical", value.ChaseInvertVertical ? "1" : "0" }) command.ArgumentList.Add(arg);
+            "-ChaseInvertVertical", value.ChaseInvertVertical ? "1" : "0", "-ChaseHorizontalOnly", value.ChaseHorizontalOnly ? "1" : "0" }) command.ArgumentList.Add(arg);
         if (vr)
         {
             foreach (var arg in new[] { "-HudDistance", value.Graphics.HudDistance.ToString(System.Globalization.CultureInfo.InvariantCulture),

@@ -7,17 +7,19 @@ function Read-ChaseAst([string]$Name) {
     if($errors.Count) { throw "$Name has parser errors: $errors" }
     return $ast
 }
-$names=@('ChaseFreeLook','ChaseKeepAngle','ChaseMouseMode','ChaseMaxZoomOut','ChaseMouseSensitivity','ChaseStickSensitivity','ChaseInvertVertical')
-$chosen=@{ChaseFreeLook=1;ChaseKeepAngle=1;ChaseMouseMode='always';ChaseMaxZoomOut=1000;ChaseMouseSensitivity=25;ChaseStickSensitivity=300;ChaseInvertVertical=1}
+$names=@('ChaseFreeLook','ChaseKeepAngle','ChaseMouseMode','ChaseMaxZoomOut','ChaseMouseSensitivity','ChaseStickSensitivity','ChaseInvertVertical','ChaseHorizontalOnly')
+$chosen=@{ChaseFreeLook=1;ChaseKeepAngle=1;ChaseMouseMode='always';ChaseMaxZoomOut=1000;ChaseMouseSensitivity=25;ChaseStickSensitivity=300;ChaseInvertVertical=1;ChaseHorizontalOnly=1}
 foreach($script in @('Start-UserSession.ps1','Run-StereoProbe.ps1','Run-Diagnostic.ps1')) {
     $ast=Read-ChaseAst $script
     # Bind the actual parameter block only. No script launch/deployment body runs.
     $bind=[scriptblock]::Create($ast.ParamBlock.Extent.Text+"`nGet-Grid2ChaseConfiguration "+(($names | ForEach-Object { '-'+$_+' $'+$_ }) -join ' '))
     $extra=if($script -eq 'Run-StereoProbe.ps1'){@{HardwareSettingsFile='unused-fixture.xml'}}else{@{}}
     if((& $bind @extra).text -cne "chase-v1 0 0 1 180 100 100 0`n") { throw "$script changed chase defaults." }
-    if((& $bind @extra @chosen).text -cne "chase-v1 1 1 2 1000 25 300 1`n") { throw "$script lost chase values." }
+    if((& $bind @extra @chosen).text -cne "chase-v1 1 1 2 1000 25 300 1 1`n") { throw "$script lost chase values." }
+    $vertical=$chosen.Clone(); $vertical.ChaseHorizontalOnly=0
+    if((& $bind @extra @vertical).text -cne "chase-v1 1 1 2 1000 25 300 1`n") { throw "$script added a horizontal-only field while it was off." }
     foreach($invalid in @(@{ChaseFreeLook=2},@{ChaseKeepAngle=-1},@{ChaseMouseMode='invalid'},@{ChaseMaxZoomOut=170},@{ChaseMaxZoomOut=181},
-        @{ChaseMaxZoomOut=1010},@{ChaseMouseSensitivity=24},@{ChaseMouseSensitivity=301},@{ChaseStickSensitivity=24},@{ChaseStickSensitivity=301},@{ChaseInvertVertical=2})) {
+        @{ChaseMaxZoomOut=1010},@{ChaseMouseSensitivity=24},@{ChaseMouseSensitivity=301},@{ChaseStickSensitivity=24},@{ChaseStickSensitivity=301},@{ChaseInvertVertical=2},@{ChaseHorizontalOnly=2})) {
         $rejected=$false
         try { $null=& $bind @extra @invalid } catch [Management.Automation.ParameterBindingException] { $rejected=$true }
         if(!$rejected) { throw "$script accepted invalid settings: $($invalid | ConvertTo-Json -Compress)" }
@@ -34,8 +36,8 @@ foreach($script in @('Start-UserSession.ps1','Run-StereoProbe.ps1','Run-Diagnost
 # map. Check every launch mode and profile route without touching profiles.
 foreach($script in @('Start-UserSession.ps1','Run-StereoProbe.ps1')) {
     $ast=Read-ChaseAst $script
-    $assignments=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -match '^\$parameters\.Chase(FreeLook|KeepAngle|MouseMode|MaxZoomOut|MouseSensitivity|StickSensitivity|InvertVertical)$'},$true))
-    if($assignments.Count -ne 7) { throw "$script is missing chase forwarding." }
+    $assignments=@($ast.FindAll({param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -match '^\$parameters\.Chase(FreeLook|KeepAngle|MouseMode|MaxZoomOut|MouseSensitivity|StickSensitivity|InvertVertical|HorizontalOnly)$'},$true))
+    if($assignments.Count -ne 8) { throw "$script is missing chase forwarding." }
     $forward=[scriptblock]::Create(($assignments.Extent.Text -join "`n"))
     if($script -eq 'Run-StereoProbe.ps1') {
         $desktop=$ast.Find({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Clauses[0].Item1.Extent.Text -eq '$PlayerControlOnly' -and $node.Extent.Text.Contains('$parameters=@{')},$true)

@@ -37,6 +37,7 @@ param(
     [ValidateRange(25,300)][int]$ChaseMouseSensitivity=100,
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
+    [ValidateSet(0,1)][int]$ChaseHorizontalOnly=0,
     [string]$DrivingControls='',
     [ValidatePattern('^$|^\d{1,3},\d{1,3},\d{1,3}$')][string]$ForceFeedback='',
     [string]$DeviceClaim='',
@@ -69,7 +70,7 @@ $nativeMenus=$LaunchMode -in @('Normal','Online')
 if($GraphicsQualityBase64.Length -gt 4096) { throw 'Graphics quality transport is too large.' }
 if($ChaseCameraObserver -and $ChaseFreeLook) { throw 'Chase-camera controls and the passive observer cannot run together.' }
 . (Join-Path $PSScriptRoot 'Chase-Camera.ps1')
-$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical
+$chase=Get-Grid2ChaseConfiguration -ChaseFreeLook $ChaseFreeLook -ChaseKeepAngle $ChaseKeepAngle -ChaseMouseMode $ChaseMouseMode -ChaseMaxZoomOut $ChaseMaxZoomOut -ChaseMouseSensitivity $ChaseMouseSensitivity -ChaseStickSensitivity $ChaseStickSensitivity -ChaseInvertVertical $ChaseInvertVertical -ChaseHorizontalOnly $ChaseHorizontalOnly
 if($VrMirrorBorderless -and $Mode -ne 'VR') { throw 'Borderless VR mirror requires a VR launch.' }
 if($ChaseCameraObserver -and ($Mode -ne 'Desktop' -or !$DiagnosticProxy)) { throw 'Chase observation requires Desktop and an explicit diagnostic proxy; camera writes are unavailable.' }
 $desktopCockpit=$Mode -eq 'Desktop' -and ($DesktopSeatPosition -or $DesktopCockpitFov)
@@ -214,7 +215,7 @@ try {
     }
     $parameters.ChaseFreeLook=$ChaseFreeLook; $parameters.ChaseKeepAngle=$ChaseKeepAngle; $parameters.ChaseMouseMode=$ChaseMouseMode
     $parameters.ChaseMaxZoomOut=$ChaseMaxZoomOut; $parameters.ChaseMouseSensitivity=$ChaseMouseSensitivity
-    $parameters.ChaseStickSensitivity=$ChaseStickSensitivity; $parameters.ChaseInvertVertical=$ChaseInvertVertical
+    $parameters.ChaseStickSensitivity=$ChaseStickSensitivity; $parameters.ChaseInvertVertical=$ChaseInvertVertical; $parameters.ChaseHorizontalOnly=$ChaseHorizontalOnly
     $parameters.HudDistance=$HudDistance; $parameters.HudFollowView=$HudFollowView; $parameters.HudHiddenElements=$HudHiddenElements
     $parameters.VrReplayCameras=$VrReplayCameras
     $parameters.VrGarageMenus=$VrGarageMenus

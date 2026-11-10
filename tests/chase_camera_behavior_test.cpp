@@ -32,7 +32,7 @@ void Arm(ChaseCameraState& state,const ChaseCameraConfig& config,ChaseCameraCont
 
 void ConfigurationAndInput() {
     const ChaseCameraConfig defaults;
-    assert(defaults.Valid() && !defaults.enabled && !defaults.keepAngle && !defaults.invertVertical);
+    assert(defaults.Valid() && !defaults.enabled && !defaults.keepAngle && !defaults.invertVertical && !defaults.horizontalOnly);
     assert(defaults.mouseMode==ChaseMouseMode::Right && defaults.maxZoomOutPercent==180);
     assert(defaults.mouseSensitivityPercent==100 && defaults.stickSensitivityPercent==100);
     assert(static_cast<int>(ChaseMouseMode::Left)==0 && static_cast<int>(ChaseMouseMode::Right)==1 && static_cast<int>(ChaseMouseMode::Always)==2);
@@ -88,6 +88,23 @@ void ConfigurationAndInput() {
         input.stickX=0;input.stickY=1;
         assert(DecodeChaseCameraInput(config,input,.1f,motion));
         assert(motion.horizontal==0 && Near(motion.vertical,(invert?-.15f:.15f)*factor));
+    }
+    for(bool invert:{false,true}) {
+        // Horizontal only: vertical mouse/stick never pitches the orbit; yaw is unchanged.
+        auto config=defaults;config.horizontalOnly=true;config.invertVertical=invert;
+        auto input=Devices();input.rightMouse=true;input.mouseX=10;input.mouseY=10;
+        ChaseCameraMotion motion;
+        assert(DecodeChaseCameraInput(config,input,.1f,motion) && Near(motion.horizontal,-.03f) && motion.vertical==0 && motion.held);
+        input=Devices();input.stickX=1;input.stickY=1;
+        assert(DecodeChaseCameraInput(config,input,.1f,motion) && motion.horizontal<0 && motion.vertical==0 && motion.held);
+        input=Devices();input.stickY=1;
+        assert(DecodeChaseCameraInput(config,input,.1f,motion) && motion.horizontal==0 && motion.vertical==0 && motion.held && !motion.neutral);
+        config.enabled=true;
+        ChaseCameraState state;auto context=Context();
+        Arm(state,config,context);
+        input=Devices();input.stickX=1;input.stickY=1;
+        for(int i=0;i<10;++i)assert(Next(state,config,context,input)==ChaseCameraStep::Updated);
+        assert(state.orbit.yaw!=0 && state.orbit.pitch==0);
     }
     ChaseCameraMotion motion;
     auto input=Devices();input.stickX=.2f;
