@@ -12,7 +12,7 @@ internal static class NewFeatures
     // The next release. After each release, set the next version and remove the released entries
     // (NewFeaturesTests fails once this build is past NextVersion). Marks should stay until the next
     // Stable (ProJict 93f6bbb7), so until that rule lands, 0.2.16's entries carry forward.
-    public const string NextVersion = "0.2.20";
+    public const string NextVersion = "0.2.21";
 
     // Control or section names, and the version that first marks them. 0.2.15 shipped before the
     // marks existed, so its launcher additions are marked in 0.2.16.

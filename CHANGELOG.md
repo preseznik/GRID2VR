@@ -1,4 +1,4 @@
-# GRID2VR 0.2.21 — Unreleased
+# GRID2VR 0.2.21 — Experimental
 
 - **Garage floor in VR.** The shiny garage and online menu floors no longer show a reflection that slides around as you look. The game draws that reflection for its own camera, not your eyes, so VR now shows the plain floor. Desktop is unchanged.
 
