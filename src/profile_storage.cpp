@@ -2,6 +2,7 @@
 #include "game_executable.h"
 #include "startup_movies.h"
 #include "profile_setup.h"
+#include "ffb_observer.h"
 #include <windows.h>
 #include <bcrypt.h>
 #include <intrin.h>
@@ -458,6 +459,12 @@ bool AttachStorage() {
 }
 }
 BOOL WINAPI DllMain(HINSTANCE,DWORD reason,void*) {
-    if(reason==DLL_PROCESS_ATTACH && (!AttachStorage()||!grid2vr::startupmovies::Attach()))ExitRefused();return TRUE;
+    if(reason==DLL_PROCESS_ATTACH) {
+        if(!AttachStorage()||!grid2vr::startupmovies::Attach())ExitRefused();
+        // Pass-through DirectInput import route for the FFB hooks; see ffb_observer.h.
+        grid2vr::ffbobserver::AttachEarly(reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr)),
+            grid2vr::ffbobserver::avxImageSize,grid2vr::ffbobserver::avxDirectInputSlotRva);
+    }
+    return TRUE;
 }
 #endif

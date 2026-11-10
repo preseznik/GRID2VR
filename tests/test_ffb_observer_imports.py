@@ -44,4 +44,16 @@ while True:
 # XInputGetState (2) and XInputSetState (3) are ordinal imports from XINPUT1_3.
 assert imports['xinput1_3.dll'] == [('ordinal', 3), ('ordinal', 4), ('ordinal', 2)], imports['xinput1_3.dll']
 assert imports['dinput8.dll'] == [('name', 'DirectInput8Create')]
+# AttachEarly's fingerprint: SizeOfImage and the DirectInput8Create IAT slot RVA.
+image_size = struct.unpack_from('<I', data, optional + 56)[0]
+at = offset(struct.unpack_from('<I', data, optional + 104)[0])
+slot = None
+while True:
+    lookup, _, _, name, first = struct.unpack_from('<5I', data, at)
+    if not name:
+        break
+    if text(name).lower() == 'dinput8.dll':
+        slot = first
+    at += 20
+assert (image_size, slot) == (0x100e000, 0xb16070), (hex(image_size), slot and hex(slot))
 print('PASS: exact PE imports XINPUT1_3 ordinals 2/3 and dinput8!DirectInput8Create for the observer; no execution')

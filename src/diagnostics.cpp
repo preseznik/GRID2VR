@@ -701,8 +701,14 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
         // path keeps native code intact and waits for guarded input/job instances.
         if(!f) {
             drivingcontrols::Install(gameBase,output);
-            // Observe-only rumble/force-feedback counters for every launch mode.
+            // Rumble/force-feedback counters for every launch mode.
             ffbobserver::Install(gameBase,output);
+            // Launcher Force Feedback: shape the game's constant force in dinput8.
+            if(std::ifstream request(output/L"force-feedback.request");request) {
+                forcefeedback::Settings settings;
+                if(forcefeedback::ReadRequest(request,settings))ffbobserver::ConfigureShaping(settings);
+                else Log("force feedback request refused");
+            }
             // Flashback monitor sampling for every launch mode; in -benchmarkAttract
             // (direct) launches the benchmark mode word is cleared only while racing.
             // No game code is patched; Normal launches are never written.

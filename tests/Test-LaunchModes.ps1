@@ -51,6 +51,10 @@ $defaultFlag=@($diagnosticCalls | ForEach-Object { $_.KeyValuePairs } | Where-Ob
 if($defaultFlag.Count -ne 1) { throw 'Default OpenXR selection is not forwarded to the rendering diagnostic.' }
 $desktopCall=@($diagnosticCalls | Where-Object { @($_.KeyValuePairs | ForEach-Object { $_.Item1.Extent.Text }) -contains 'PlayerControlOnly' })
 if($desktopCall.Count -ne 1) { throw 'Missing Desktop diagnostic call.' }
+foreach($call in $diagnosticCalls) {
+    $entry=@($call.KeyValuePairs | Where-Object { $_.Item1.Extent.Text -eq 'ForceFeedback' })
+    if($entry.Count -ne 1 -or $entry[0].Item2.Extent.Text -ne '$ForceFeedback' -or 'ForceFeedback' -notin $forwarded) { throw 'Force feedback settings lost in a VR or Desktop session chain.' }
+}
 foreach($name in @('CockpitMode','DesktopSeatPosition','DesktopCockpitFov')) {
     $entry=@($desktopCall[0].KeyValuePairs | Where-Object { $_.Item1.Extent.Text -eq $name })
     if($entry.Count -ne 1 -or $entry[0].Item2.Extent.Text -ne ('$'+$name) -or $name -notin $forwarded) { throw "Desktop camera option lost in session chain: $name" }
@@ -354,6 +358,19 @@ try {
         & { $RuntimeSession=$true;$ReplayStereo=$case.stereo;$PlayerControlOnly=$case.player;$OnlineLaunch=$case.online; . $introStatement }
         if((Test-Path -LiteralPath $introRequest) -ne $case.written) { throw "Intro near plane routing changed: stereo=$($case.stereo) desktop=$($case.player) online=$($case.online)" }
         if(Test-Path -LiteralPath $introRequest) { Remove-Item -LiteralPath $introRequest }
+    }
+    # Launcher Force Feedback reaches every runtime mode (VR and Desktop) as whole percentages.
+    $ffbStatement=Find-TestStatement $diagnostic "'force-feedback.request'"
+    $ffbRequest=Join-Path $run 'force-feedback.request'
+    foreach($case in @(@{runtime=$true;value='70,25,0';expected='70 25 0'},@{runtime=$true;value='0,1,100';expected='0 1 100'},@{runtime=$true;value='';expected=$null},@{runtime=$false;value='100,50,50';expected=$null})) {
+        & { $RuntimeSession=$case.runtime;$ForceFeedback=$case.value; . $ffbStatement }
+        $written=if(Test-Path -LiteralPath $ffbRequest){[IO.File]::ReadAllText($ffbRequest)}else{$null}
+        if($written -cne $case.expected) { throw "Force feedback request routing changed: '$($case.value)' runtime=$($case.runtime) wrote '$written'" }
+        if(Test-Path -LiteralPath $ffbRequest) { Remove-Item -LiteralPath $ffbRequest }
+    }
+    foreach($bad in @('100,0,50','101,50,50','100,50,101')) {
+        $refused=$false; try { & { $RuntimeSession=$true;$ForceFeedback=$bad; . $ffbStatement } } catch { $refused=$true }
+        if(!$refused -or (Test-Path -LiteralPath $ffbRequest)) { throw "Force feedback accepted out-of-range settings: $bad" }
     }
     . (Join-Path $root 'tools/Launch-Backend.ps1')
     function Get-Grid2SteamRoot { return 'C:\Fixture Steam' }

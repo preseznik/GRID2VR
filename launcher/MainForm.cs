@@ -40,6 +40,7 @@ internal sealed partial class MainForm : LauncherForm
     private readonly CheckBox skipIntro = new() { Name = "SkipIntro", AccessibleName = "Skip intro / logos", Text = "On", AutoSize = true };
     private readonly CheckBox diagnosticLogging = new() { Name = "DiagnosticLogging", AccessibleName = "Diagnostic logging", Text = "On", AutoSize = true };
     private readonly ChaseCameraPanel chaseCamera = new();
+    private readonly ForceFeedbackPanel forceFeedback = new();
     private readonly CheckBox performanceFollowView = new() { Name = "PerformanceFollowView", AccessibleName = "Performance display follows view", Text = "Follow view", AutoSize = true };
     private readonly CheckBox performanceDisplay = new() { Name = "PerformanceDisplay", AccessibleName = "Performance display", Text = "FPS + GPU usage (VR)", AutoSize = true };
     private readonly CheckBox replay3d = new() { Name = "VrReplayCameras", AccessibleName = "3D replays", Text = "On", Checked = true, AutoSize = true };
@@ -238,6 +239,8 @@ internal sealed partial class MainForm : LauncherForm
         controls.Controls.Add(drivingControls);
         controls.Controls.Add(TextLabel(DrivingControls.RuntimeNotice));
         controls.Controls.Add(HelpLink("Controls"));
+        Section(controls, "Force Feedback");
+        controls.Controls.Add(forceFeedback);
         controls = Page(controlTabs, "Seat");
         controls.Controls.Add(seatAlignment);
         controls.Controls.Add(HelpLink("VR cockpit"));
@@ -444,6 +447,7 @@ internal sealed partial class MainForm : LauncherForm
         recenterDevice = choices.RecenterDevice; UpdateDeviceRecenter();
         keepHorizonLevel.Checked = choices.KeepHorizonLevel;
         chaseCamera.LoadChoices(choices);
+        forceFeedback.LoadChoices(choices);
     }
     private void FilterCars()
     {
@@ -469,14 +473,14 @@ internal sealed partial class MainForm : LauncherForm
             vehicle, track.SelectedItem as ContentItem, runtime.SelectedItem as string, recenterKey, recenterModifiers, laps.Value,
             mode, opponents.Value, rivals) + (!AppPaths.Packaged(client.Root) && previewVrFixes.Checked ? "\nPreview VR fixes enabled" : "");
     }
-    private Choices Current() => chaseCamera.ApplyTo(new(((ContentItem)car.SelectedItem!).Id, ((ContentItem)track.SelectedItem!).Id, (string)runtime.SelectedItem!, recenterKey, recenterModifiers, (int)laps.Value)
+    private Choices Current() => forceFeedback.ApplyTo(chaseCamera.ApplyTo(new(((ContentItem)car.SelectedItem!).Id, ((ContentItem)track.SelectedItem!).Id, (string)runtime.SelectedItem!, recenterKey, recenterModifiers, (int)laps.Value)
     {
         Graphics = CurrentGraphics(), ModernInterface = modernInterface.Checked, PreviewVrFixes = previewVrFixes.Checked,
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked, NativeLeftEye = nativeLeftEye.Checked,
         SponsorDepthBias = sponsorDepthBias.Checked,
         VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
-    });
+    }));
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
     private static void SelectChoice(ComboBox box, string id) => box.SelectedItem = box.Items.Cast<ContentItem>().Single(x => x.Id == id);
     private GraphicsOptions CurrentGraphics() => CurrentQuality(retainedGraphics with

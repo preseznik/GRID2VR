@@ -1,4 +1,5 @@
 #include "ffb_observer.h"
+#include "pe_imports.h"
 #define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
 #include <MinHook.h>
@@ -23,10 +24,24 @@ int main(int,char** argv) {
     std::filesystem::remove_all(folder);std::filesystem::create_directories(folder);
     CHECK(MH_Initialize()==MH_OK);
     const auto self=reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    // Early route: this program imports DINPUT8!DirectInput8Create by name, as the game does.
+    const auto* nt=reinterpret_cast<const IMAGE_NT_HEADERS32*>(self+reinterpret_cast<const IMAGE_DOS_HEADER*>(self)->e_lfanew);
+    void** createImport=grid2vr::FindImportSlot(self,"DINPUT8.dll",0,"DirectInput8Create");
+    CHECK(createImport);
+    void* realCreate=*createImport;
+    CHECK(observer::AttachEarly(self,nt->OptionalHeader.SizeOfImage,static_cast<uint32_t>(reinterpret_cast<uintptr_t>(createImport)-self)));
+    CHECK(*createImport!=realCreate && !observer::AttachEarly(self,nt->OptionalHeader.SizeOfImage,0));
     observer::Install(self,folder);
     auto json=Read(folder/"ffb-observer.json");
     // This program has no XINPUT1_3 import; DirectInput device methods are hooked.
     CHECK(Has(json,"\"reason\":\"observing_directinput_only\"") && Has(json,"\"setPatched\":false") && Has(json,"\"observeOnly\":true"));
+    CHECK(Has(json,"\"shaping\":{\"configured\":false,\"active\":false,"));
+    // Launcher Force Feedback: out-of-range settings are ignored; neutral ones change nothing.
+    observer::ConfigureShaping({100,0,50});json=Read(folder/"ffb-observer.json");CHECK(Has(json,"\"configured\":false"));
+    observer::ConfigureShaping({});json=Read(folder/"ffb-observer.json");
+    CHECK(Has(json,"\"observeOnly\":true") && Has(json,"\"shaping\":{\"configured\":true,\"active\":false,\"strength\":100,\"weight\":100,\"effects\":100,"));
+    observer::ConfigureShaping({70,50,20});json=Read(folder/"ffb-observer.json");
+    CHECK(Has(json,"\"observeOnly\":false") && Has(json,"\"shaping\":{\"configured\":true,\"active\":true,\"strength\":70,\"weight\":50,\"effects\":20,\"splitHz\":3,\"shaped\":0,"));
 
     const auto module=GetModuleHandleW(nullptr);
     HWND window=CreateWindowExW(0,L"STATIC",L"ffb-observer-fixture",WS_POPUP,0,0,1,1,nullptr,nullptr,module,nullptr);
@@ -55,6 +70,12 @@ int main(int,char** argv) {
     sprintf_s(expected,"\"createEffect\":{\"calls\":1,\"failures\":1,\"lastResult\":\"0x%08x\"",static_cast<unsigned>(creation));
     CHECK(Has(json,expected) && Has(json,"\"lastCommand\":1"));
     CHECK(Has(json,"\"effectHooks\":0"));
+    // The import route was published and the program's own create calls were counted; Stop restores it.
+    // The program's own CreateDevice is observed for both interfaces (here the observer's private
+    // objects also pass this program's patched import); its keyboard shares the hooked methods.
+    CHECK(Has(json,"\"createDeviceHooked\":[true,true]") && Has(json,"{\"guidData1\":\"0x6f1d2b61\",\"shared\":true,\"table\":\"DINPUT8.dll+"));
+    CHECK(Has(json,"\"foreign\":{\"cooperativeLevel\":{\"calls\":"));
+    CHECK(Has(json,"\"createSlot\":true") && !Has(json,"\"gameCreates\":0,") && *createImport==realCreate);
     // After Stop, calls pass through and are no longer counted.
     CHECK(SUCCEEDED(DirectInput8Create(module,DIRECTINPUT_VERSION,IID_IDirectInput8W,reinterpret_cast<void**>(&input),nullptr)));
     CHECK(SUCCEEDED(input->CreateDevice(GUID_SysKeyboard,&keyboard,nullptr)));
