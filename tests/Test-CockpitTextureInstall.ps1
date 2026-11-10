@@ -1,4 +1,6 @@
-param([Parameter(Mandatory)][string]$GameRoot,[Parameter(Mandatory)][string]$ZipPath)
+param([Parameter(Mandatory)][string]$GameRoot,[Parameter(Mandatory)][string]$ZipPath,
+    # GRID2VR-CockpitTextures-0.2.0-preview.1.zip: a published earlier pack for the superseded-version cleanup checks.
+    [Parameter(Mandatory)][string]$PreviousZipPath)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $fixture=[IO.Path]::GetFullPath((Join-Path $root ('build/cockpit-texture-install-test-'+[guid]::NewGuid().ToString('N'))))
@@ -9,6 +11,14 @@ $tests=[Collections.Generic.List[string]]::new()
 function Refuses([scriptblock]$Body,[string]$Name) {
     $failed=$false;try { & $Body | Out-Null } catch { $failed=$true }
     if(!$failed) { throw "Unexpected acceptance: $Name" };$tests.Add($Name)
+}
+$older=Join-Path $mod 'addons/cockpit-textures/0.2.0-preview.1'
+# Lay out an earlier pack exactly as its installer did (flat files in its version folder).
+function Install-Older {
+    [IO.Directory]::CreateDirectory($older)|Out-Null
+    $archive=[IO.Compression.ZipFile]::OpenRead($PreviousZipPath)
+    try { foreach($entry in $archive.Entries) { if($entry.Name) { [IO.Compression.ZipFileExtensions]::ExtractToFile($entry,(Join-Path $older $entry.Name),$true) } } }
+    finally { $archive.Dispose() }
 }
 try {
     [IO.Directory]::CreateDirectory($game)|Out-Null
@@ -23,9 +33,29 @@ try {
     [IO.File]::WriteAllText((Join-Path $game 'GRID2VR.diagnostic-session'),'pending')
     Refuses { & $script -Action Install -GameRoot $game -ZipPath $ZipPath } 'refuses_pending_session'
     [IO.File]::Delete((Join-Path $game 'GRID2VR.diagnostic-session'))
-    & $script -Action Install -GameRoot $game -ZipPath $ZipPath | Out-Null
+    Install-Older
+    $installed=& $script -Action Install -GameRoot $game -ZipPath $ZipPath
+    if(Test-Path -LiteralPath $older) { throw 'A published earlier pack survived installing the new version.' }
+    if(!($installed -match 'Removed older cockpit texture pack 0\.2\.0-preview\.1')) { throw 'Earlier pack removal was not reported.' }
+    if(!($installed -match 'Kept older cockpit texture folder 0\.2\.0-preview\.2')) { throw 'Foreign earlier folder was not reported as kept.' }
+    $tests.Add('install_removes_published_earlier_pack')
     & $script -Action Verify -GameRoot $game | Out-Null
     $tests.Add('install_and_verify')
+    # Verify also tidies a published earlier pack, but only when nothing is running.
+    Install-Older
+    [IO.File]::WriteAllText((Join-Path $game 'GRID2VR.diagnostic-session'),'pending')
+    & $script -Action Verify -GameRoot $game | Out-Null
+    if(!(Test-Path -LiteralPath (Join-Path $older 'foc.dds'))) { throw 'Earlier pack removed while a session was pending.' }
+    $tests.Add('verify_keeps_earlier_pack_while_session_pending')
+    [IO.File]::Delete((Join-Path $game 'GRID2VR.diagnostic-session'))
+    $changed=Join-Path $older 'foc.dds';$changedBytes=[IO.File]::ReadAllBytes($changed);[IO.File]::WriteAllText($changed,'changed')
+    & $script -Action Verify -GameRoot $game | Out-Null
+    if([IO.File]::ReadAllText($changed) -cne 'changed' -or @(Get-ChildItem -LiteralPath $older).Count -ne 74) { throw 'A changed earlier pack was altered.' }
+    $tests.Add('changed_earlier_pack_kept')
+    [IO.File]::WriteAllBytes($changed,$changedBytes)
+    & $script -Action Verify -GameRoot $game | Out-Null
+    if(Test-Path -LiteralPath $older) { throw 'Verify did not remove the published earlier pack.' }
+    $tests.Add('verify_removes_published_earlier_pack')
     $reference=Join-Path $target 'CARS.txt'
     $text=[IO.File]::ReadAllText($reference)
     if($text -notmatch 'Ford Focus ST\s+\| foc\s+\| foc.dds' -or $text -notmatch 'Volkswagen Golf R \(Performance\)\s+\| go2\s+\| gol.dds') { throw 'Readable car reference is missing or incomplete.' }

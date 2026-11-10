@@ -20,6 +20,41 @@ $hashes=$catalog.files
 foreach($name in $hashes.Keys) {
     if($name -cnotmatch '^(?:[a-z0-9]{3}\.dds|pack\.json|README\.txt|CARS\.txt)$' -or $hashes[$name] -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid cockpit texture catalog.' }
 }
+$previousPath=Join-Path $PSScriptRoot 'data/cockpit-texture-pack-previous.json'
+$previousHash='eecdca33db46b91f8320548f6a0ef6ba6a27a69d6820cee4ead01d30b560175d'
+# Removes earlier pack versions that a newer launcher left behind. Only a folder
+# whose files are exactly a published earlier pack (by name and SHA-256) is
+# deleted; anything else stays and is reported. Call with the session lock held.
+function Remove-SupersededPacks {
+    $parent=Split-Path $target -Parent
+    if(!(Test-Path -LiteralPath $parent -PathType Container)) { return }
+    Assert-CockpitCameraHash $previousPath $previousHash
+    $previous=(Get-Content -LiteralPath $previousPath -Raw | ConvertFrom-Json -AsHashtable).versions
+    foreach($version in @($previous.Keys | Sort-Object)) {
+        if($version -cnotmatch '^\d+\.\d+\.\d+-preview\.\d+$' -or $version -ceq $catalog.version) { continue }
+        $folder=Join-Path $parent $version
+        if(!(Test-Path -LiteralPath $folder -PathType Container)) { continue }
+        $files=$previous[$version].files
+        try {
+            Assert-CockpitCameraPlainPath $folder
+            $entries=@(Get-ChildItem -LiteralPath $folder -Force)
+            if($entries.Count -ne $files.Count) { throw 'contents differ' }
+            foreach($entry in $entries) {
+                if($entry.PSIsContainer -or !$files.ContainsKey($entry.Name) -or
+                   $entry.Name -cnotmatch '^(?:[a-z0-9]{3}\.dds|pack\.json|README\.txt|CARS\.txt)$') { throw 'unexpected entry' }
+                Assert-CockpitCameraHash $entry.FullName $files[$entry.Name]
+            }
+        } catch {
+            Write-Output "Kept older cockpit texture folder $version`: it is not exactly the published pack."
+            continue
+        }
+        foreach($name in $files.Keys) {
+            $path=Join-Path $folder $name;Assert-CockpitCameraHash $path $files[$name];[IO.File]::Delete($path)
+        }
+        [IO.Directory]::Delete($folder,$false)
+        Write-Output "Removed older cockpit texture pack $version."
+    }
+}
 function Assert-Pack([string]$Directory) {
     Assert-CockpitCameraPlainPath $Directory
     $entries=@(Get-ChildItem -LiteralPath $Directory -Force)
@@ -34,21 +69,27 @@ $null=Get-Grid2ExecutableHash (Join-Path $game 'grid2_avx.exe')
 # Require a core installation: a pack alone must not create an unowned GRID2VR
 # folder that blocks the core installer on the next run.
 if(!(Test-Path -LiteralPath (Join-Path $mod 'package.json') -PathType Leaf)) { throw 'Install the GRID2VR core before installing this optional pack.' }
-if($Action -eq 'Verify') { Assert-Pack $target; Write-Output "Verified cockpit texture pack: $target"; return }
+if($Action -eq 'Verify') { Assert-Pack $target; Write-Output "Verified cockpit texture pack: $target" }
 $mutex=[Threading.Mutex]::new($false,'Global\GRID2VR.Session');$locked=$false
 $staging=$null
 try {
     try { $locked=$mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $locked=$true }
-    if(!$locked) { throw 'Finish the GRID2VR session before changing its optional pack.' }
-    if(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { throw 'Close GRID 2 before changing its optional pack.' }
+    $blocked=if(!$locked) { 'Finish the GRID2VR session before changing its optional pack.' }
+        elseif(Get-Process grid2,grid2_avx -ErrorAction SilentlyContinue) { 'Close GRID 2 before changing its optional pack.' }
     foreach($marker in @('GRID2VR.diagnostic-session','GRID2VR.session.xml')) {
-        if(Test-Path -LiteralPath (Join-Path $game $marker)) { throw 'Restore the pending GRID2VR session first.' }
+        if(!$blocked -and (Test-Path -LiteralPath (Join-Path $game $marker))) { $blocked='Restore the pending GRID2VR session first.' }
     }
     foreach($data in @((Get-Grid2DataRoot $mod),(Get-Grid2DataRoot (Split-Path $PSScriptRoot -Parent)))) {
         foreach($marker in @('session-pending.json','diagnostic-pending.json','practice-flow-pending.json','steamvr-theater-pending.json')) {
-            if(Test-Path -LiteralPath (Join-Path $data $marker)) { throw 'Restore the pending GRID2VR session first.' }
+            if(!$blocked -and (Test-Path -LiteralPath (Join-Path $data $marker))) { $blocked='Restore the pending GRID2VR session first.' }
         }
     }
+    if($Action -eq 'Verify') {
+        # The current pack is verified; tidy earlier versions only when nothing is running.
+        if(!$blocked) { Remove-SupersededPacks }
+        return
+    }
+    if($blocked) { throw $blocked }
     if($Action -eq 'Remove') {
         # Refuse changed/foreign content before deleting any of the owned files.
         Assert-Pack $target
@@ -87,6 +128,7 @@ try {
     } finally { $archive.Dispose() }
     Assert-Pack $target
     Write-Output "Installed cockpit texture preview pack: $target"
+    Remove-SupersededPacks
 } finally {
     try { if($staging -and (Test-Path -LiteralPath $staging)) {
         # Only this invocation's fixed filenames; preserve unexpected files.
