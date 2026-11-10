@@ -360,7 +360,6 @@ internal static class SelfTests
             SessionRecoveryTests.Run(fixture);
             DrivingControlsTests.Run(fixture);
             ChaseCameraTests.Run(root, client);
-            ForceFeedbackTests.Run(root, client);
             ResponsiveLayoutTests.Run(root, client);
             SectionCollapseTests.Run(client);
             NewFeaturesTests.Run(root, client);

@@ -48,7 +48,6 @@ param(
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
-    [ValidatePattern('^$|^\d{1,3},\d{1,3},\d{1,3}$')][string]$ForceFeedback='',
     [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
@@ -371,12 +370,6 @@ if($FrontendSceneAudit) { [IO.File]::WriteAllText((Join-Path $run 'frontend-scen
 if($ExposureAudit) { [IO.File]::WriteAllText((Join-Path $run 'exposure-audit.request'),'At most 600 luminance/constant rows; no full-size images.') }
 if(!$PlayerControlOnly -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure) { [IO.File]::WriteAllText((Join-Path $run 'cockpit-exposure.request'),'Retain the authored exposure ceiling in the exact cockpit camera only.') }
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect) { [IO.File]::WriteAllText((Join-Path $run 'impact-interference.request'),'Hide the flat impact interference glitch in VR; the game shader takes its pass-through branch.') }
-# Launcher Force Feedback override, every runtime mode: strength, wheel weight and effects in percent.
-if($RuntimeSession -and $ForceFeedback) {
-    $ffb=@($ForceFeedback.Split(',') | ForEach-Object { [int]$_ })
-    if($ffb[0] -gt 100 -or $ffb[1] -lt 1 -or $ffb[1] -gt 100 -or $ffb[2] -gt 100) { throw 'Force feedback settings must be strength 0-100, wheel weight 1-100 and effects 0-100 percent.' }
-    [IO.File]::WriteAllText((Join-Path $run 'force-feedback.request'),($ffb -join ' '),[Text.Encoding]::ASCII)
-}
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) { [IO.File]::WriteAllText((Join-Path $run 'floor-reflection.request'),'Remove the garage floor reflection in VR; it is drawn for the game camera, not the posed eye.') }
 # VR pre-race/replay shots use a 5 cm near plane instead of 0.2 m. Not online: the race-start signal there is unverified.
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$OnlineLaunch) { [IO.File]::WriteAllText((Join-Path $run 'intro-near-plane.request'),'Use a 5 cm near plane for VR pre-race and replay shots so the ground is not cut away.') }
@@ -538,7 +531,6 @@ $receipt.inGameSeatRequested=$inGameSeatRequested
 $receipt.hideImpactGlitch=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect)
 $receipt.hideFloorReflection=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly)
 $receipt.introNearPlane=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$OnlineLaunch)
-$receipt.forceFeedback=if($RuntimeSession -and $ForceFeedback){$ForceFeedback}else{$null}
 $receipt.exposureAudit=[bool]$ExposureAudit
 $receipt.removeCinemaMatte=[bool]$RemoveCinemaMatte
 $receipt.diagnosticLogging=[bool]$DiagnosticLogging

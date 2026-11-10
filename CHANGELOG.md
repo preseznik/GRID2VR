@@ -6,8 +6,6 @@
 
 - **FPS / GPU display in VR.** The FPS / GPU strip no longer flickers where it overlaps the HUD. It now always sits slightly in front of the HUD, at the same size in view.
 
-- **Force Feedback settings.** **Controls → Driving → Force Feedback** sets wheel weight, strength and vibration for every launch, in VR and Desktop. Turn on **Use launcher force feedback** to use them instead of GRID 2's own Vibration & Feedback settings, which stay unchanged and return when it is off.
-
 - **Pre-race shots in VR.** The camera shots that circle your car before a race, and race replays, no longer cut the ground away just below the camera. The game draws them with a 20 cm near clip, which the headset's wider view exposes; VR now uses 5 cm during these shots only.
 
 - **VR on headsets that don't report tracking.** Some headsets, such as a Pico Neo 3 over SteamVR with DisplayPort, never report the head as tracked, so VR never started and the game stayed on the monitor. If the headset is focused for 3 seconds with valid poses that are never reported as tracked, GRID2VR now uses them, and the session log says so. Headsets that report tracking behave as before.

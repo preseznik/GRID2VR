@@ -30,7 +30,6 @@
 #include "player_control.h"
 #include "background_play.h"
 #include "ffb_observer.h"
-#include "force_feedback_settings.h"
 #include "flashback_observer.h"
 #include "chase_observer.h"
 #include "chase_camera.h"
@@ -704,9 +703,6 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
             drivingcontrols::Install(gameBase,output);
             // Observe-only rumble/force-feedback counters for every launch mode.
             ffbobserver::Install(gameBase,output);
-            // Launcher Force Feedback override: only with its request, behind
-            // an exact instruction guard; no profile, save or data file write.
-            forcefeedback::Install(gameBase,output);
             // Flashback monitor sampling for every launch mode; in -benchmarkAttract
             // (direct) launches the benchmark mode word is cleared only while racing.
             // No game code is patched; Normal launches are never written.
@@ -719,7 +715,6 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
         }
         drivingcontrols::Tick();
         ffbobserver::Tick();
-        forcefeedback::Tick();
         flashbackobserver::Tick();
     }
     processexit::Service();

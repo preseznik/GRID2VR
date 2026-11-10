@@ -62,7 +62,7 @@ internal static class NewFeaturesTests
         Control Find(string name) => form.Controls.Find(name, true).Single();
         var compatibility = form.SectionHeaders.Single(h => h.Title == "VR compatibility");
         Check(compatibility.IsNew == shown && form.SectionHeaders.Where(h => h != compatibility).All(h => !h.IsNew), "only the VR compatibility heading is marked");
-        Check(((SettingRow)Find("NativeLeftEye").Parent!).IsNew == shown && ((SettingRow)Find("LastVrPerformance").Parent!).IsNew == shown && ((SettingRow)Find("ForceFeedbackOverride").Parent!).IsNew == shown && !((SettingRow)Find("PerformanceDisplay").Parent!).IsNew,
+        Check(((SettingRow)Find("NativeLeftEye").Parent!).IsNew == shown && ((SettingRow)Find("LastVrPerformance").Parent!).IsNew == shown && !((SettingRow)Find("PerformanceDisplay").Parent!).IsNew,
             "new settings rows are marked; older rows aren't");
         Check(NewFeatures.IsMarked(Find("RecommendGraphics")) == shown && NewFeatures.IsMarked(Find("DrivingControls")) == shown && !NewFeatures.IsMarked(Find("PotatoPreset")),
             "new buttons are marked; older ones aren't");

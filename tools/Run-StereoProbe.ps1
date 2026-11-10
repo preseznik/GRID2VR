@@ -26,7 +26,6 @@ param(
     [ValidateRange(25,300)][int]$ChaseStickSensitivity=100,
     [ValidateSet(0,1)][int]$ChaseInvertVertical=0,
     [string]$DrivingControls='',
-    [ValidatePattern('^$|^\d{1,3},\d{1,3},\d{1,3}$')][string]$ForceFeedback='',
     [string]$DeviceClaim='',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitS2000='Off',
     [ValidateSet('Off','HeadOnly','HideDriver')][string]$CockpitMode='Off',
@@ -241,7 +240,6 @@ $preflight.cockpitExposureLimit=(!$PlayerControlOnly -and $CockpitMode -ne 'Off'
 $preflight.desktopSeatPositionRequested=[bool]$DesktopSeatPosition
 $preflight.desktopCockpitFov=$DesktopCockpitFov
 $preflight.hideImpactGlitch=($Mode -eq 'Headset' -and !$NativeImpactEffect)
-$preflight.forceFeedback=if($ForceFeedback){$ForceFeedback}else{$null}
 $preflight.exposureAudit=[bool]$ExposureAudit
 $preflight.cockpitAssets=$cockpitAssets
 $preflight.skipIntro=[bool]$SkipIntro
@@ -385,7 +383,7 @@ try {
         SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch;HeadMotion=[bool]$HeadMotion
         NativeCockpitExposure=[bool]$NativeCockpitExposure;NativeImpactEffect=[bool]$NativeImpactEffect
         RuntimeSession=[bool]$RuntimeSession
-        SkipIntro=[bool]$SkipIntro;RemoveCinemaMatte=[bool]$RemoveCinemaMatte;DiagnosticLogging=[bool]$DiagnosticLogging;MsaaAudit=[bool]$MsaaAudit;ExposureAudit=[bool]$ExposureAudit;DrivingControls=$DrivingControls;ForceFeedback=$ForceFeedback;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000;CockpitMode=$CockpitMode
+        SkipIntro=[bool]$SkipIntro;RemoveCinemaMatte=[bool]$RemoveCinemaMatte;DiagnosticLogging=[bool]$DiagnosticLogging;MsaaAudit=[bool]$MsaaAudit;ExposureAudit=[bool]$ExposureAudit;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000;CockpitMode=$CockpitMode
         HudDistance=$HudDistance;HudFollowView=$HudFollowView;HudHiddenElements=$HudHiddenElements;PerformanceDisplay=[bool]$PerformanceDisplay;PerformanceFollowView=$PerformanceFollowView
         VrReplayCameras=$VrReplayCameras;VrGarageMenus=$VrGarageMenus;FrontendSceneAudit=[bool]$FrontendSceneAudit
         SceneWidth=$sceneWidth;SceneHeight=$sceneHeight
@@ -411,7 +409,7 @@ try {
     if($PlayerControlOnly) {
         $parameters=@{
             RuntimeSession=$true;PlayerControlProbe=$PlayerControlProbe;PlayerControlOnly=$true
-            SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls;ForceFeedback=$ForceFeedback;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000
+            SkipIntro=[bool]$SkipIntro;DiagnosticLogging=[bool]$DiagnosticLogging;DrivingControls=$DrivingControls;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000
             CockpitMode=$CockpitMode;DesktopSeatPosition=$DesktopSeatPosition;DesktopCockpitFov=$DesktopCockpitFov
             RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers
             UntilExit=[bool]$UntilExit

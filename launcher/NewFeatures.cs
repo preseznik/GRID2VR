@@ -24,7 +24,6 @@ internal static class NewFeatures
         ["Runtime"] = NextVersion,
         ["SponsorDepthBias"] = NextVersion,
         ["DesktopSeatPosition"] = NextVersion, ["Desktop cockpit FOV"] = NextVersion, ["InGameSeatAdjustment"] = NextVersion,
-        ["ForceFeedbackOverride"] = NextVersion,
     };
     private static readonly ConditionalWeakTable<Control, object> marked = new(), painting = new();
 
