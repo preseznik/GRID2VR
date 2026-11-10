@@ -378,6 +378,8 @@ if($RuntimeSession -and $ForceFeedback) {
     [IO.File]::WriteAllText((Join-Path $run 'force-feedback.request'),($ffb -join ' '),[Text.Encoding]::ASCII)
 }
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) { [IO.File]::WriteAllText((Join-Path $run 'floor-reflection.request'),'Remove the garage floor reflection in VR; it is drawn for the game camera, not the posed eye.') }
+# VR pre-race/replay shots use a 5 cm near plane instead of 0.2 m. Not online: the race-start signal there is unverified.
+if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$OnlineLaunch) { [IO.File]::WriteAllText((Join-Path $run 'intro-near-plane.request'),'Use a 5 cm near plane for VR pre-race and replay shots so the ground is not cut away.') }
 if ($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) {
     $hudRequest=$HudDistance.ToString([Globalization.CultureInfo]::InvariantCulture)+" $HudFollowView $HudHiddenElements"
     [IO.File]::WriteAllText((Join-Path $run 'vr-hud.request'),$hudRequest,[Text.Encoding]::ASCII)
@@ -535,6 +537,7 @@ $receipt.desktopCockpitFov=$DesktopCockpitFov
 $receipt.inGameSeatRequested=$inGameSeatRequested
 $receipt.hideImpactGlitch=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect)
 $receipt.hideFloorReflection=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly)
+$receipt.introNearPlane=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$OnlineLaunch)
 $receipt.forceFeedback=if($RuntimeSession -and $ForceFeedback){$ForceFeedback}else{$null}
 $receipt.exposureAudit=[bool]$ExposureAudit
 $receipt.removeCinemaMatte=[bool]$RemoveCinemaMatte

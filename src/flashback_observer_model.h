@@ -75,6 +75,16 @@ template<class Reader> Sample ReadSample(uintptr_t base,uintptr_t car,Reader rea
     return sample;
 }
 
+// Pre-race and replay shots, for the VR intro near plane. The local car is on
+// track without its FlashbackMonitor until the race starts: in a Normal race the
+// intro shots run with input disabled (about 24 s in 2026-11-08 run 162018-876),
+// then the grid/start sequence with input enabled (about 8 s; 9 s in direct Race
+// 20261108-100950-693); the monitor appears at the start. A playing replay also
+// counts. The monitor's presence online is unverified, so the renderer request
+// is not written for Online launches.
+inline bool CinematicPhase(const Sample& s) {
+    return s.found==Found::NoMonitor || (s.found!=Found::NoRoute && s.replayActive==1);
+}
 // Bounded change log: a sample is stored only when it differs from the previous
 // one, with the observer tick it first appeared at and how long it lasted.
 template<size_t N> class Timeline {

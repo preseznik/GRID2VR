@@ -45,7 +45,8 @@ inline bool MenuClipTransition(const CameraContext& entry,const CameraContext& c
         // Accept that source only for the same fixed .2/100 menu destination.
         // Chase replay navigation also supplies exactly .11 (frame 4523 of
         // the 2026-10-27 VR run); all non-clip bytes must still be unchanged.
-        (entryNear!=0x3ca3d70au && entryNear!=0x3dcccccdu && entryNear!=0x3de147aeu &&
+        // VR pre-race/replay shots enter at exactly .05 (IntroNearPlane).
+        (entryNear!=0x3ca3d70au && entryNear!=0x3d4ccccdu && entryNear!=0x3dcccccdu && entryNear!=0x3de147aeu &&
          entryNear!=0x3e4ccccdu && entryNear!=0x3e4cccceu) ||
         !MenuSourceFar(farPlane) || completeNear!=0x3e4ccccdu ||
         CameraWord(complete,0xec)!=0x42c80000u) return false;

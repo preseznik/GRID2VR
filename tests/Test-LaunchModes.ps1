@@ -350,6 +350,15 @@ try {
         if((Test-Path -LiteralPath $floorRequest) -ne $case.written) { throw "Floor reflection request routing changed: stereo=$($case.stereo) desktop=$($case.player)" }
         if(Test-Path -LiteralPath $floorRequest) { Remove-Item -LiteralPath $floorRequest }
     }
+    # The VR intro near plane is default on, never reaches Desktop, non-stereo or Online runs.
+    $introStatement=Find-TestStatement $diagnostic "'intro-near-plane.request'"
+    $introRequest=Join-Path $run 'intro-near-plane.request'
+    foreach($case in @(@{stereo=$true;player=$false;online=$false;written=$true},@{stereo=$true;player=$false;online=$true;written=$false},
+        @{stereo=$false;player=$false;online=$false;written=$false},@{stereo=$true;player=$true;online=$false;written=$false})) {
+        & { $RuntimeSession=$true;$ReplayStereo=$case.stereo;$PlayerControlOnly=$case.player;$OnlineLaunch=$case.online; . $introStatement }
+        if((Test-Path -LiteralPath $introRequest) -ne $case.written) { throw "Intro near plane routing changed: stereo=$($case.stereo) desktop=$($case.player) online=$($case.online)" }
+        if(Test-Path -LiteralPath $introRequest) { Remove-Item -LiteralPath $introRequest }
+    }
     # Launcher Force Feedback reaches every runtime mode (VR and Desktop) as whole percentages.
     $ffbStatement=Find-TestStatement $diagnostic "'force-feedback.request'"
     $ffbRequest=Join-Path $run 'force-feedback.request'

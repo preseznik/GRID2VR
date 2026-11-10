@@ -5,6 +5,7 @@
 #include "solo_race.h"
 #include <cstdio>
 #include <fstream>
+#include <atomic>
 #include <mutex>
 
 namespace grid2vr::flashbackobserver {
@@ -25,6 +26,7 @@ ULONGLONG lastWrite{};
 uint64_t writtenEntries{};
 Timeline<256> timeline;
 BenchmarkFlagPolicy flag;
+std::atomic<bool> cinematic{};
 
 bool Read(uintptr_t at,void* output,size_t bytes) {return ReadMemory(reinterpret_cast<void*>(at),output,bytes);}
 // The only game write: the benchmark mode word in .data, never game code.
@@ -83,6 +85,7 @@ void Tick() {
     uint8_t enabled{};
     if(route.valid && route.controller) sample.inputEnabled=Read(route.controller+0x40,&enabled,1)?enabled==1:-1;
     flag.Apply(flag.Next(sample,raceReady),ExchangeFlag);
+    cinematic.store(CinematicPhase(sample),std::memory_order_relaxed);
     if(monitor && monitor!=lastMonitor) {++monitorChanges;lastUsed=unread;}
     if(monitor) lastMonitor=monitor;
     if(sample.found==Found::Monitor && lastUsed!=unread && sample.used!=unread && sample.used>lastUsed) usedIncrements+=sample.used-lastUsed;
@@ -95,8 +98,10 @@ void Tick() {
     if(now-lastWrite<(changed?changeWriteMs:writeEveryMs))return;
     lastWrite=now;dirty=false;writtenEntries=timeline.Size()+timeline.Overflow();WriteStatus();
 }
+bool Cinematic() {return cinematic.load(std::memory_order_relaxed);}
 void Stop() {
     std::lock_guard lock(mutex);
+    cinematic=false;
     if(!installed || stopped)return;
     if(flag.Cleared()) flag.Apply(FlagAction::Restore,ExchangeFlag);
     stopped=true;reason="stopped";WriteStatus();

@@ -4,6 +4,8 @@
 #include "scene_call.h"
 #include "replay_state.h"
 #include "replay_camera.h"
+#include "intro_near_plane.h"
+#include "flashback_observer.h"
 #include "cockpit_exposure.h"
 #include "opponent_lod_runtime.h"
 #include "opponent_lod_world_policy.h"
@@ -390,6 +392,12 @@ uint64_t menuSceneFrame{};
 bool menuScene{};
 bool menuPresentation{};
 bool replay3d{true},replaySceneBlocked{},garage3d{true},garageSceneBlocked{},frontendSceneAudit{};
+// VR pre-race/replay shots: 5 cm near plane instead of 0.2 m (intro_near_plane.h).
+bool introNearEnabled{};
+IntroNearPlane introNear;
+uint64_t introNearApplies{},introNearRestores{},introNearFrames{};
+const char* introNearState="off";
+void VerifyIntroNear(uintptr_t context);
 GarageMenuSnapshot garageMenu;
 std::atomic<uint64_t> frontendPrepareCalls{},frontendVisibilityCalls{},frontendWorldVisibilityCalls{};
 std::mutex frontendAuditMutex;
@@ -571,6 +579,7 @@ bool SceneSnapshot(const PendingScene& scene,const char* phase) {
 }
 void RememberScene(unsigned slot,void* self,uintptr_t context,uintptr_t view,uintptr_t packet,const void* returnSlot) {
     if (inReplay || !sceneBoundaryEnabled || reinterpret_cast<uintptr_t>(self)!=mainObject) return;
+    if (slot==5 && GetCurrentThreadId()==renderThread) VerifyIntroNear(context);
     const bool record=runtimeSession?replaySequence.Available():frame.load()<captureEnd.load();
     const bool rememberEye=eyeOffsetEnabled && (replaySequence.Available() ||
         (runtimeSession && replaySequence.Status()==ReplaySequence::State::Suspended));
@@ -1542,6 +1551,40 @@ bool __fastcall Predicate(void* renderer,void*) {
     }
     return result; // Preserve the engine's decision; observation cannot enable stereo.
 }
+void IntroNearReceipt() {
+    std::ofstream file(output/L"intro-near-plane.json",std::ios::trunc);
+    file << "{\"schema\":1,\"enabled\":" << (introNearEnabled?"true":"false") << ",\"state\":\"" << introNearState
+        << "\",\"nearMetres\":0.05,\"gameNearMetres\":0.2,\"applies\":" << introNearApplies << ",\"restores\":" << introNearRestores
+        << ",\"frames\":" << introNearFrames << "}\n";
+}
+// Native Prepare, before the camera is built from main+0x40: switch to the
+// intro near plane while stereo renders pre-race/replay shots, and give the
+// game's value back on the first frame they end (or VR stops rendering).
+void ApplyIntroNear() {
+    if (!introNearEnabled) return;
+    const auto nearBits=Read<uint32_t>(mainObject+0x40),farBits=Read<uint32_t>(mainObject+0x44);
+    const auto action=introNear.Next(true,SessionRendering() && flashbackobserver::Cinematic(),nearBits,farBits);
+    if (action!=IntroNearPlane::Action::None) {
+        const bool apply=action==IntroNearPlane::Action::Apply;
+        const uint32_t value=apply?IntroNearPlane::introNear:introNear.Original();
+        memcpy(reinterpret_cast<void*>(mainObject+0x40),&value,4);
+        if (apply) ++introNearApplies; else ++introNearRestores;
+        introNearState=apply?"applied":"restored";
+        Log("intro_near %s frame=%llu near_bits=%08x far_bits=%08x",introNearState,frame.load(),value,farBits);
+        IntroNearReceipt();
+    }
+    if (introNear.Active()) ++introNearFrames;
+}
+// Native scene entry: the camera must have been built from the 5 cm input.
+// Otherwise the game wrote main+0x40 after Prepare: stop for this session and
+// leave the game's value, so both eyes keep using one near plane.
+void VerifyIntroNear(uintptr_t context) {
+    if (!introNearEnabled || !introNear.Active() ||
+        introNear.Verified(Read<uint32_t>(mainObject+0x40),Read<uint32_t>(context+0xe8))) return;
+    introNearEnabled=false;introNear.Reset();introNearState="not_taken_disabled";
+    Log("intro_near disabled=1 reason=camera_not_built_from_input frame=%llu",frame.load());
+    IntroNearReceipt();
+}
 void __fastcall Prepare(void* self,void*,uintptr_t arg) {
     if(frontendSceneAudit && !inReplay && reinterpret_cast<uintptr_t>(self)==mainObject)++frontendPrepareCalls;
     StageScope scope(3,self,arg,0,0,_ReturnAddress());
@@ -1552,7 +1595,7 @@ void __fastcall Prepare(void* self,void*,uintptr_t arg) {
         GetCurrentThreadId()==renderThread);
     if (visibility) SnapshotVisibility(currentStage.id,"prepare-before");
     const bool nativeMain=!inReplay && GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject;
-    if (nativeMain) {frametiming::Mark(frametiming::CenterBegin);BeginNativeEye();}
+    if (nativeMain) {frametiming::Mark(frametiming::CenterBegin);ApplyIntroNear();BeginNativeEye();}
     if (GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject)
         signvisibility::Snapshot(frame.load(),currentStage.id,replayPass,"prepare-before",mainObject,0);
     realPrepare(self,arg);
@@ -1685,6 +1728,8 @@ InstallResult Install(uintptr_t base,const std::filesystem::path& folder,Boundar
     runtimeSession=std::filesystem::exists(folder/L"runtime-session.request");resetHistory=reset;cancelHistory=cancel;
     replay3d=!std::filesystem::exists(folder/L"flat-replays.request");
     garage3d=!std::filesystem::exists(folder/L"flat-garage.request");
+    introNearEnabled=runtimeSession && std::filesystem::exists(folder/L"intro-near-plane.request");
+    introNearState=introNearEnabled?"waiting":"off";
     frontendSceneAudit=std::filesystem::exists(folder/L"frontend-scene-audit.request");
     diagnosticLogging=!runtimeSession || std::filesystem::exists(folder/L"diagnostic-logging.request");
     nativeVisibilityControl=std::filesystem::exists(folder/L"native-visibility-control.request");

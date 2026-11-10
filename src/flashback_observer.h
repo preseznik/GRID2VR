@@ -13,4 +13,6 @@ void Install(uintptr_t base,const std::filesystem::path& output);
 void Tick();
 // Restores the launch benchmark mode if it is cleared.
 void Stop();
+// The latest Tick saw pre-race or replay shots (CinematicPhase); false until sampled.
+bool Cinematic();
 }
