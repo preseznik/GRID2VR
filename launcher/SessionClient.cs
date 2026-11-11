@@ -28,6 +28,9 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public bool HideImpactGlitch { get; init; } = true;
     // Head-locked lens dust (ProJict 41e89b79): the game's look by default; opt-in to hide in VR.
     public bool HideLensDust { get; init; }
+    // Time of day for selected Practice/Race sessions (ProJict ce6f7296): day, night or sunset,
+    // applied only where the route offers it (TrackNames.Conditions), otherwise day.
+    public string Conditions { get; init; } = TrackNames.Day;
     public string CockpitTextures { get; init; } = "Off";
     public DrivingBinding? RecenterDevice { get; init; }
     public bool KeepHorizonLevel { get; init; } = true;
@@ -90,6 +93,7 @@ internal sealed class SessionClient(string root)
             value.Runtime is not ("VDXR" or "SteamVR" or "Default")) throw new ArgumentException("Invalid session selection.");
         if (value.LaunchMode is not ("Practice" or "Race" or "Normal" or "Online")) throw new ArgumentException("Choose Normal, Online, Practice or Race.");
         if (!Regex.IsMatch(value.CustomTrack, @"\A(circuits|cities|p2p)/g2vr_[a-z0-9_]+/route_[0-9]+\z")) throw new ArgumentException("Invalid custom track selection.");
+        if (value.Conditions is not (TrackNames.Day or TrackNames.Night or TrackNames.Sunset)) throw new ArgumentException("Choose Day, Night or Sunset.");
         if (value.Opponents is < 1 or > 7) throw new ArgumentException("Choose between 1 and 7 opponents.");
         if (value.OpponentCars is not ("same" or "mixed" or "class")) throw new ArgumentException("Choose Same car, Mixed or Same class.");
         if (value.CockpitDriver is not ("HeadOnly" or "HideDriver")) throw new ArgumentException("Choose a cockpit driver visibility option.");
@@ -279,6 +283,9 @@ internal sealed class SessionClient(string root)
         if (vr && !value.CockpitExposureLimit) command.ArgumentList.Add("-NativeCockpitExposure");
         if (vr && !value.HideImpactGlitch) command.ArgumentList.Add("-NativeImpactEffect");
         if (vr && value.HideLensDust) command.ArgumentList.Add("-HideLensDust");
+        // Normal/Online use the game's own menus; selected sessions get the route's chosen lighting.
+        var lighting = value.LaunchMode is "Practice" or "Race" ? TrackNames.Lighting(value.SessionTrack, value.Conditions) : "day";
+        if (lighting != "day") { command.ArgumentList.Add("-Lighting"); command.ArgumentList.Add(lighting); }
         if (vr && value.RecenterDevice is not null) { command.ArgumentList.Add("-RecenterDeviceBase64"); command.ArgumentList.Add(DeviceRecenter.Encode(value.RecenterDevice)); }
         if (value.ForceFeedbackOverride)
         {
@@ -383,13 +390,15 @@ internal sealed class SessionClient(string root)
         var name = id[(id.LastIndexOf('/') + 1)..];
         // Converted tracks use g2vr_ locations (tools/session_config.py CUSTOM_PREFIX).
         var custom = name.StartsWith("g2vr_", StringComparison.Ordinal) && name.Length > 5;
+        if (!custom && TrackNames.Location(name) is { } known) return known;
         var label = System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase((custom ? name[5..] : name).Replace('_', ' '));
         return custom ? label + " (custom)" : label;
     }
     internal static string TrackLabel(string id)
     {
         var separator = id.LastIndexOf('/');
-        return $"{LocationLabel(id[..separator])} — {LocationLabel(id[(separator + 1)..])}";
+        var location = id[..separator]; var route = id[(separator + 1)..];
+        return $"{LocationLabel(location)} — {TrackNames.Route(location, route) ?? LocationLabel(route)}";
     }
 
     internal ProcessStartInfo HeadsetQueryCommand(string runtime, IReadOnlyList<VrLayerBypass> layers)

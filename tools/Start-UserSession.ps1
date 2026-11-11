@@ -5,6 +5,8 @@ param(
     [string]$Car='pag',
     [string]$Track='p2p/okutama/route_1',
     [ValidateRange(1,20)][int]$Laps=1,
+    # Time of day for selected Practice/Race sessions; session_config.py checks the location ships it.
+    [ValidateSet('day','day_alt','night','night_alt')][string]$Lighting='day',
     [ValidateRange(1,7)][int]$Opponents=7,
     [ValidateSet('same','mixed','class')][string]$OpponentCars='same',
     [ValidateRange(50,300)][int]$RenderScale=100,
@@ -102,7 +104,7 @@ try {
     $worker=Get-Process -Id $PID
     $log=Join-Path $runLogs 'user-session.log'
     $receipt=@{schema=1;workerId=$PID;workerStartedUtc=$worker.StartTime.ToUniversalTime().ToString('o');
-        mode=$Mode;launchMode=$LaunchMode;runtime=$XrRuntime;car=$Car;track=$Track;laps=$sessionLaps;opponents=$(if($LaunchMode -eq 'Race'){$Opponents}else{0});headsetScale=$HeadsetScale;previewVrFixes=[bool]$PreviewVrFixes;skipIntro=[bool]$SkipIntro;diagnosticLogging=[bool]$DiagnosticLogging;recenterKey=$RecenterKey;recenterModifiers=$RecenterModifiers;state='starting';message="Preparing $LaunchMode session";log=$log;logDirectory=$runLogs}
+        mode=$Mode;launchMode=$LaunchMode;runtime=$XrRuntime;car=$Car;track=$Track;laps=$sessionLaps;lighting=$(if($LaunchMode -in @('Practice','Race')){$Lighting}else{$null});opponents=$(if($LaunchMode -eq 'Race'){$Opponents}else{0});headsetScale=$HeadsetScale;previewVrFixes=[bool]$PreviewVrFixes;skipIntro=[bool]$SkipIntro;diagnosticLogging=[bool]$DiagnosticLogging;recenterKey=$RecenterKey;recenterModifiers=$RecenterModifiers;state='starting';message="Preparing $LaunchMode session";log=$log;logDirectory=$runLogs}
     if($nativeMenus) { $receipt.car=$null; $receipt.track=$null; $receipt.laps=$null }
     $receipt.opponentCars=if($LaunchMode -eq 'Race'){$OpponentCars.ToLowerInvariant()}else{$null}
     $receipt.desktopBorderlessRequested=($Mode -eq 'Desktop' -and [bool]$DesktopBorderless)
@@ -180,7 +182,7 @@ try {
         $bank=if($LaunchMode -eq 'Practice'){'practice-menus-20261106'}else{'practice-flow-20261014'}
         $bundle=Join-Path (Get-Grid2DataRoot $root) $bank
         $selectionArguments=@('--game-root',(Get-Grid2GameRoot $root),'prepare','--output',$selection,'--car',$Car,'--track',$Track,'--laps',$sessionLaps,
-            '--mode',$LaunchMode.ToLowerInvariant(),'--control','human','--practice-bundle',$bundle)
+            '--mode',$LaunchMode.ToLowerInvariant(),'--control','human','--practice-bundle',$bundle,'--lighting',$Lighting)
         if($LaunchMode -eq 'Race') { $selectionArguments+=@('--opponents',$Opponents,'--opponent-cars',$OpponentCars.ToLowerInvariant()) }
         $prepared=& $python (Join-Path $PSScriptRoot 'session_config.py') @selectionArguments
         if($LASTEXITCODE) { throw "$LaunchMode selection could not be prepared." }

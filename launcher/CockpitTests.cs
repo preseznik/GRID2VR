@@ -49,7 +49,7 @@ internal static class CockpitTests
         Check(content.Cars.Single(c => c.Id == "240").CockpitAvailable);
         var track = content.Tracks.Single(t => t.Dlc);
         Check(track.Id == "europe/spa_francorchamps/route_0" && track.Label == "Spa-Francorchamps — Grand Prix (DLC)");
-        Check(content.Tracks.Single(t => !t.Dlc).Label == "Brands Hatch — Route 2");
+        Check(content.Tracks.Single(t => !t.Dlc).Label == "Brands Hatch — Indy Circuit");
         Check(LauncherPresentation.FilterCars(content.Cars, "IndyCar").Single() == dlc);
         foreach (var route in new[] { "australia/bathurst/route_0", "australia/bathurst/route_1", "europe/spa_francorchamps/route_3" })
         {

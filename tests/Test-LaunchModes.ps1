@@ -12,9 +12,9 @@ function Find-TestStatement($Ast,[string]$Text) {
     return [scriptblock]::Create($statement.Extent.Text)
 }
 $start=Read-TestAst 'Start-UserSession.ps1'
-$bind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n@{mode=`$LaunchMode;runtime=`$XrRuntime;opponents=`$Opponents;opponentCars=`$OpponentCars;laps=`$Laps;replays=`$VrReplayCameras;garage=`$VrGarageMenus}")
+$bind=[scriptblock]::Create($start.ParamBlock.Extent.Text+"`n@{mode=`$LaunchMode;runtime=`$XrRuntime;opponents=`$Opponents;opponentCars=`$OpponentCars;laps=`$Laps;lighting=`$Lighting;replays=`$VrReplayCameras;garage=`$VrGarageMenus}")
 $defaults=& $bind
-if($defaults.mode -ne 'Practice' -or $defaults.opponents -ne 7 -or $defaults.opponentCars -cne 'same' -or $defaults.laps -ne 1 -or $defaults.replays -ne 1 -or $defaults.garage -ne 1) { throw 'Launch defaults changed.' }
+if($defaults.mode -ne 'Practice' -or $defaults.opponents -ne 7 -or $defaults.opponentCars -cne 'same' -or $defaults.laps -ne 1 -or $defaults.lighting -cne 'day' -or $defaults.replays -ne 1 -or $defaults.garage -ne 1) { throw 'Launch defaults changed.' }
 foreach($mode in @('Normal','Online','Practice','Race')) {
     foreach($choice in @('same','mixed','class')) {
         $bound=& $bind -LaunchMode $mode -Opponents 1 -OpponentCars $choice -Laps 20 -VrReplayCameras 0 -VrGarageMenus 0
@@ -87,7 +87,7 @@ foreach($case in @(@{fov=100;crop='All'},@{fov=80;crop='All'},@{fov=55;crop='Ver
         $ForceSceneResolution=$true;$Mode='Headset';$sceneWidth=$expected.sceneWidth;$sceneHeight=$expected.sceneHeight
         . ([scriptblock]::Create($planStatement.Extent.Text)); . ([scriptblock]::Create($sceneCheck.Extent.Text)) }
 }
-foreach($invalid in @(@{LaunchMode='Replay'},@{Opponents=0},@{Opponents=8},@{OpponentCars='unknown'},@{Laps=21},@{VrReplayCameras=2},@{VrGarageMenus=2})) {
+foreach($invalid in @(@{LaunchMode='Replay'},@{Opponents=0},@{Opponents=8},@{OpponentCars='unknown'},@{Laps=21},@{Lighting='dusk'},@{VrReplayCameras=2},@{VrGarageMenus=2})) {
     $rejected=$false
     try { $null=& $bind @invalid } catch [Management.Automation.ParameterBindingException] { $rejected=$true }
     if(!$rejected) { throw 'Invalid launch option accepted.' }
@@ -244,7 +244,7 @@ try {
         $global:LASTEXITCODE=0
         return '{"carContent":{"dlc":false,"cockpitAvailable":true}}'
     }
-    $python='Invoke-ModeTestPython'; $Car='z06'; $Track='cities/chicago/route_0'; $sessionLaps=20; $Opponents=7
+    $python='Invoke-ModeTestPython'; $Car='z06'; $Track='cities/chicago/route_0'; $sessionLaps=20; $Opponents=7; $Lighting='night'
     foreach($OpponentCars in @('same','mixed','class')) {
     foreach($LaunchMode in @('Normal','Online','Practice','Race')) {
         $selection=Join-Path $fixture ($LaunchMode+'-'+$OpponentCars)
@@ -271,6 +271,8 @@ try {
             if($LaunchMode -eq 'Race' -and ($carsIndex -lt 0 -or $captured[$carsIndex+1] -cne $OpponentCars)) { throw 'Race opponent car choice was lost.' }
             if($LaunchMode -eq 'Practice' -and $carsIndex -ge 0) { throw 'Practice acquired a race opponent choice.' }
             if($LaunchMode -eq 'Practice' -and $opponentIndex -ge 0) { throw 'Practice gained AI opponents.' }
+            $lightingIndex=[Array]::IndexOf($captured,'--lighting')
+            if($lightingIndex -lt 0 -or $captured[$lightingIndex+1] -cne 'night') { throw 'Selected session lost its lighting.' }
         }
     }
     }

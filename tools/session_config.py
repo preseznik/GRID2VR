@@ -222,6 +222,12 @@ def configuration(installed, car, track, livery='user', mode='benchmark', lighti
     # Validate even caller-provided catalogs; do not allow path/argument injection.
     if not all(TOKEN.fullmatch(v) for v in (car, livery, route['country'], route['name'], route['route'])):
         raise ValueError('Invalid content identifier')
+    if lighting != 'day':
+        # Night/sunset only where the loose stock location ships that lighting set
+        # (archived DLC and converted tracks are day only).
+        location = Path(installed.get('gameRoot') or '')/'tracks/locations'/route['country']/route['name']
+        if route.get('dlc') or route.get('custom') or not installed.get('gameRoot') or not regular(location/f'lighting_{lighting}.xml'):
+            raise ValueError(f'{track} has no {lighting} lighting')
     config = ET.Element('config', cycle_camera=str(cycle_camera).lower(), infinite_loop='false', skipreplays='true',
                         outputfilename='GRID2VR_SelectedSession')
     entry = ET.SubElement(config, 'track', country=route['country'], name=route['name'], route=route['route'],

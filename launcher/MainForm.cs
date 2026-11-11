@@ -11,7 +11,7 @@ internal sealed partial class MainForm : LauncherForm
     private readonly UpdatesPanel updates;
     private readonly Button updateNotice = new() { Text = "New version available", Name = "UpdateAvailable", AutoSize = true, Visible = false, Anchor = AnchorStyles.Right };
     private AppRelease? availableUpdate;
-    private readonly ComboBox car = Choice("PracticeCar"), track = Choice("PracticeTrack"), eventChoice = Choice("PracticeEvent"), runtime = Choice("Runtime");
+    private readonly ComboBox car = Choice("PracticeCar"), track = Choice("PracticeTrack"), conditions = Choice("Conditions"), eventChoice = Choice("PracticeEvent"), runtime = Choice("Runtime");
     private readonly ComboBox launchMode = Choice("LaunchMode"), opponentCars = Choice("OpponentCars");
     private readonly Label opponentHint = TextLabel("");
     private readonly TextBox carSearch = new() { Name = "CarSearch", AccessibleName = "Find car", PlaceholderText = "Name, manufacturer or code", Dock = DockStyle.Fill };
@@ -123,7 +123,7 @@ internal sealed partial class MainForm : LauncherForm
         launchMode.Items.AddRange(new ContentItem[] { new("Normal", "Normal"), new("Online", "Online"), new("Practice", "Practice"), new("Race", "Race") });
         launchMode.SelectedIndex = 2;
         Field(selection, "Launch mode", launchMode);
-        Field(selection, "Event", eventChoice); Field(selection, "Track", track);
+        Field(selection, "Event", eventChoice); Field(selection, "Track", track); Field(selection, "Conditions", conditions);
         Field(selection, "Find car", carSearch); Field(selection, "Car", car); selection.Controls.Add(carCount);
         selection = selectionColumns.Second;
         Section(selection, "Race options");
@@ -331,7 +331,7 @@ internal sealed partial class MainForm : LauncherForm
         };
         car.SelectedIndexChanged += (_, _) => UpdateRequestedSession();
         carSearch.TextChanged += (_, _) => FilterCars();
-        track.SelectedIndexChanged += (_, _) => { UpdateRequestedSession(); EnableActions(); };
+        track.SelectedIndexChanged += (_, _) => { RefreshConditions(); UpdateRequestedSession(); EnableActions(); };
         runtime.SelectedIndexChanged += async (_, _) => {
             UpdateRequestedSession(); UpdateResolutionLabels();
             if (loaded) await RefreshHeadsetResolution();
@@ -407,6 +407,17 @@ internal sealed partial class MainForm : LauncherForm
         EnableActions();
     }
 
+    // Day, plus Night or Sunset where the selected route offers it (ProJict ce6f7296).
+    private void RefreshConditions(string? keep = null)
+    {
+        keep ??= (conditions.SelectedItem as ContentItem)?.Id;
+        var offered = (track.SelectedItem as ContentItem) is { } route ? TrackNames.Conditions(route.Id) : [TrackNames.Day];
+        var items = offered.Select(c => new ContentItem(c, TrackNames.ConditionLabel(c))).ToArray();
+        conditions.Items.Clear(); conditions.Items.AddRange(items);
+        conditions.SelectedItem = items.FirstOrDefault(i => i.Id == keep) ?? items[0];
+        conditions.Enabled = items.Length > 1 && track.Enabled;
+    }
+
     // Converted tracks live in the CUSTOM tracks panel, not in the stock Event list.
     internal static bool IsCustomTrack(string id) => id.Split('/') is [_, var location, _] && location.StartsWith("g2vr_", StringComparison.Ordinal);
 
@@ -416,7 +427,7 @@ internal sealed partial class MainForm : LauncherForm
     {
         var normal = ChoiceId(launchMode) is "Normal" or "Online";
         var stockShown = !customTracks.CustomEnabled && (viewPicker.Advanced || !normal);
-        foreach (var editor in new Control[] { eventChoice, track }) if (editor.Parent is { } row) VerticalStack.SetShown(row, stockShown);
+        foreach (var editor in new Control[] { eventChoice, track, conditions }) if (editor.Parent is { } row) VerticalStack.SetShown(row, stockShown);
     }
 
     // Passive previews (--preview-custom-tracks): real custom-track status and catalog
@@ -476,6 +487,7 @@ internal sealed partial class MainForm : LauncherForm
         car.SelectedItem = car.Items.Cast<ContentItem>().FirstOrDefault(c => c.Id == choices.Car) ?? car.Items.Cast<ContentItem>().FirstOrDefault();
         eventChoice.SelectedItem = eventChoice.Items.Cast<ContentItem>().FirstOrDefault(e => choices.Track.StartsWith(e.Id + "/", StringComparison.Ordinal)) ?? eventChoice.Items.Cast<ContentItem>().FirstOrDefault();
         track.SelectedItem = track.Items.Cast<ContentItem>().FirstOrDefault(t => t.Id == choices.Track) ?? track.Items.Cast<ContentItem>().FirstOrDefault();
+        RefreshConditions(choices.Conditions);
         runtime.SelectedItem = choices.Runtime;
         laps.Value = choices.Laps;
         opponents.Value = choices.Opponents; SelectChoice(launchMode, choices.LaunchMode);
@@ -537,7 +549,7 @@ internal sealed partial class MainForm : LauncherForm
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked, NativeLeftEye = nativeLeftEye.Checked,
         SponsorDepthBias = sponsorDepthBias.Checked,
-        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, HideLensDust = lensDust.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked,
+        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, HideLensDust = lensDust.Checked, Conditions = (conditions.SelectedItem as ContentItem)?.Id ?? TrackNames.Day, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked,
         CustomTracks = customTracks.CustomEnabled, CustomTrack = customTracks.Selected.Id
     }));
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
@@ -765,6 +777,7 @@ internal sealed partial class MainForm : LauncherForm
         UpdateSimpleContext(normal, ChoiceId(launchMode) == "Race");
         ApplyCustomTrackVisibility();
         carSearch.Enabled = car.Enabled = track.Enabled = eventChoice.Enabled = !normal && !busy && !active && !pending;
+        conditions.Enabled = track.Enabled && conditions.Items.Count > 1;
         var pointToPoint = track.SelectedItem is ContentItem route && SessionClient.IsPointToPoint(route.Id);
         laps.Enabled = loaded && idle && !normal && !pointToPoint && !capturingRecenter;
         opponentCars.Enabled = opponents.Enabled = loaded && idle && ChoiceId(launchMode) == "Race" && !capturingRecenter;

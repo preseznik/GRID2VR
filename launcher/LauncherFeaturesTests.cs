@@ -36,6 +36,27 @@ internal static class LauncherFeaturesTests
         client.Save(impactChoices); Check(!client.Load().HideImpactGlitch);
         Check(client.LaunchCommand(impactChoices, true).ArgumentList.Contains("-NativeImpactEffect"));
         Check(!client.LaunchCommand(impactChoices, false).ArgumentList.Contains("-NativeImpactEffect"));
+        // Conditions (ProJict ce6f7296): day by default; only offered conditions reach the session.
+        Check(new Choices().Conditions == "day" && JsonSerializer.Deserialize<Choices>("{}")!.Conditions == "day");
+        Check(TrackNames.Conditions("cities/dubai/route_0").SequenceEqual(["day", "night"]) && TrackNames.Conditions("cities/dubai/route_3").SequenceEqual(["day", "sunset"]) &&
+              TrackNames.Conditions("cities/dubai/route_6").SequenceEqual(["day"]) && TrackNames.Conditions("circuits/brands_hatch/route_2").SequenceEqual(["day"]) &&
+              TrackNames.Conditions("circuits/yas_marina/route_0").SequenceEqual(["day", "night"]) && TrackNames.Conditions("circuits/g2vr_nordschleife/route_0").SequenceEqual(["day"]));
+        string? Lighting(Choices choices, bool vr) { var list = client.LaunchCommand(choices, vr).ArgumentList; var at = list.IndexOf("-Lighting"); return at < 0 ? null : list[at + 1]; }
+        var practice = settings with { LaunchMode = "Practice", CustomTracks = false };
+        Check(Lighting(practice with { Track = "cities/dubai/route_0", Conditions = "night" }, true) == "night");
+        Check(Lighting(practice with { Track = "cities/dubai/route_0", Conditions = "night" }, false) == "night");
+        Check(Lighting(practice with { Track = "cities/dubai/route_3", Conditions = "sunset" }, true) == "day_alt");
+        Check(Lighting(practice with { Track = "p2p/okutama/route_3", Conditions = "sunset" }, true) == "night_alt");
+        Check(Lighting(practice with { Track = "cities/dubai/route_3", Conditions = "night" }, true) is null);
+        Check(Lighting(practice with { Track = "circuits/brands_hatch/route_2", Conditions = "night" }, true) is null);
+        Check(Lighting(practice with { Track = "cities/dubai/route_0", Conditions = "day" }, true) is null);
+        Check(Lighting(practice with { LaunchMode = "Race", Track = "cities/dubai/route_0", Conditions = "night" }, true) == "night");
+        Check(Lighting(practice with { LaunchMode = "Normal", Track = "cities/dubai/route_0", Conditions = "night" }, true) is null);
+        Check(Lighting(practice with { CustomTracks = true, Track = "cities/dubai/route_0", Conditions = "night" }, true) is null);
+        var night = practice with { Track = "cities/dubai/route_0", Conditions = "night" };
+        client.Save(night); Check(client.Load().Conditions == "night"); client.Save(settings);
+        var rejected = false; try { SessionClient.Validate(practice with { Conditions = "dusk" }); } catch (ArgumentException) { rejected = true; }
+        Check(rejected);
         Check(!new Choices().HideLensDust);
         Check(!JsonSerializer.Deserialize<Choices>("{}")!.HideLensDust);
         Check(!client.LaunchCommand(settings with { HideLensDust = false }, true).ArgumentList.Contains("-HideLensDust"));

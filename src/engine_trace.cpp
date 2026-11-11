@@ -253,6 +253,7 @@ bool traceVisibility{};
 bool expandVisibility{};
 std::atomic<bool> visibilityHealthy{true};
 std::atomic<uint64_t> visibilityReadyFrame{};
+unsigned readinessRefusals{};bool readinessRefusalSaved{};
 std::atomic<uint64_t> visibilityConsumerFrame{};
 std::atomic<uint64_t> opponentVisibilityFrame{};
 uint64_t visibilityGapSuspensions{};
@@ -677,9 +678,19 @@ bool PrepareVisibility(bool valid,uintptr_t view,uintptr_t caller) {
             // race visibility. Arm only after a valid native volume was used
             // in the immediately preceding frame; do not modify it here.
             VisibilityVolume volume{};SceneView source{};VisibilityBox readyBox;
-            if (valid && ReadMemory(reinterpret_cast<void*>(mainObject+0x330),volume.data(),volume.size()) &&
-                ReadMemory(reinterpret_cast<void*>(view),source.data(),source.size()) && MakeVisibilityBox(volume,source,readyBox))
+            const bool volumeRead=valid && ReadMemory(reinterpret_cast<void*>(mainObject+0x330),volume.data(),volume.size());
+            const bool viewRead=volumeRead && ReadMemory(reinterpret_cast<void*>(view),source.data(),source.size());
+            if (viewRead && MakeVisibilityBox(volume,source,readyBox))
                 visibilityReadyFrame=frame.load();
+            else if (runtimeSession && replayEnabled && !readinessRefusalSaved && ++readinessRefusals>=300) {
+                // One bounded record when readiness keeps refusing a native volume
+                // (ProJict ce6f7296: night lighting never armed stereo).
+                readinessRefusalSaved=true;
+                std::ofstream(output/L"visibility-readiness-volume.bin",std::ios::binary).write(reinterpret_cast<const char*>(volume.data()),volume.size());
+                std::ofstream(output/L"visibility-readiness-view.bin",std::ios::binary).write(reinterpret_cast<const char*>(source.data()),source.size());
+                Log("visibility readiness refused frame=%llu refusals=%u valid=%u volume_read=%u view_read=%u",
+                    frame.load(),readinessRefusals,valid,volumeRead,viewRead);
+            }
             return false;
         }
         const auto id=++serial;
@@ -901,8 +912,10 @@ bool InstallVisibility() {
     visibilityShadow=AttachShadowVtable(reinterpret_cast<void*>(visibilityConsumer),reinterpret_cast<void**>(gameBase+0xcd9bb8),30,{&patch,1});
     Log("visibility hook installed=%u mode=object_shadow consumer=%p table_rva=0xcd9bb8 expansion=%u",
         visibilityShadow!=nullptr,reinterpret_cast<void*>(visibilityConsumer),expandVisibility);
-    return visibilityShadow!=nullptr &&
-        (!(runtimeSession && std::filesystem::exists(output/L"normal-launch.request")) || InstallVisibilityDispatch());
+    // Normal custom events and night/sunset lighting sets (main+9d) skip the consumer
+    // and dispatch visibility as jobs (ProJict ce6f7296). Every runtime session shadows
+    // that guarded event table too; day worlds keep using the consumer.
+    return visibilityShadow!=nullptr && (!runtimeSession || InstallVisibilityDispatch());
 }
 bool ReplayInstructionsMatch() {
     constexpr uint8_t sceneReturn[]{0x5f,0x5e,0x5b,0x5d,0xc2,0x18,0};
@@ -1956,6 +1969,14 @@ void Frame(uint64_t nextFrame) {
                 Read<void**>(mainObject+visibilityEventOffset)==visibilityEventShadow)) &&
             (!visibilityShadow || (ReadMemory(reinterpret_cast<void*>(gameBase+0xcd9bb8),visibility.data(),sizeof(visibility)) && visibility==originalVisibilityTable));
         Log("engine image tables unchanged=%u",unchanged);
+        if (runtimeSession && !visibilityReadyFrame.load() && mainObject) {
+            // Readiness audit (ProJict ce6f7296): is the hooked consumer still the live one?
+            const auto live=Read<uintptr_t>(mainObject+0x30);
+            Log("visibility readiness audit live_consumer=%p hooked=%p shadowed=%u main_shadowed=%u world=%u enabled=%u jobs=%u camera_frame=%llu",
+                reinterpret_cast<void*>(live),reinterpret_cast<void*>(visibilityConsumer),
+                live && Read<void**>(live)==visibilityShadow,Read<void**>(mainObject)==mainShadow,
+                unsigned(Read<uint8_t>(mainObject+0x138)),unsigned(Read<uint8_t>(mainObject+0x51)),unsigned(Read<uint8_t>(mainObject+0x9d)),currentEyeCamera.frame);
+        }
         if (runtimeSession && !unchanged) FailSession();
     }
     if (runtimeSession) {

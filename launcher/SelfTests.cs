@@ -19,7 +19,12 @@ internal static class SelfTests
             Check(SessionClient.CarLabel("z28") == "Chevrolet Camaro Z28");
             Check(SessionClient.CarLabel("unverified_car") == "unverified_car");
             Check(SessionClient.LocationLabel("circuits/brands_hatch") == "Brands Hatch");
-            Check(SessionClient.TrackLabel("circuits/brands_hatch/route_2") == "Brands Hatch — Route 2");
+            Check(SessionClient.TrackLabel("circuits/brands_hatch/route_2") == "Brands Hatch — Indy Circuit");
+            Check(SessionClient.TrackLabel("p2p/okutama/route_1") == "Okutama — Tenshi Way");
+            Check(SessionClient.TrackLabel("p2p/cote_d_azur/route_5") == "Cote d'Azur — Villefranche-sur-Mer");
+            Check(SessionClient.TrackLabel("australia/bathurst/route_1") == "Mount Panorama — Motor Racing Circuit Reversed");
+            Check(SessionClient.TrackLabel("circuits/indianapolis/route_1") == "Indianapolis — Route 1"); // no such layout: fallback
+            Check(SessionClient.TrackLabel("p2p/okutama/route_9") == "Okutama — Route 9");
             Check(client.Load() == defaults);
             Check(!defaults.SkipIntro && !defaults.DiagnosticLogging);
             Check(!defaults.PerformanceDisplay && defaults.PerformanceFollowView);

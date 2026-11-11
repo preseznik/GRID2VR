@@ -258,6 +258,25 @@ class SessionConfigurationTests(unittest.TestCase):
                 self.prepare(destination, **options)
             self.assertFalse(destination.exists())
 
+    def test_lighting_requires_the_location_lighting_set(self):
+        # Every route keeps the day default; night/sunset need the location's own lighting file.
+        for lighting in ('night', 'day_alt', 'night_alt'):
+            destination = Path(self.temp.name)/f'missing-{lighting}'
+            with self.subTest(lighting=lighting), self.assertRaises(ValueError):
+                self.prepare(destination, lighting=lighting)
+            self.assertFalse(destination.exists())
+        (self.root/'tracks/locations/cities/chicago/lighting_night.xml').write_bytes(b'native lighting')
+        (self.root/'tracks/locations/p2p/okutama/lighting_night_alt.xml').write_bytes(b'native lighting')
+        for track, lighting in (('cities/chicago/route_0', 'night'), ('p2p/okutama/route_1', 'night_alt')):
+            destination = Path(self.temp.name)/f'lit-{lighting}'
+            data = self.prepare(destination, track=track, lighting=lighting)
+            self.assertEqual(ET.parse(destination/'session.xml').getroot().find('track').get('lighting'), lighting)
+            with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
+                self.assertEqual(sessions.verify(self.root, destination), data)
+        with self.assertRaises(ValueError):
+            self.prepare(Path(self.temp.name)/'alt-missing', lighting='day_alt')
+        self.assertEqual(ET.parse(Path(self.temp.name)/'lit-night'/'session.xml').getroot().find('track').get('weather'), 'dry')
+
     def test_foreign_fingerprint_and_existing_output_are_preserved(self):
         destination = Path(self.temp.name)/'selected'
         with self.assertRaises(ValueError):
