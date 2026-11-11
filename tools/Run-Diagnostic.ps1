@@ -57,6 +57,7 @@ param(
     [ValidateRange(-30,30)][int]$DesktopCockpitFov=0,
     [switch]$NativeCockpitExposure,
     [switch]$NativeImpactEffect,
+    [switch]$HideLensDust,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [string]$CareerProfile='current',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
@@ -379,6 +380,8 @@ if($RuntimeSession -and $ForceFeedback) {
     [IO.File]::WriteAllText((Join-Path $run 'force-feedback.request'),($ffb -join ' '),[Text.Encoding]::ASCII)
 }
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) { [IO.File]::WriteAllText((Join-Path $run 'floor-reflection.request'),'Remove the garage floor reflection in VR; it is drawn for the game camera, not the posed eye.') }
+# Launcher "Hide lens dust" (off by default): the screen-fixed dirty-lens layer is head-locked in VR.
+if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and $HideLensDust) { [IO.File]::WriteAllText((Join-Path $run 'lens-dust.request'),'Hide the head-locked lens dust layer in VR.') }
 # VR pre-race/replay shots use a 5 cm near plane instead of 0.2 m. Not online: the race-start signal there is unverified.
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and !$OnlineLaunch) { [IO.File]::WriteAllText((Join-Path $run 'intro-near-plane.request'),'Use a 5 cm near plane for VR pre-race and replay shots so the ground is not cut away.') }
 if ($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly) {
@@ -448,6 +451,13 @@ if ($DefaultOpenXrRuntime) { [IO.File]::WriteAllText((Join-Path $run 'xr-default
 if ($HeadMotion) { [IO.File]::WriteAllText((Join-Path $run 'head-motion.request'),'25 8 8',[Text.UTF8Encoding]::new($false)) }
 # Steam may start GRID 2 without launcher variables; the renderer sets these around xrCreateInstance.
 if ($XrLayerBypass.Count) { [IO.File]::WriteAllText((Join-Path $run 'xr-layer-bypass.request'),($XrLayerBypass -join "`n"),[Text.UTF8Encoding]::new($false)) }
+# Diagnostic only: the xr-sim test runtime's control folder, from the worker's own environment.
+if ($XrSessionProbe -and $DefaultOpenXrRuntime -and $env:XRSIM_DIR) {
+    if (![IO.Path]::IsPathFullyQualified($env:XRSIM_DIR) -or $env:XRSIM_DIR.Length -gt 200) { throw 'XRSIM_DIR must be an absolute path of at most 200 characters.' }
+    [IO.File]::WriteAllText((Join-Path $run 'xrsim-dir.request'),$env:XRSIM_DIR,[Text.UTF8Encoding]::new($false))
+}
+# Diagnostic comparison only: keep GRID 2's lens flares for this session.
+if ($env:GRID2VR_NATIVE_LENS_FLARE -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'native-lens-flare.request'),'Keep native lens flare ghosts.',[Text.UTF8Encoding]::new($false)) }
 if ($RecordedViewsFile) { [IO.File]::Copy((Get-Item -LiteralPath $RecordedViewsFile).FullName,(Join-Path $run 'recorded-views.request'),$false) }
 if ($XrProjection) {
     . (Join-Path $PSScriptRoot 'Headset-Settings.ps1')
@@ -538,6 +548,7 @@ $receipt.desktopCockpitFov=$DesktopCockpitFov
 $receipt.inGameSeatRequested=$inGameSeatRequested
 $receipt.hideImpactGlitch=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect)
 $receipt.hideFloorReflection=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly)
+$receipt.hideLensDust=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and [bool]$HideLensDust)
 $receipt.introNearPlane=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$OnlineLaunch)
 $receipt.forceFeedback=if($RuntimeSession -and $ForceFeedback){$ForceFeedback}else{$null}
 $receipt.exposureAudit=[bool]$ExposureAudit

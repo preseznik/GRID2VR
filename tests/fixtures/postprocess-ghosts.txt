@@ -15,3 +15,11 @@ also merges the medium and large bloom (t1, t2 by $Globals 1000/1004) and its ow
 input by lensFlareParams3 ($Globals 336). The test renders each shader on WARP
 and requires the patched draw to match the shader's own output with the tint rows
 at zero byte for byte.
+
+postprocess-lens-dust.dxbc: the shipped LensDust.psh main pixel shader (ps_5_0,
+2,556 bytes) from the same pack at byte offset 390602, fingerprint
+eb77ce43dde37fb0. It samples dustMap (t0) at screen UV, scales it by a
+sun-reflection term (lensdust_params0, cb3 view rows) times lensdust_params3,
+and clamps it to [lensdust_params1.x, lensdust_params1.y] ($Globals 16..23).
+The test requires the patched draw to match the draw with both bounds at zero
+byte for byte: colour zero, dust alpha unchanged.

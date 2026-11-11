@@ -35,6 +35,7 @@ param(
     [ValidateRange(-30,30)][int]$DesktopCockpitFov=0,
     [switch]$NativeCockpitExposure,
     [switch]$NativeImpactEffect,
+    [switch]$HideLensDust,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [string]$CareerProfile='current',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
@@ -242,6 +243,7 @@ $preflight.cockpitExposureLimit=(!$PlayerControlOnly -and $CockpitMode -ne 'Off'
 $preflight.desktopSeatPositionRequested=[bool]$DesktopSeatPosition
 $preflight.desktopCockpitFov=$DesktopCockpitFov
 $preflight.hideImpactGlitch=($Mode -eq 'Headset' -and !$NativeImpactEffect)
+$preflight.hideLensDust=($Mode -eq 'Headset' -and [bool]$HideLensDust)
 $preflight.forceFeedback=if($ForceFeedback){$ForceFeedback}else{$null}
 $preflight.exposureAudit=[bool]$ExposureAudit
 $preflight.cockpitAssets=$cockpitAssets
@@ -384,7 +386,7 @@ try {
         CaptureAfterSeconds=$CaptureAfterSeconds;TimeoutSeconds=$TimeoutSeconds;GameStartSeconds=$GameStartSeconds;PythonPath=$PythonPath
         WaitForStereoStart=[bool]$WaitForStereoStart
         SessionDirectory=$SessionDirectory;NormalLaunch=[bool]$NormalLaunch;OnlineLaunch=[bool]$OnlineLaunch;HeadMotion=[bool]$HeadMotion
-        NativeCockpitExposure=[bool]$NativeCockpitExposure;NativeImpactEffect=[bool]$NativeImpactEffect
+        NativeCockpitExposure=[bool]$NativeCockpitExposure;NativeImpactEffect=[bool]$NativeImpactEffect;HideLensDust=[bool]$HideLensDust
         RuntimeSession=[bool]$RuntimeSession
         SkipIntro=[bool]$SkipIntro;RemoveCinemaMatte=[bool]$RemoveCinemaMatte;DiagnosticLogging=[bool]$DiagnosticLogging;MsaaAudit=[bool]$MsaaAudit;ExposureAudit=[bool]$ExposureAudit;DrivingControls=$DrivingControls;ForceFeedback=$ForceFeedback;DeviceClaim=$DeviceClaim;CockpitS2000=$CockpitS2000;CockpitMode=$CockpitMode
         HudDistance=$HudDistance;HudFollowView=$HudFollowView;HudHiddenElements=$HudHiddenElements;PerformanceDisplay=[bool]$PerformanceDisplay;PerformanceFollowView=$PerformanceFollowView

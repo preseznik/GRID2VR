@@ -26,6 +26,8 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public string CockpitDriver { get; init; } = "HeadOnly";
     public bool CockpitExposureLimit { get; init; } = true;
     public bool HideImpactGlitch { get; init; } = true;
+    // Head-locked lens dust (ProJict 41e89b79): the game's look by default; opt-in to hide in VR.
+    public bool HideLensDust { get; init; }
     public string CockpitTextures { get; init; } = "Off";
     public DrivingBinding? RecenterDevice { get; init; }
     public bool KeepHorizonLevel { get; init; } = true;
@@ -269,6 +271,7 @@ internal sealed class SessionClient(string root)
         if (vr && value.SponsorDepthBias) command.ArgumentList.Add("-SponsorDepthBias");
         if (vr && !value.CockpitExposureLimit) command.ArgumentList.Add("-NativeCockpitExposure");
         if (vr && !value.HideImpactGlitch) command.ArgumentList.Add("-NativeImpactEffect");
+        if (vr && value.HideLensDust) command.ArgumentList.Add("-HideLensDust");
         if (vr && value.RecenterDevice is not null) { command.ArgumentList.Add("-RecenterDeviceBase64"); command.ArgumentList.Add(DeviceRecenter.Encode(value.RecenterDevice)); }
         if (value.ForceFeedbackOverride)
         {

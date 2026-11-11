@@ -74,7 +74,8 @@ bool impactInterferenceLogged{};
 bool removeFloorReflection{};
 FloorReflection floorReflection;
 std::array<uint64_t,3> floorDraws{};
-bool removeLensFlare{};
+bool removeLensFlare{},removeLensDust{};
+std::string lensDustBlend; // First dust draw's blend state, for the receipt.
 LensFlareGhosts lensFlare;
 std::array<std::array<uint64_t,3>,LensFlareGhosts::shaders.size()> lensFlareDraws{};
 bool removeFrostedGlass{};
@@ -99,12 +100,18 @@ void WriteFrostedReceipt(const std::filesystem::path& folder) {
 }
 void WriteLensFlareReceipt(const std::filesystem::path& folder) {
     std::ofstream out(folder/L"lens-flare.json",std::ios::trunc);
-    out << "{\"schema\":1,\"ghostsRemoved\":{";
-    for (size_t i=0;i<LensFlareGhosts::shaders.size();++i) {
-        const auto& d=lensFlareDraws[i];
-        out << (i?",":"") << '"' << LensFlareGhosts::shaders[i].name << "\":[" << d[0] << ',' << d[1] << ',' << d[2] << ']';
+    out << "{\"schema\":2";
+    for (const auto effect:{LensFlareGhosts::Effect::Ghosts,LensFlareGhosts::Effect::Dust}) {
+        out << (effect==LensFlareGhosts::Effect::Ghosts?",\"ghostsRemoved\":{":",\"dustRemoved\":{");
+        bool first=true;
+        for (size_t i=0;i<LensFlareGhosts::shaders.size();++i) {
+            if (LensFlareGhosts::shaders[i].effect!=effect) continue;
+            const auto& d=lensFlareDraws[i];
+            out << (first?"":",") << '"' << LensFlareGhosts::shaders[i].name << "\":[" << d[0] << ',' << d[1] << ',' << d[2] << ']';first=false;
+        }
+        out << '}';
     }
-    out << "},\"note\":\"Counts are per pass (native, left, right) and only grow when a first sighting is written.\"}\n";
+    out << ",\"dustBlend\":\"" << lensDustBlend << "\",\"note\":\"Counts are per pass (native, left, right) and only grow when a first sighting is written.\"}\n";
 }
 CenterDrawWitness centerDraws;
 bool centerFailureDumped{},defaultShadowProofSaved{};
@@ -504,7 +511,10 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
     // The same VR menu request removes the frosted-glass card background (ProJict fdaf3851).
     removeFrostedGlass=removeFloorReflection;
     // ...and the screen-space lens flare ghosts (ProJict 41e89b79).
-    removeLensFlare=removeFloorReflection;
+    // native-lens-flare.request (diagnostic comparison only) keeps the game's flares.
+    removeLensFlare=removeFloorReflection && !std::filesystem::exists(folder/L"native-lens-flare.request");
+    // Launcher "Hide lens dust" (off by default): the head-locked dirty-lens layer.
+    removeLensDust=removeFloorReflection && std::filesystem::exists(folder/L"lens-dust.request");
     compact=requested && std::filesystem::exists(folder/L"compact-stereo.request") && std::filesystem::exists(folder/L"stereo-eyes.request");
     isolateModels=requested && std::filesystem::exists(folder/L"isolate-models.request");
     restoreComputeState=requested && std::filesystem::exists(folder/L"restore-compute-state.request");
@@ -1029,22 +1039,36 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
             }
         }
     }
-    if (removeLensFlare && kind[0]!='C') {
+    if ((removeLensFlare || removeLensDust) && kind[0]!='C') {
         ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
         const auto hash=ShaderHash(shader.Get());
-        if (const auto* ghost=LensFlareGhosts::Find(hash)) {
+        const auto* lens=LensFlareGhosts::Find(hash);
+        const bool dust=lens && lens->effect==LensFlareGhosts::Effect::Dust;
+        if (lens && (dust?removeLensDust:removeLensFlare)) {
             // The flare ghosts mirror about each eye's own image centre, so
-            // the two eyes disagree. Remove them in every pass alike; a
-            // refusal changes no binding and falls back to native.
+            // the two eyes disagree; lens dust is fixed to the screen. Remove
+            // them in every pass alike; a refusal changes no binding and
+            // falls back to native.
+            const char* label=dust?"lens_dust":"lens_flare";
+            if (dust && lensDustBlend.empty()) {
+                ComPtr<ID3D11BlendState> blend;FLOAT factor[4]{};UINT mask{};context->OMGetBlendState(&blend,factor,&mask);
+                D3D11_BLEND_DESC desc{};
+                if (blend) blend->GetDesc(&desc);else desc.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;
+                const auto& rt=desc.RenderTarget[0];
+                lensDustBlend="enable="+std::to_string(rt.BlendEnable)+" src="+std::to_string(rt.SrcBlend)+" dest="+std::to_string(rt.DestBlend)+
+                    " op="+std::to_string(rt.BlendOp)+" srcA="+std::to_string(rt.SrcBlendAlpha)+" destA="+std::to_string(rt.DestBlendAlpha)+
+                    " opA="+std::to_string(rt.BlendOpAlpha)+" write="+std::to_string(rt.RenderTargetWriteMask)+(blend?"":" default=1");
+                log << "lens_dust blend " << lensDustBlend << '\n';
+            }
             if (lensFlare.Apply(context,hash,nativeDispatch)) {
-                const size_t ghostIndex=ghost-LensFlareGhosts::shaders.data();
-                if (pass<3 && !lensFlareDraws[ghostIndex][pass]++) {
-                    log << "lens_flare applied=1 scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << '\n';log.FlushNow();
+                const size_t lensIndex=lens-LensFlareGhosts::shaders.data();
+                if (pass<3 && !lensFlareDraws[lensIndex][pass]++) {
+                    log << label << " applied=1 scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << '\n';log.FlushNow();
                     WriteLensFlareReceipt(output);
                 }
             } else {
-                removeLensFlare=false;
-                log << "lens_flare disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+                (dust?removeLensDust:removeLensFlare)=false;
+                log << label << " disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
             }
         }
     }

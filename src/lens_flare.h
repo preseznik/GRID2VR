@@ -17,19 +17,30 @@ namespace grid2vr {
 // zero removes every ghost. The shaders' other work is unchanged: fp_ghostsM
 // still adds its previous result and fp_ghostsM2 still merges the medium and
 // large bloom and its own input. Every other byte and binding is kept.
+//
+// Optional (launcher "Hide lens dust"): LensDust.psh.main draws the dustMap
+// texture at screen UV, scaled by a sun-reflection term and clamped to
+// [lensdust_params1.x, lensdust_params1.y] ($Globals 16..23). UniFinal
+// screen-blends the result, so the dust sits at the same screen place in both
+// eyes and is head-locked in VR. Both clamp bounds at zero make its colour
+// exactly zero; texture alpha and every other byte and binding are kept.
 class LensFlareGhosts {
 public:
+    enum class Effect { Ghosts, Dust };
     struct Shader {
         uint64_t hash;
         UINT constantBytes; // Declared $Globals size.
         const char* name;
+        Effect effect;
     };
-    static constexpr std::array<Shader,3> shaders{{
-        {0xb6247b71227a095full,336,"fp_ghostsL"},
-        {0x1b484999d8a78af0ull,336,"fp_ghostsM"},
-        {0x280cc622b338b43bull,1008,"fp_ghostsM2"},
+    static constexpr std::array<Shader,4> shaders{{
+        {0xb6247b71227a095full,336,"fp_ghostsL",Effect::Ghosts},
+        {0x1b484999d8a78af0ull,336,"fp_ghostsM",Effect::Ghosts},
+        {0x280cc622b338b43bull,1008,"fp_ghostsM2",Effect::Ghosts},
+        {0xeb77ce43dde37fb0ull,64,"LensDust",Effect::Dust},
     }};
     static constexpr UINT tintOffset=272,tintBytes=48;
+    static constexpr UINT dustClampOffset=16,dustClampBytes=8;
     static const Shader* Find(uint64_t hash) {
         for (const auto& shader:shaders) if (shader.hash==hash) return &shader;
         return nullptr;
@@ -49,7 +60,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Device> device_;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext1> context_;
     Microsoft::WRL::ComPtr<ID3DDeviceContextState> state_;
-    Microsoft::WRL::ComPtr<ID3D11ComputeShader> shader_;
+    std::array<Microsoft::WRL::ComPtr<ID3D11ComputeShader>,2> shaders_; // Per Effect.
     std::array<Copy,4> copies_{};
     Microsoft::WRL::ComPtr<ID3D11Buffer> original_;
     Copy* active_{};

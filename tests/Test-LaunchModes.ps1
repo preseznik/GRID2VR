@@ -350,6 +350,15 @@ try {
         if((Test-Path -LiteralPath $floorRequest) -ne $case.written) { throw "Floor reflection request routing changed: stereo=$($case.stereo) desktop=$($case.player)" }
         if(Test-Path -LiteralPath $floorRequest) { Remove-Item -LiteralPath $floorRequest }
     }
+    # The VR lens dust removal is opt-in and never reaches desktop or non-stereo runs.
+    $dust=Find-TestStatement $diagnostic "'lens-dust.request'"
+    $dustRequest=Join-Path $run 'lens-dust.request'
+    foreach($case in @(@{stereo=$true;player=$false;hide=$true;written=$true},@{stereo=$true;player=$false;hide=$false;written=$false},
+        @{stereo=$false;player=$false;hide=$true;written=$false},@{stereo=$true;player=$true;hide=$true;written=$false})) {
+        & { $RuntimeSession=$true;$ReplayStereo=$case.stereo;$PlayerControlOnly=$case.player;$HideLensDust=$case.hide; . $dust }
+        if((Test-Path -LiteralPath $dustRequest) -ne $case.written) { throw "Lens dust request routing changed: stereo=$($case.stereo) desktop=$($case.player) hide=$($case.hide)" }
+        if(Test-Path -LiteralPath $dustRequest) { Remove-Item -LiteralPath $dustRequest }
+    }
     # The VR intro near plane is default on, never reaches Desktop, non-stereo or Online runs.
     $introStatement=Find-TestStatement $diagnostic "'intro-near-plane.request'"
     $introRequest=Join-Path $run 'intro-near-plane.request'

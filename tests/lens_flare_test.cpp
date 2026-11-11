@@ -37,11 +37,12 @@ ComPtr<ID3D11ShaderResourceView> Texture(float scale,unsigned seed) {
 }
 }
 int main(int argc,char** argv) {
-    if (argc!=4) return 20;
-    std::array<std::vector<unsigned char>,3> code;for (size_t i=0;i<3;++i) code[i]=Load(argv[i+1]);
-    constexpr std::array<size_t,3> sizes{6940,7256,7084};
-    for (size_t i=0;i<3;++i) if (code[i].size()!=sizes[i] || Fnv(code[i])!=LensFlareGhosts::shaders[i].hash) return 21+int(i);
-    if (LensFlareGhosts::Find(0xcfc3cf441f08e879ull) || LensFlareGhosts::Find(0)) return 24; // fp_uniFinal_hq is not a ghost pass.
+    if (argc!=5) return 20;
+    std::array<std::vector<unsigned char>,4> code;for (size_t i=0;i<4;++i) code[i]=Load(argv[i+1]);
+    constexpr std::array<size_t,4> sizes{6940,7256,7084,2556};
+    for (size_t i=0;i<4;++i) if (code[i].size()!=sizes[i] || Fnv(code[i])!=LensFlareGhosts::shaders[i].hash) return 21+int(i);
+    if (LensFlareGhosts::Find(0xcfc3cf441f08e879ull) || LensFlareGhosts::Find(0)) return 25; // fp_uniFinal_hq is not a lens pass.
+    for (size_t i=0;i<4;++i) if ((LensFlareGhosts::shaders[i].effect==LensFlareGhosts::Effect::Dust)!=(i==3)) return 26;
 
     const auto dll=LoadLibraryExW(L"d3d11.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);
     const auto create=reinterpret_cast<decltype(&D3D11CreateDevice)>(GetProcAddress(dll,"D3D11CreateDevice"));
@@ -123,6 +124,59 @@ int main(int argc,char** argv) {
         const auto shortBuffer=Constants(std::vector<float>(shader.constantBytes/4-4));auto* binding=shortBuffer.Get();
         context->PSSetConstantBuffers(0,1,&binding);
         if (control.Apply(context.Get(),shader.hash,DispatchNative) || control.Pending()) return 79+index;
+    }
+
+    // LensDust.psh.main: dustMap at screen UV, scaled by a sun-reflection term
+    // and clamped to [lensdust_params1.x, .y]. Patched, the colour is exactly
+    // zero and the alpha is the dust texture's own, as with both bounds at 0.
+    {
+        const auto& shader=LensFlareGhosts::shaders[3];
+        ComPtr<ID3D11PixelShader> pixel;
+        if (FAILED(device->CreatePixelShader(code[3].data(),code[3].size(),nullptr,&pixel))) return 90;
+        const std::vector<float> dustValues{1.f,2.f,3.f,.3f, .05f,4.f,0.f,0.f, 0.f,0.f,-1.f,0.f, 1.f,.8f,.6f,0.f};
+        auto clampedValues=dustValues;
+        for (UINT b=LensFlareGhosts::dustClampOffset;b<LensFlareGhosts::dustClampOffset+LensFlareGhosts::dustClampBytes;b+=4) clampedValues[b/4]=0;
+        std::vector<float> camera(15*4);
+        for (int k=0;k<3;++k) camera[(8+k)*4+k]=1.f; // view rows: identity; eyePositionWS (row 14) at the origin.
+        const auto dusty=Constants(dustValues),clamped=Constants(clampedValues),cameraBuffer=Constants(camera);
+        if (!dusty || !clamped || !cameraBuffer) return 91;
+        auto render=[&](ID3D11Buffer* constants,bool patched,std::vector<float>& pixels) {
+            ID3D11Buffer* buffers[4]{constants,nullptr,nullptr,cameraBuffer.Get()};context->PSSetConstantBuffers(0,4,buffers);
+            ID3D11ShaderResourceView* views[1]{textures[1].Get()};context->PSSetShaderResources(0,1,views);
+            ID3D11SamplerState* samplers[6]{};for (auto& s:samplers) s=sampler.Get();context->PSSetSamplers(0,6,samplers);
+            auto* rtv=targetView.Get();context->OMSetRenderTargets(1,&rtv,nullptr);
+            const float clear[4]{};context->ClearRenderTargetView(rtv,clear);
+            const D3D11_VIEWPORT full{0,0,float(width),float(height),0,1};context->RSSetViewports(1,&full);
+            context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);context->IASetInputLayout(nullptr);
+            context->VSSetShader(vertex.Get(),nullptr,0);context->PSSetShader(pixel.Get(),nullptr,0);
+            if (patched && (!control.Apply(context.Get(),shader.hash,DispatchNative) || !control.Pending())) return false;
+            context->Draw(3,0);
+            if (patched && !control.Restore(context.Get())) return false;
+            ComPtr<ID3D11Buffer> cb0,cb3;context->PSGetConstantBuffers(0,1,&cb0);context->PSGetConstantBuffers(3,1,&cb3);
+            if (cb0.Get()!=constants || cb3!=cameraBuffer || control.Pending()) return false;
+            D3D11_TEXTURE2D_DESC staging=targetDesc;staging.BindFlags=0;staging.Usage=D3D11_USAGE_STAGING;staging.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+            ComPtr<ID3D11Texture2D> copy;if (FAILED(device->CreateTexture2D(&staging,nullptr,&copy))) return false;
+            context->CopyResource(copy.Get(),target.Get());D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (FAILED(context->Map(copy.Get(),0,D3D11_MAP_READ,0,&mapped))) return false;
+            pixels.resize(width*height*4);
+            for (UINT y=0;y<height;++y) memcpy(pixels.data()+y*width*4,static_cast<const uint8_t*>(mapped.pData)+y*mapped.RowPitch,width*16);
+            context->Unmap(copy.Get(),0);return true;
+        };
+        std::vector<float> withoutDust,native,patched;
+        if (!render(clamped.Get(),false,withoutDust)) return 92;
+        if (!render(dusty.Get(),false,native)) return 93;
+        if (!render(dusty.Get(),true,patched)) return 94;
+        unsigned lit=0,coloured=0;
+        for (size_t i=0;i<native.size();i+=4) {
+            lit+=native[i]+native[i+1]+native[i+2]>.01f;
+            coloured+=patched[i]!=0.f || patched[i+1]!=0.f || patched[i+2]!=0.f || patched[i+3]!=native[i+3];
+        }
+        if (lit<width*height/2) return 95;                                   // The native dust must be visible.
+        if (coloured) return 96;                                             // Colour zero, alpha unchanged.
+        if (memcmp(patched.data(),withoutDust.data(),patched.size()*4)) return 97; // Exactly the clamped draw.
+        const auto shortBuffer=Constants(std::vector<float>(shader.constantBytes/4-4));auto* binding=shortBuffer.Get();
+        context->PSSetConstantBuffers(0,1,&binding);
+        if (control.Apply(context.Get(),shader.hash,DispatchNative) || control.Pending()) return 98;
     }
     return 0;
 }

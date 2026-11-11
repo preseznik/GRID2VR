@@ -1,5 +1,6 @@
 #include "lens_flare.h"
 #include <d3dcompiler.h>
+#include <cstring>
 using Microsoft::WRL::ComPtr;
 namespace grid2vr {
 bool LensFlareGhosts::Initialize(ID3D11DeviceContext* context) {
@@ -8,13 +9,18 @@ bool LensFlareGhosts::Initialize(ID3D11DeviceContext* context) {
     if (!device_ || FAILED(device_.As(&device1)) || FAILED(context->QueryInterface(IID_PPV_ARGS(&context_)))) return false;
     const auto level=device_->GetFeatureLevel();
     if (FAILED(device1->CreateDeviceContextState(0,&level,1,D3D11_SDK_VERSION,__uuidof(ID3D11Device),nullptr,&state_))) return false;
-    // Modify an owned GPU copy only: the three ghost tint rows, nothing else.
-    constexpr char code[]="RWByteAddressBuffer data:register(u0);[numthreads(1,1,1)] void main()"
-        "{data.Store4(272,uint4(0,0,0,0));data.Store4(288,uint4(0,0,0,0));data.Store4(304,uint4(0,0,0,0));}";
-    static_assert(tintOffset==272 && tintBytes==48);
-    ComPtr<ID3DBlob> bytes;
-    if (FAILED(D3DCompile(code,sizeof(code)-1,nullptr,nullptr,nullptr,"main","cs_5_0",0,0,&bytes,nullptr)) ||
-        FAILED(device_->CreateComputeShader(bytes->GetBufferPointer(),bytes->GetBufferSize(),nullptr,&shader_))) return false;
+    // Modify an owned GPU copy only: the three ghost tint rows, or the two
+    // lens dust clamp bounds, nothing else.
+    constexpr const char* code[]{
+        "RWByteAddressBuffer data:register(u0);[numthreads(1,1,1)] void main()"
+        "{data.Store4(272,uint4(0,0,0,0));data.Store4(288,uint4(0,0,0,0));data.Store4(304,uint4(0,0,0,0));}",
+        "RWByteAddressBuffer data:register(u0);[numthreads(1,1,1)] void main(){data.Store2(16,uint2(0,0));}"};
+    static_assert(tintOffset==272 && tintBytes==48 && dustClampOffset==16 && dustClampBytes==8);
+    for (size_t i=0;i<shaders_.size();++i) {
+        ComPtr<ID3DBlob> bytes;
+        if (FAILED(D3DCompile(code[i],strlen(code[i]),nullptr,nullptr,nullptr,"main","cs_5_0",0,0,&bytes,nullptr)) ||
+            FAILED(device_->CreateComputeShader(bytes->GetBufferPointer(),bytes->GetBufferSize(),nullptr,&shaders_[i]))) return false;
+    }
     thread_=GetCurrentThreadId();return true;
 }
 LensFlareGhosts::Copy* LensFlareGhosts::For(UINT bytes) {
@@ -43,7 +49,8 @@ bool LensFlareGhosts::Apply(ID3D11DeviceContext* context,uint64_t hash,NativeDis
     if (!source) return false;
     for (const auto& copy:copies_) if (copy.filtered==source) return false;
     D3D11_BUFFER_DESC desc{};source->GetDesc(&desc);
-    if (desc.ByteWidth<shader->constantBytes || desc.ByteWidth<tintOffset+tintBytes || desc.ByteWidth%16 ||
+    const bool dust=shader->effect==Effect::Dust;
+    if (desc.ByteWidth<shader->constantBytes || desc.ByteWidth<(dust?dustClampOffset+dustClampBytes:tintOffset+tintBytes) || desc.ByteWidth%16 ||
         desc.ByteWidth>D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT*16 ||
         desc.BindFlags!=D3D11_BIND_CONSTANT_BUFFER || desc.MiscFlags || desc.StructureByteStride) return false;
     auto* copy=For(desc.ByteWidth);
@@ -51,7 +58,7 @@ bool LensFlareGhosts::Apply(ID3D11DeviceContext* context,uint64_t hash,NativeDis
     ComPtr<ID3DDeviceContextState> previous;context_->SwapDeviceContextState(state_.Get(),&previous);
     context_->CopyResource(copy->raw.Get(),source.Get());
     auto* uav=copy->uav.Get();context_->CSSetUnorderedAccessViews(0,1,&uav,nullptr);
-    context_->CSSetShader(shader_.Get(),nullptr,0);dispatch(context_.Get(),1,1,1);
+    context_->CSSetShader(shaders_[dust?1:0].Get(),nullptr,0);dispatch(context_.Get(),1,1,1);
     uav=nullptr;context_->CSSetUnorderedAccessViews(0,1,&uav,nullptr);
     context_->CopyResource(copy->filtered.Get(),copy->raw.Get());
     context_->SwapDeviceContextState(previous.Get(),nullptr);

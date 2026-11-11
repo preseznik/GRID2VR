@@ -36,6 +36,13 @@ internal static class LauncherFeaturesTests
         client.Save(impactChoices); Check(!client.Load().HideImpactGlitch);
         Check(client.LaunchCommand(impactChoices, true).ArgumentList.Contains("-NativeImpactEffect"));
         Check(!client.LaunchCommand(impactChoices, false).ArgumentList.Contains("-NativeImpactEffect"));
+        Check(!new Choices().HideLensDust);
+        Check(!JsonSerializer.Deserialize<Choices>("{}")!.HideLensDust);
+        Check(!client.LaunchCommand(settings with { HideLensDust = false }, true).ArgumentList.Contains("-HideLensDust"));
+        var dustChoices = settings with { HideLensDust = true };
+        client.Save(dustChoices); Check(client.Load().HideLensDust);
+        Check(client.LaunchCommand(dustChoices, true).ArgumentList.Contains("-HideLensDust"));
+        Check(!client.LaunchCommand(dustChoices, false).ArgumentList.Contains("-HideLensDust"));
         client.Save(settings);
         Check(new Choices().KeepHorizonLevel);
         Check(JsonSerializer.Deserialize<Choices>("{}")!.KeepHorizonLevel);

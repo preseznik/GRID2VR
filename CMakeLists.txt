@@ -638,7 +638,8 @@ target_link_libraries(lens_flare_test PRIVATE d3dcompiler)
 add_test(NAME scoped_lens_flare_ghosts COMMAND lens_flare_test
     "${CMAKE_SOURCE_DIR}/tests/fixtures/postprocess-ghosts-l.dxbc"
     "${CMAKE_SOURCE_DIR}/tests/fixtures/postprocess-ghosts-m.dxbc"
-    "${CMAKE_SOURCE_DIR}/tests/fixtures/postprocess-ghosts-m2.dxbc")
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/postprocess-ghosts-m2.dxbc"
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/postprocess-lens-dust.dxbc")
 add_executable(frosted_glass_test tests/frosted_glass_test.cpp src/frosted_glass.cpp)
 target_include_directories(frosted_glass_test PRIVATE src)
 target_link_libraries(frosted_glass_test PRIVATE d3dcompiler)

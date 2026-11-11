@@ -44,6 +44,21 @@ bool SaveVariable(const std::wstring& name,SavedVariable& saved) {
 bool RestoreVariable(const SavedVariable& saved) {
     return SetEnvironmentVariableW(saved.name.c_str(),saved.value.empty()?nullptr:saved.value.data())!=FALSE;
 }
+// Diagnostic only: the xr-sim test runtime's command/state/capture folder.
+// Steam starts the game without the session's environment, so the folder is
+// passed like the runtime manifest and applied only around xrCreateInstance.
+bool ReadXrsimDirectory(const std::filesystem::path& path,std::wstring& folder) {
+    folder.clear();std::error_code error;
+    if (!std::filesystem::exists(path,error)) return !error;
+    const auto size=std::filesystem::file_size(path,error);
+    if (error || !size || size>1024) return false;
+    std::wifstream request(path);std::wstring line,extra;
+    if (!std::getline(request,line)) return false;
+    if (!line.empty() && line.back()==L'\r') line.pop_back();
+    const std::filesystem::path value(line);
+    if (line.empty() || line.size()>200 || !value.is_absolute() || std::getline(request,extra)) return false;
+    folder=line;return true;
+}
 bool ReadDefaultRuntime(const std::filesystem::path& path,bool& selected) {
     selected=false;std::error_code error;
     if (!std::filesystem::exists(path,error)) return !error;
@@ -106,13 +121,21 @@ bool XrSessionProbe::Initialize(ID3D11Device* device,const std::filesystem::path
     if (!ReadLayerSwitches(output/L"xr-layer-bypass.request",layerSwitches)) {
         failed_=true;Log("session refused reason=layer_bypass_request");return false;
     }
+    std::wstring xrsimDirectory;
+    if (!ReadXrsimDirectory(output/L"xrsim-dir.request",xrsimDirectory) || (!xrsimDirectory.empty() && !defaultRuntime)) {
+        failed_=true;Log("session refused reason=xrsim_directory_request");return false;
+    }
     // Steam can spawn the AVX process without inheriting launcher variables.
     // Select the loader runtime and layer switches inside this process, then restore their old values.
-    std::vector<SavedVariable> saved(layerSwitches.size()+1);
-    bool environmentSaved=SaveVariable(L"XR_RUNTIME_JSON",saved[0]);
-    for (size_t i=0;i<layerSwitches.size();++i) environmentSaved=environmentSaved && SaveVariable(layerSwitches[i],saved[i+1]);
+    std::vector<SavedVariable> saved(layerSwitches.size()+2);
+    bool environmentSaved=SaveVariable(L"XR_RUNTIME_JSON",saved[0]) && SaveVariable(L"XRSIM_DIR",saved[1]);
+    for (size_t i=0;i<layerSwitches.size();++i) environmentSaved=environmentSaved && SaveVariable(layerSwitches[i],saved[i+2]);
     if (!environmentSaved) {failed_=true;return false;}
     bool environmentSet=SetEnvironmentVariableW(L"XR_RUNTIME_JSON",runtime.c_str())!=FALSE;
+    if (!xrsimDirectory.empty()) {
+        environmentSet=environmentSet && SetEnvironmentVariableW(L"XRSIM_DIR",xrsimDirectory.c_str());
+        Log("xrsim_directory %ls",xrsimDirectory.c_str());
+    }
     for (const auto& name:layerSwitches) {
         environmentSet=environmentSet && SetEnvironmentVariableW(name.c_str(),L"1");
         Log("layer_bypass disable=%ls",name.c_str());
