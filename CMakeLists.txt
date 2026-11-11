@@ -49,7 +49,7 @@ execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/gener
 add_library(d3d11 SHARED src/proxy.cpp src/diagnostics.cpp src/engine_trace.cpp src/guarded_hooks.cpp src/replay_trace.cpp src/vpl_order.cpp src/texture_digest.cpp src/msaa_readback.cpp src/msaa_audit.cpp src/eye_textures.cpp "${CMAKE_BINARY_DIR}/exports.def")
 target_include_directories(d3d11 PRIVATE "${CMAKE_BINARY_DIR}" src)
 target_link_libraries(d3d11 PRIVATE minhook d3dcompiler dxguid bcrypt psapi)
-target_sources(d3d11 PRIVATE src/motion_blur.cpp src/impact_interference.cpp src/floor_reflection.cpp src/frosted_glass.cpp src/player_control.cpp src/background_play.cpp)
+target_sources(d3d11 PRIVATE src/motion_blur.cpp src/impact_interference.cpp src/floor_reflection.cpp src/frosted_glass.cpp src/lens_flare.cpp src/player_control.cpp src/background_play.cpp)
 target_sources(d3d11 PRIVATE src/frontend_video_resize.cpp)
 target_sources(d3d11 PRIVATE src/chase_observer.cpp)
 target_sources(d3d11 PRIVATE src/chase_camera.cpp)
@@ -632,6 +632,13 @@ target_link_libraries(floor_reflection_test PRIVATE d3dcompiler)
 add_test(NAME scoped_garage_floor_reflection COMMAND floor_reflection_test
     "${CMAKE_SOURCE_DIR}/tests/fixtures/garage-floor-reflect.dxbc"
     "${CMAKE_SOURCE_DIR}/tests/fixtures/garage-floor-reflect-refract.dxbc")
+add_executable(lens_flare_test tests/lens_flare_test.cpp src/lens_flare.cpp)
+target_include_directories(lens_flare_test PRIVATE src)
+target_link_libraries(lens_flare_test PRIVATE d3dcompiler)
+add_test(NAME scoped_lens_flare_ghosts COMMAND lens_flare_test
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/postprocess-ghosts-l.dxbc"
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/postprocess-ghosts-m.dxbc"
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/postprocess-ghosts-m2.dxbc")
 add_executable(frosted_glass_test tests/frosted_glass_test.cpp src/frosted_glass.cpp)
 target_include_directories(frosted_glass_test PRIVATE src)
 target_link_libraries(frosted_glass_test PRIVATE d3dcompiler)
@@ -655,7 +662,7 @@ add_test(NAME flashback_transient_refusal COMMAND transient_refusal_test
 add_executable(bounded_log_test tests/bounded_log_test.cpp)
 target_include_directories(bounded_log_test PRIVATE src)
 add_test(NAME bounded_runtime_logs COMMAND bounded_log_test "${CMAKE_BINARY_DIR}/bounded-log-fixture")
-add_executable(session_gpu_history_test tests/session_gpu_history_test.cpp src/replay_trace.cpp src/guarded_hooks.cpp src/vpl_order.cpp src/texture_digest.cpp src/motion_blur.cpp src/impact_interference.cpp src/floor_reflection.cpp src/frosted_glass.cpp)
+add_executable(session_gpu_history_test tests/session_gpu_history_test.cpp src/replay_trace.cpp src/guarded_hooks.cpp src/vpl_order.cpp src/texture_digest.cpp src/motion_blur.cpp src/impact_interference.cpp src/floor_reflection.cpp src/frosted_glass.cpp src/lens_flare.cpp)
 target_sources(session_gpu_history_test PRIVATE src/flicker_capture.cpp src/flicker_pixels.cpp src/flicker_watch.cpp src/sign_visibility.cpp src/screen_ui.cpp src/cockpit_exposure.cpp src/spotlight_witness.cpp src/spotlight_correction.cpp)
 target_include_directories(session_gpu_history_test PRIVATE src)
 target_compile_definitions(session_gpu_history_test PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)

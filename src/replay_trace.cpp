@@ -8,6 +8,7 @@
 #include "impact_interference.h"
 #include "floor_reflection.h"
 #include "frosted_glass.h"
+#include "lens_flare.h"
 #include "cockpit_exposure.h"
 #include "draw_witness.h"
 #include "flicker_capture.h"
@@ -73,6 +74,9 @@ bool impactInterferenceLogged{};
 bool removeFloorReflection{};
 FloorReflection floorReflection;
 std::array<uint64_t,3> floorDraws{};
+bool removeLensFlare{};
+LensFlareGhosts lensFlare;
+std::array<std::array<uint64_t,3>,LensFlareGhosts::shaders.size()> lensFlareDraws{};
 bool removeFrostedGlass{};
 FrostedGlass frostedGlass;
 std::array<std::array<uint64_t,3>,FrostedGlass::shaders.size()> frostedDraws{};
@@ -90,6 +94,15 @@ void WriteFrostedReceipt(const std::filesystem::path& folder) {
     for (size_t i=0;i<FrostedGlass::maskShaders.size();++i) {
         const auto& d=frostedMaskDraws[i];
         out << (i?",":"") << '"' << Hex(FrostedGlass::maskShaders[i]) << "\":[" << d[0] << ',' << d[1] << ',' << d[2] << ']';
+    }
+    out << "},\"note\":\"Counts are per pass (native, left, right) and only grow when a first sighting is written.\"}\n";
+}
+void WriteLensFlareReceipt(const std::filesystem::path& folder) {
+    std::ofstream out(folder/L"lens-flare.json",std::ios::trunc);
+    out << "{\"schema\":1,\"ghostsRemoved\":{";
+    for (size_t i=0;i<LensFlareGhosts::shaders.size();++i) {
+        const auto& d=lensFlareDraws[i];
+        out << (i?",":"") << '"' << LensFlareGhosts::shaders[i].name << "\":[" << d[0] << ',' << d[1] << ',' << d[2] << ']';
     }
     out << "},\"note\":\"Counts are per pass (native, left, right) and only grow when a first sighting is written.\"}\n";
 }
@@ -490,6 +503,8 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
     removeFloorReflection=requested && runtimeSession && dispatch && std::filesystem::exists(folder/L"floor-reflection.request");
     // The same VR menu request removes the frosted-glass card background (ProJict fdaf3851).
     removeFrostedGlass=removeFloorReflection;
+    // ...and the screen-space lens flare ghosts (ProJict 41e89b79).
+    removeLensFlare=removeFloorReflection;
     compact=requested && std::filesystem::exists(folder/L"compact-stereo.request") && std::filesystem::exists(folder/L"stereo-eyes.request");
     isolateModels=requested && std::filesystem::exists(folder/L"isolate-models.request");
     restoreComputeState=requested && std::filesystem::exists(folder/L"restore-compute-state.request");
@@ -649,7 +664,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
 bool CancelBeforeReplay() {
     const auto scene=engine::CurrentScene();
     if (!runtimeSession || !enabled || GetCurrentThreadId()!=ownerThread || !sceneOpen || eyeReplayStarted ||
-        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() || floorReflection.Pending() || frostedGlass.Pending() ||
+        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() || floorReflection.Pending() || frostedGlass.Pending() || lensFlare.Pending() ||
         screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // No eye state was applied. Missing race-only passes in a native menu do
@@ -660,7 +675,7 @@ bool CancelBeforeReplay() {
 }
 bool ResetHistory() {
     if (!enabled || GetCurrentThreadId()!=ownerThread || sceneOpen || !pairHealthy || motionBlur.Pending() || cockpitExposure.Pending() ||
-        impactInterference.Pending() || floorReflection.Pending() || frostedGlass.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
+        impactInterference.Pending() || floorReflection.Pending() || frostedGlass.Pending() || lensFlare.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // The verified normal Quit path suspends and resets on the render owner.
     // Flush cumulative counts here rather than leaving the last periodic sample.
@@ -789,6 +804,10 @@ void AfterDraw(ID3D11DeviceContext* context) {
     if (frostedGlass.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=frostedGlass.Restore(context);pairHealthy&=restored;
         if(!restored) {log<<"frosted_glass restored=0\n";log.FlushNow();}
+    }
+    if (lensFlare.Pending() && GetCurrentThreadId()==ownerThread) {
+        const bool restored=lensFlare.Restore(context);pairHealthy&=restored;
+        if(!restored) {log<<"lens_flare restored=0\n";log.FlushNow();}
     }
     if (screenUi.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=screenUi.Restore(context);pairHealthy&=restored;
@@ -1007,6 +1026,25 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
             } else {
                 removeFloorReflection=false;
                 log << "floor_reflection disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+            }
+        }
+    }
+    if (removeLensFlare && kind[0]!='C') {
+        ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
+        const auto hash=ShaderHash(shader.Get());
+        if (const auto* ghost=LensFlareGhosts::Find(hash)) {
+            // The flare ghosts mirror about each eye's own image centre, so
+            // the two eyes disagree. Remove them in every pass alike; a
+            // refusal changes no binding and falls back to native.
+            if (lensFlare.Apply(context,hash,nativeDispatch)) {
+                const size_t ghostIndex=ghost-LensFlareGhosts::shaders.data();
+                if (pass<3 && !lensFlareDraws[ghostIndex][pass]++) {
+                    log << "lens_flare applied=1 scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << '\n';log.FlushNow();
+                    WriteLensFlareReceipt(output);
+                }
+            } else {
+                removeLensFlare=false;
+                log << "lens_flare disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
             }
         }
     }

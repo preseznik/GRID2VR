@@ -1,0 +1,17 @@
+postprocess-ghosts-l.dxbc, postprocess-ghosts-m.dxbc and postprocess-ghosts-m2.dxbc:
+the shipped UniFinal.psh fp_ghostsL (ps_5_0, 6,940 bytes), fp_ghostsM (7,256
+bytes) and fp_ghostsM2 (7,084 bytes) pixel shaders, extracted read-only from
+GRID 2's shaderpack/dx11/postprocess.pssg (SHA-256
+b14e2b958cce18dc67d8316312661abe54933839e343c8bf8b0e24293c4bd7af) at byte
+offsets 192438, 199753 and 75415. Their renderer fingerprints (FNV-1a 64 of the
+bytecode, as passed to CreatePixelShader) are b6247b71227a095f,
+1b484999d8a78af0 and 280cc622b338b43b.
+
+These are GRID 2's lens flare ghosts. Each samples the bright image at screen
+coordinates scaled and mirrored by lensFlareParams ($Globals 208..271), subtracts
+a threshold (row 320) and adds the result tinted by lensFlareParams2 rows 0-2
+($Globals 272..319). fp_ghostsM also adds its previous result (t1); fp_ghostsM2
+also merges the medium and large bloom (t1, t2 by $Globals 1000/1004) and its own
+input by lensFlareParams3 ($Globals 336). The test renders each shader on WARP
+and requires the patched draw to match the shader's own output with the tint rows
+at zero byte for byte.
