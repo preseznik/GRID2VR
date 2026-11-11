@@ -15,6 +15,12 @@
     <ApplicationIcon>assets\GRID2VR.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Track converters ship inside the launcher (as in DiRT2VR) and run in a child
+         process of it (GRID2VR.exe convert-track mode). The alias keeps the converter's
+         own copy of the shared GameExecutable source apart from the launcher's. -->
+    <ProjectReference Include="..\tools\track-converter\TrackConverter.csproj" Aliases="trackconverter" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Include="..\tools\GameExecutable.cs" Link="GameExecutable.cs" />
     <Compile Include="..\tools\HardwareSettingsPath.cs" Link="HardwareSettingsPath.cs" />
     <AssemblyMetadata Include="ReleaseChannel" Value="$(ReleaseChannel)" />

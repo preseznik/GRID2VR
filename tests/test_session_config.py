@@ -22,6 +22,9 @@ class SessionConfigurationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)/'game'
         self.root.mkdir()
+        # Never read the developer's real custom-track builds.
+        self.custom = Path(self.temp.name)/'custom-tracks'
+        self.enterContext(patch.object(sessions, 'custom_tracks_root', lambda: self.custom))
         (self.root/'grid2_avx.exe').write_bytes(b'fixture executable')
         self.digest = hashlib.sha256(b'fixture executable').hexdigest()
         for car in ('z06', 'pag'):
@@ -85,6 +88,66 @@ class SessionConfigurationTests(unittest.TestCase):
             with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
                 self.assertEqual(sessions.verify(self.root, destination), result)
         self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+
+    def custom_pack(self, track='circuits/g2vr_test/route_0', label='Test Ring', name='pack one'):
+        pack = self.custom/name
+        route = pack/'overlay/tracks/locations'/track
+        route.mkdir(parents=True)
+        for file in ('track.jpk', 'route_objects.pssg', 'progress_track.xml'):
+            (route/file).write_bytes(b'converted track')
+        (pack/'custom-track.json').write_text(json.dumps(dict(schema=1, tracks=[dict(id=track, label=label)])), encoding='utf-8')
+        return pack
+
+    def test_custom_track_overlay_roundtrip(self):
+        before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        pack = self.custom_pack()
+        track = next(t for t in sessions.catalog(self.root)['tracks'] if t['id'] == 'circuits/g2vr_test/route_0')
+        self.assertTrue(track['custom'])
+        self.assertEqual(track['label'], 'Test Ring')
+        destination = Path(self.temp.name)/'selected custom'
+        result = self.prepare(destination, track='circuits/g2vr_test/route_0')
+        route = ET.parse(destination/'session.xml').getroot().find('track')
+        self.assertEqual((route.attrib['country'], route.attrib['name'], route.attrib['route']), ('circuits', 'g2vr_test', 'route_0'))
+        mods = ET.parse(destination/'modlist.xml').getroot()
+        self.assertEqual([m.attrib['Path'] for m in mods.findall('Mod')], [str(pack/'overlay')])
+        self.assertEqual(result['modList'], str(destination/'modlist.xml'))
+        self.assertEqual(result['nativeArguments'], ['-benchmark', sessions.SESSION_FILENAME])
+        with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
+            self.assertEqual(sessions.verify(self.root, destination), result)
+            run = Path(self.temp.name)/'run'
+            run.mkdir()
+            staged = sessions.stage(self.root, destination, run)
+        self.assertEqual(staged['modList'], str(run/'modlist.xml'))
+        self.assertEqual((run/'modlist.xml').read_bytes(), (destination/'modlist.xml').read_bytes())
+        self.assertEqual(staged['customTrack'], result['customTrack'])
+        # A changed ModList or a removed overlay invalidates the prepared session.
+        original = (destination/'modlist.xml').read_bytes()
+        (destination/'modlist.xml').write_bytes(original.replace(b'pack one', b'elsewhere'))
+        with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest), self.assertRaises(ValueError):
+            sessions.verify(self.root, destination)
+        (destination/'modlist.xml').write_bytes(original)
+        (pack/'overlay/tracks/locations/circuits/g2vr_test/route_0/track.jpk').unlink()
+        with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest), self.assertRaises(ValueError):
+            sessions.verify(self.root, destination)
+        self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+
+    def test_custom_tracks_cannot_shadow_or_escape_stock_content(self):
+        self.custom_pack(track='circuits/test/route_0', name='unprefixed')
+        with self.assertRaises(ValueError):
+            sessions.catalog(self.root)
+        for bad in ('circuits/g2vr_x/../route_0', 'circuits/g2vr_x', 'tracks/g2vr_x/route_0'):
+            (self.custom/'unprefixed/custom-track.json').write_text(json.dumps(dict(schema=1, tracks=[dict(id=bad)])), encoding='utf-8')
+            with self.assertRaises(ValueError):
+                sessions.catalog(self.root)
+        # A stock session never carries an overlay, even if one is forged into session.json.
+        (self.custom/'unprefixed/custom-track.json').unlink()
+        destination = Path(self.temp.name)/'stock'
+        self.prepare(destination)
+        data = json.loads((destination/'session.json').read_text(encoding='utf-8'))
+        data['modList'] = str(destination/'modlist.xml')
+        (destination/'session.json').write_text(json.dumps(data), encoding='utf-8')
+        with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest), self.assertRaises(ValueError):
+            sessions.verify(self.root, destination)
 
     def test_incomplete_content_is_not_advertised(self):
         (self.root/'cars/models/z06/z06_highLOD.pssg').unlink()

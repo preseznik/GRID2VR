@@ -387,6 +387,18 @@ try {
     if(($plan.arguments -join ' ') -cne '-applaunch 44350') { throw 'Normal launch acquired a benchmark route.' }
     $plan=Get-Grid2LaunchPlan -Game 'C:\Fixture Game' -Backend Steam
     if(($plan.arguments -join ' ') -cne '-applaunch 44350 -benchmark example_benchmark.xml') { throw 'Legacy diagnostic route changed.' }
+    # Custom tracks: the staged run-owned ModList goes to GRID 2's -mod, before the session flag.
+    $modRun=Join-Path $fixture 'custom run'; New-Item -ItemType Directory -Path $modRun | Out-Null
+    $modList=Join-Path $modRun 'modlist.xml'; Set-Content -LiteralPath $modList -Value '<ModList />'
+    $custom=[pscustomobject]@{control='human';selection=[pscustomobject]@{mode='practice'};modList=$modList;nativeArguments=@('-benchmarkAttract','GRID2VR.session.xml')}
+    $plan=Get-Grid2LaunchPlan -Game 'C:\Fixture Game' -Backend Steam -SelectedSession $custom
+    if((@($plan.arguments) -join '|') -cne "-applaunch|44350|-mod|`"$modList`"|-benchmarkAttract|GRID2VR.session.xml") { throw "Custom track launch lost its -mod overlay: $(@($plan.arguments) -join '|')" }
+    $plan=Get-Grid2LaunchPlan -Game 'C:\Fixture Game' -Backend Direct -SelectedSession $custom
+    if((@($plan.arguments) -join '|') -cne "-mod|`"$modList`"|-benchmarkAttract|GRID2VR.session.xml") { throw 'Direct custom track launch lost its -mod overlay.' }
+    foreach($bad in @((Join-Path $modRun 'other.xml'),'C:\Fixture Game\modlist.xml')) {
+        $refused=$false; try { Get-Grid2LaunchPlan -Game 'C:\Fixture Game' -Backend Steam -SelectedSession ([pscustomobject]@{control='human';selection=[pscustomobject]@{mode='practice'};modList=$bad}) | Out-Null } catch { $refused=$true }
+        if(!$refused) { throw "Custom track launch accepted an unowned ModList: $bad" }
+    }
 
     # The real deployment gate must not even prepare a flow backup in Normal.
     $flow=Find-TestStatement $diagnostic '$practiceFlow=New-PracticeFlowDeployment'

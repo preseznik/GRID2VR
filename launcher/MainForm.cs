@@ -78,6 +78,7 @@ internal sealed partial class MainForm : LauncherForm
     private readonly Button bindRecenterDevice = Button("Bind controller / wheel…", "RecenterDevice"), clearRecenterDevice = Button("Clear device binding", "ClearRecenterDevice");
     private readonly Label deviceRecenterHint = TextLabel("No controller / wheel binding.");
     private readonly TextBox details = new() { Dock = DockStyle.Fill, ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical };
+    private readonly CustomTrackPanel customTracks;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 2000 };
     private bool loaded, busy, polling, pending, active, headset, rendering, stopped, known;
     private DateTime launchGrace;
@@ -114,7 +115,10 @@ internal sealed partial class MainForm : LauncherForm
         layout.Controls.Add(header); state.Margin = new Padding(0, 8, 0, 16); layout.Controls.Add(state);
         var tabs = new ModernTabs { Name = "LauncherTabs", Dock = DockStyle.Fill };
         layout.Controls.Add(tabs);
-        var selectionColumns = Columns(Page(tabs, "Launcher")); var selection = selectionColumns.First;
+        var launcherPage = Page(tabs, "Launcher");
+        customTracks = new CustomTrackPanel(client.Root);
+        launcherPage.Controls.Add(customTracks);
+        var selectionColumns = Columns(launcherPage); var selection = selectionColumns.First;
         Section(selection, "Event selection");
         launchMode.Items.AddRange(new ContentItem[] { new("Normal", "Normal"), new("Online", "Online"), new("Practice", "Practice"), new("Race", "Race") });
         launchMode.SelectedIndex = 2;
@@ -335,7 +339,7 @@ internal sealed partial class MainForm : LauncherForm
         laps.ValueChanged += (_, _) => UpdateRequestedSession();
         opponents.ValueChanged += (_, _) => UpdateRequestedSession();
         opponentCars.SelectedIndexChanged += (_, _) => UpdateRequestedSession();
-        launchMode.SelectedIndexChanged += (_, _) => { UpdateRequestedSession(); EnableActions(); };
+        launchMode.SelectedIndexChanged += (_, _) => { ApplyCustomTrackVisibility(); UpdateRequestedSession(); EnableActions(); };
 
         desktop.Click += async (_, _) => await Act(() => Launch(false));
         vr.Click += async (_, _) => await Act(() => Launch(true));
@@ -360,6 +364,7 @@ internal sealed partial class MainForm : LauncherForm
         end.Click += async (_, _) => await Send("End", "Ending this session and restoring original files…");
         recover.Click += async (_, _) => await Send("Recover", "Original files restored. User save progress retained.");
         logs.Click += async (_, _) => await Act(() => { Process.Start(new ProcessStartInfo(client.LogsFolder()) { UseShellExecute = true }); return Task.CompletedTask; });
+        customTracks.Changed += (_, _) => { ApplyCustomTrackVisibility(); UpdateRequestedSession(); EnableActions(); };
         timer.Tick += async (_, _) => await RefreshStatus();
         FormClosed += (_, _) => { timer.Stop(); timer.Dispose(); tips.Dispose(); launchProgress?.Dispose(); launchWorker?.Dispose(); launchWorker = null; };
         SizeChanged += (_, _) =>
@@ -376,13 +381,14 @@ internal sealed partial class MainForm : LauncherForm
         };
         Shown += async (_, _) =>
         {
+            if (PreviewMode) return; // Passive screenshot: no update check, catalog, status poll or headset query.
             var updateCheck = updates.Start();
             RestoreWindow();
             profiles.Reload();
             await Act(async () =>
             {
                 var catalog = await client.Catalog();
-                cars = catalog.Cars; FilterCars(); routes = catalog.Tracks;
+                cars = catalog.Cars; FilterCars(); routes = [.. catalog.Tracks.Where(t => !IsCustomTrack(t.Id))];
                 var events = routes.Select(t => t.Id[..t.Id.LastIndexOf('/')]).Distinct()
                     .Select(id => new ContentItem(id, SessionClient.LocationLabel(id))).OrderBy(e => e.Label).ToArray();
                 eventChoice.Items.AddRange(events);
@@ -391,6 +397,7 @@ internal sealed partial class MainForm : LauncherForm
                 loaded = car.SelectedItem != null && track.SelectedItem != null;
                 if (!loaded) throw new IOException("No compatible installed practice content found.");
             });
+            await customTracks.RefreshStatuses();
             await RefreshStatus(); timer.Start();
             await RefreshHeadsetResolution();
             await updateCheck;
@@ -398,6 +405,51 @@ internal sealed partial class MainForm : LauncherForm
         ConfigureTooltips(help, logs);
         UpdateRequestedSession();
         EnableActions();
+    }
+
+    // Converted tracks live in the CUSTOM tracks panel, not in the stock Event list.
+    internal static bool IsCustomTrack(string id) => id.Split('/') is [_, var location, _] && location.StartsWith("g2vr_", StringComparison.Ordinal);
+
+    // CUSTOM tracks replaces the Event/Track choice for Practice and Race (DiRT2VR style).
+    private bool CustomTrackSelected => customTracks.CustomEnabled && ChoiceId(launchMode) is "Practice" or "Race";
+    private void ApplyCustomTrackVisibility()
+    {
+        var normal = ChoiceId(launchMode) is "Normal" or "Online";
+        var stockShown = !customTracks.CustomEnabled && (viewPicker.Advanced || !normal);
+        foreach (var editor in new Control[] { eventChoice, track }) if (editor.Parent is { } row) VerticalStack.SetShown(row, stockShown);
+    }
+
+    // Passive previews (--preview-custom-tracks): real custom-track status and catalog
+    // content, optionally a build in progress. Nothing is launched or written.
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal bool PreviewMode { get; init; }
+    protected override bool ShowWithoutActivation => PreviewMode;
+    internal void SelectSimplePreview() => viewPicker.Advanced = false;
+    internal void SelectPreviewTab(string title)
+    {
+        viewPicker.Advanced = true;
+        var tabs = (TabControl)Controls.Find("LauncherTabs", true).Single();
+        tabs.SelectedTab = tabs.TabPages.Cast<TabPage>().Single(p => p.Text == title);
+    }
+    internal void ShowCustomTrackPreview(CustomTrackStatus status, ContentItem[] cars, ContentItem[] tracks, string stockTrack, bool customEnabled, int? buildPercent = null, string? buildLine = null)
+    {
+        known = true; loaded = true;
+        this.cars = cars; FilterCars(); ApplyRoutes(tracks, stockTrack);
+        customTracks.ApplyPreview(status, customEnabled, buildPercent, buildLine);
+        state.Text = "Ready. Select a car and track, then Launch or Launch VR.";
+        ApplyCustomTrackVisibility(); UpdateRequestedSession(); EnableActions();
+    }
+
+    private void ApplyRoutes(ContentItem[] tracks, string? keep)
+    {
+        routes = [.. tracks.Where(t => !IsCustomTrack(t.Id))];
+        var events = routes.Select(t => t.Id[..t.Id.LastIndexOf('/')]).Distinct()
+            .Select(id => new ContentItem(id, SessionClient.LocationLabel(id))).OrderBy(e => e.Label).ToArray();
+        eventChoice.Items.Clear(); eventChoice.Items.AddRange(events);
+        eventChoice.SelectedItem = events.FirstOrDefault(e => keep?.StartsWith(e.Id + "/", StringComparison.Ordinal) == true) ?? events.FirstOrDefault();
+        track.SelectedItem = track.Items.Cast<ContentItem>().FirstOrDefault(t => t.Id == keep) ?? track.Items.Cast<ContentItem>().FirstOrDefault();
+        loaded = car.SelectedItem != null && track.SelectedItem != null;
+        UpdateRequestedSession();
     }
 
     private void RestoreWindow()
@@ -452,6 +504,8 @@ internal sealed partial class MainForm : LauncherForm
         keepHorizonLevel.Checked = choices.KeepHorizonLevel;
         chaseCamera.LoadChoices(choices);
         forceFeedback.LoadChoices(choices);
+        customTracks.Load(choices.CustomTracks, choices.CustomTrack);
+        ApplyCustomTrackVisibility();
     }
     private void FilterCars()
     {
@@ -474,7 +528,7 @@ internal sealed partial class MainForm : LauncherForm
         var rivals = ChoiceId(opponentCars);
         opponentHint.Text = LauncherPresentation.OpponentHint(vehicle, cars, mode, rivals);
         requestedSession.Text = LauncherPresentation.RequestedSession(
-            vehicle, track.SelectedItem as ContentItem, runtime.SelectedItem as string, recenterKey, recenterModifiers, laps.Value,
+            vehicle, CustomTrackSelected ? new ContentItem(customTracks.Selected.Id, customTracks.SelectedLabel) : track.SelectedItem as ContentItem, runtime.SelectedItem as string, recenterKey, recenterModifiers, laps.Value,
             mode, opponents.Value, rivals) + (!AppPaths.Packaged(client.Root) && previewVrFixes.Checked ? "\nPreview VR fixes enabled" : "");
     }
     private Choices Current() => forceFeedback.ApplyTo(chaseCamera.ApplyTo(new(((ContentItem)car.SelectedItem!).Id, ((ContentItem)track.SelectedItem!).Id, (string)runtime.SelectedItem!, recenterKey, recenterModifiers, (int)laps.Value)
@@ -483,7 +537,8 @@ internal sealed partial class MainForm : LauncherForm
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked, NativeLeftEye = nativeLeftEye.Checked,
         SponsorDepthBias = sponsorDepthBias.Checked,
-        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, HideLensDust = lensDust.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked
+        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, HideLensDust = lensDust.Checked, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked,
+        CustomTracks = customTracks.CustomEnabled, CustomTrack = customTracks.Selected.Id
     }));
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
     private static void SelectChoice(ComboBox box, string id) => box.SelectedItem = box.Items.Cast<ContentItem>().Single(x => x.Id == id);
@@ -708,6 +763,7 @@ internal sealed partial class MainForm : LauncherForm
         launchMode.Enabled = runtime.Enabled = !busy && !active && !pending;
         var normal = ChoiceId(launchMode) is "Normal" or "Online";
         UpdateSimpleContext(normal, ChoiceId(launchMode) == "Race");
+        ApplyCustomTrackVisibility();
         carSearch.Enabled = car.Enabled = track.Enabled = eventChoice.Enabled = !normal && !busy && !active && !pending;
         var pointToPoint = track.SelectedItem is ContentItem route && SessionClient.IsPointToPoint(route.Id);
         laps.Enabled = loaded && idle && !normal && !pointToPoint && !capturingRecenter;
@@ -728,6 +784,9 @@ internal sealed partial class MainForm : LauncherForm
         stop.Enabled = known && active && headset && !stopped && !busy;
         end.Enabled = known && active && pending && !busy;
         refreshHeadset.Enabled = loaded && !active && !pending && !busy && !capturingRecenter && !queryingHeadset;
+        customTracks.SetIdle(loaded && idle && !capturingRecenter);
+        if (CustomTrackSelected && customTracks.LaunchBlockReason() is { Length: > 0 }) desktop.Enabled = vr.Enabled = false;
+        if (customTracks.IsWorking) desktop.Enabled = vr.Enabled = false;
     }
     private async void ShowAbout(string? topic = null)
     {

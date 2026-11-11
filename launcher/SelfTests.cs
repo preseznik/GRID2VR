@@ -367,6 +367,7 @@ internal static class SelfTests
             SelectableStatusTests.Run(root, client);
             VrResolutionTests.Run(client);
             VrLayerTests.Run(root, client);
+            CustomTracksTests.Run(root, fixture, client);
             SaveLauncherPreviews(root, client);
             return 0;
         }

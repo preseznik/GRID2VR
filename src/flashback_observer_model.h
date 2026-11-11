@@ -140,6 +140,17 @@ private:
     bool cleared_{};
 };
 static_assert(benchmarkModeWordRva==blockFlagRva);
+// Plain -benchmark (mode 1) is GRID2VR's unattended AI lap (custom-track probes);
+// the local-race readiness above is for -benchmarkAttract with a human controller
+// and never holds there. The AI race has started once the local car's own
+// FlashbackMonitor exists with an allowance, race state 0, the world running and
+// no replay playing: observed for 7,000 samples from the start of the Nordschleife
+// AI benchmark run 20261111-160659-925 (mode 5, allowance 5/5, blocked 1), and the
+// world stopped running exactly at its pause menu. Read-only.
+inline bool BenchmarkAiRacing(const Sample& s) {
+    return s.blocked==static_cast<int32_t>(plainBenchmark) && s.found==Found::Monitor && s.ownerIsCar==1 && s.maximum>0 &&
+        s.raceState==0 && s.worldRunning==1 && s.replayActive==0;
+}
 // The one game write. Readiness checks accept 0 only for the registered image, so
 // register before clearing and retire the registration once the launch value is
 // back (or the clear did not happen).

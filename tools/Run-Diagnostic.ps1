@@ -301,7 +301,9 @@ $expected=Get-Grid2ExecutableHash (Join-Path $game 'grid2_avx.exe')
 foreach ($name in $allowed + 'dxgi.dll') { if (Test-Path -LiteralPath (Join-Path $game $name)) { throw "Existing $name will not be overwritten." } }
 $proxy=Get-Grid2Proxy $root
 if($DiagnosticProxy) {
-    if(!$FlickerDiagnostic -and !$ChaseCameraObserver -and !$ChaseFreeLook -and $CockpitTextures -eq 'Off') { throw 'A diagnostic proxy override requires FlickerDiagnostic, ChaseCameraObserver, ChaseFreeLook or CockpitTextures.' }
+    # Also the bounded unattended background-play probe (custom-track AI laps).
+    $unattendedBackgroundProbe=$RuntimeSession -and $PlayerControlOnly -and !$UntilExit -and $BackgroundPlay -eq 'Suppress' -and $PlayerControlProbe -eq 'Off'
+    if(!$FlickerDiagnostic -and !$ChaseCameraObserver -and !$ChaseFreeLook -and $CockpitTextures -eq 'Off' -and !$unattendedBackgroundProbe) { throw 'A diagnostic proxy override requires FlickerDiagnostic, ChaseCameraObserver, ChaseFreeLook, CockpitTextures or an unattended background-play probe.' }
     $proxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path
 }
 if($FlickerDiagnostic -and (!$RuntimeSession -or !$ReplayStereo)) { throw 'Flicker capture requires the stereo runtime.' }

@@ -44,6 +44,12 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public int ForceFeedbackStrength { get; init; } = 100;
     public int ForceFeedbackWeight { get; init; } = 100;
     public int ForceFeedbackEffects { get; init; } = 100;
+    // CUSTOM tracks (Launcher tab): Practice and Race use CustomTrack instead of Track.
+    public bool CustomTracks { get; init; }
+    public string CustomTrack { get; init; } = "circuits/g2vr_nordschleife/route_0";
+    // The track a Practice/Race session actually loads.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SessionTrack => CustomTracks && LaunchMode is "Practice" or "Race" ? CustomTrack : Track;
 }
 internal sealed record ContentItem(string Id, string Label, string? ClassId = null, string? ClassName = null, bool CockpitAvailable = true, bool Dlc = false)
 {
@@ -83,6 +89,7 @@ internal sealed class SessionClient(string root)
             !Regex.IsMatch(value.Track, @"\A(circuits|cities|p2p|australia|europe)/[a-z0-9_]+/route_[0-9]+\z") ||
             value.Runtime is not ("VDXR" or "SteamVR" or "Default")) throw new ArgumentException("Invalid session selection.");
         if (value.LaunchMode is not ("Practice" or "Race" or "Normal" or "Online")) throw new ArgumentException("Choose Normal, Online, Practice or Race.");
+        if (!Regex.IsMatch(value.CustomTrack, @"\A(circuits|cities|p2p)/g2vr_[a-z0-9_]+/route_[0-9]+\z")) throw new ArgumentException("Invalid custom track selection.");
         if (value.Opponents is < 1 or > 7) throw new ArgumentException("Choose between 1 and 7 opponents.");
         if (value.OpponentCars is not ("same" or "mixed" or "class")) throw new ArgumentException("Choose Same car, Mixed or Same class.");
         if (value.CockpitDriver is not ("HeadOnly" or "HideDriver")) throw new ArgumentException("Choose a cockpit driver visibility option.");
@@ -214,12 +221,12 @@ internal sealed class SessionClient(string root)
     public ProcessStartInfo LaunchCommand(Choices value, bool vr, IReadOnlyList<VrLayerBypass>? layers = null)
     {
         Validate(value);
-        var command = Command("Start-UserSession.ps1", "-Mode", vr ? "VR" : "Desktop", "-XrRuntime", value.Runtime, "-Car", value.Car, "-Track", value.Track,
+        var command = Command("Start-UserSession.ps1", "-Mode", vr ? "VR" : "Desktop", "-XrRuntime", value.Runtime, "-Car", value.Car, "-Track", value.SessionTrack,
             "-LaunchMode", value.LaunchMode, "-Opponents", value.Opponents.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-OpponentCars", value.OpponentCars,
             "-RecenterKey", value.RecenterKey.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-RecenterModifiers", value.RecenterModifiers.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "-Laps", EffectiveLaps(value.Track, value.Laps).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "-Laps", EffectiveLaps(value.SessionTrack, value.Laps).ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-RenderScale", (vr ? value.Graphics.RenderScale : value.Graphics.EffectiveDesktopRenderScale).ToString(System.Globalization.CultureInfo.InvariantCulture),
             "-DesktopVSync", value.Graphics.DesktopVSync ? "1" : "0", "-DesktopMsaa", value.Graphics.DesktopMsaa,
             "-VrMsaa", value.Graphics.VrMsaa,
@@ -371,8 +378,14 @@ internal sealed class SessionClient(string root)
     internal static string CarLabel(string id) => CarNames.Label(id);
     internal static bool IsPointToPoint(string track) => track.StartsWith("p2p/", StringComparison.Ordinal);
     internal static int EffectiveLaps(string track, int laps) => IsPointToPoint(track) ? 1 : laps;
-    internal static string LocationLabel(string id) => System.Globalization.CultureInfo.InvariantCulture.TextInfo
-        .ToTitleCase(id[(id.LastIndexOf('/') + 1)..].Replace('_', ' '));
+    internal static string LocationLabel(string id)
+    {
+        var name = id[(id.LastIndexOf('/') + 1)..];
+        // Converted tracks use g2vr_ locations (tools/session_config.py CUSTOM_PREFIX).
+        var custom = name.StartsWith("g2vr_", StringComparison.Ordinal) && name.Length > 5;
+        var label = System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase((custom ? name[5..] : name).Replace('_', ' '));
+        return custom ? label + " (custom)" : label;
+    }
     internal static string TrackLabel(string id)
     {
         var separator = id.LastIndexOf('/');

@@ -21,6 +21,14 @@ K4os.Compression.LZ4 1.3.8: Copyright 2017 Milosz Krajewski.
   MIT (K4os-LZ4.txt).
 MiscUtil: original notice in MiscUtil.txt.
 
+GRID2VR.exe also contains the GRID2VR track converter (custom tracks), built
+from EgoEngineLibrary source revision f3fe9ee0f6e8379c64bc4a29e1d1b586bba5d1c1
+(MIT, EGO-MIT.txt) with one local fix (tools/ego-sheet-materials.patch). It
+uses the same dependency versions listed above, plus
+CommunityToolkit.Diagnostics 8.4.2: MIT; original notices are under
+converter/communitytoolkit.diagnostics. Converted tracks are built on the
+player's PC from their own copy of the source game; no track content is included.
+
 Original package metadata is included under converter/ for attribution and
 source repository identification. Upstream license texts for BCnEncoder,
 ZstdSharp and SharpGLTF were obtained from the commits recorded in that

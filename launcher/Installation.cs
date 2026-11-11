@@ -42,7 +42,9 @@ internal static class Installation
         SessionRecovery.TryClearUnstarted(root);
         RequireIdle(root);
     }
-    internal static string? Discover()
+    internal static string? Discover() => SteamApp("44350").FirstOrDefault(game=>File.Exists(Path.Combine(game,"grid2_avx.exe")));
+    // Install folders of a Steam app in every library (bounded manifests, plain folder names).
+    internal static IEnumerable<string> SteamApp(string appId)
     {
         var steam=ProfileService.SteamRoot(); var libraries=new HashSet<string>(StringComparer.OrdinalIgnoreCase){steam};
         var vdf=Path.Combine(steam,"steamapps","libraryfolders.vdf");
@@ -50,14 +52,12 @@ internal static class Installation
             foreach(Match m in Regex.Matches(File.ReadAllText(vdf),"\"path\"\\s*\"([^\"]+)\"")) libraries.Add(m.Groups[1].Value.Replace("\\\\","\\"));
         foreach(var library in libraries)
         {
-            var manifest=Path.Combine(library,"steamapps","appmanifest_44350.acf");
+            var manifest=Path.Combine(library,"steamapps","appmanifest_"+appId+".acf");
             if(!File.Exists(manifest) || new FileInfo(manifest).Length>65536)continue;
             var match=Regex.Match(File.ReadAllText(manifest),"\"installdir\"\\s*\"([^\"]+)\"");
             if(!match.Success || Path.GetFileName(match.Groups[1].Value)!=match.Groups[1].Value)continue;
-            var game=Path.Combine(library,"steamapps","common",match.Groups[1].Value);
-            if(File.Exists(Path.Combine(game,"grid2_avx.exe")))return game;
+            yield return Path.Combine(library,"steamapps","common",match.Groups[1].Value);
         }
-        return null;
     }
     internal static async Task Setup(string root, IProgress<PreparationProgress>? progress = null)
     {

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- A library inside the launcher (GRID2VR.exe runs it in a child process, as DiRT2VR does);
+         the standalone diagnostic exe: dotnet build -p:TrackConverterCli=true -o build/track-converter -->
+    <OutputType>Library</OutputType>
+    <OutputType Condition="'$(TrackConverterCli)' == 'true'">Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>GRID2VR.TrackConverter</AssemblyName>
+    <RootNamespace>GRID2VR.Tracks</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../GameExecutable.cs" Link="GameExecutable.cs" />
+    <EmbeddedResource Include="nordschleife-sources.json" LogicalName="GRID2VR.Tracks.nordschleife-sources.json" />
+    <ProjectReference Include="../../.deps/Ego-Engine-Modding/src/EgoEngineLibrary/EgoEngineLibrary.csproj" />
+  </ItemGroup>
+</Project>

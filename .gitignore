@@ -4,6 +4,8 @@
 __pycache__/
 /launcher/bin/
 /launcher/obj/
+/tools/track-converter/bin/
+/tools/track-converter/obj/
 
 # Keep internal documentation local. Public Markdown is explicitly allowed.
 /docs/

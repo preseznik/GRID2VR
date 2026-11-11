@@ -69,6 +69,8 @@ internal class VerticalStack : Panel
         }
         else control.Visible = shown;
     }
+    // Whether SetShown left a row shown (independent of the form being visible).
+    internal static bool IsShown(Control control) => control.Parent is not VerticalStack parent || !parent.excluded.Contains(control);
     private bool arranging;
     public VerticalStack() { Dock = DockStyle.Top; Margin = Padding.Empty; TabStop = false; }
     protected override void OnControlAdded(ControlEventArgs e)

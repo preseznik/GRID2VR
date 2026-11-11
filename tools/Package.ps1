@@ -49,6 +49,8 @@ $nativeArguments=@('--native',[IO.Path]::GetFullPath($NativeBinary))
 $packArguments+=$nativeArguments+@('--native-sha256',$NativeSha256.ToLowerInvariant())
 & $python @packArguments
 if($LASTEXITCODE) { throw 'The matching cockpit texture ZIP is required before building a release.' }
+# The launcher contains the track converter, built from the pinned EGO source.
+& (Join-Path $PSScriptRoot 'Bootstrap-Ego.ps1')
 & dotnet publish (Join-Path $root 'launcher/GRID2VR.csproj') -c Release -r win-x64 --self-contained false -o $launcherOutput --nologo -p:PublishSingleFile=true -p:PublishTrimmed=false -p:RuntimeFrameworkVersion=10.0.11 -p:AppHostDotNetSearch=AppRelative -p:AppHostRelativeDotNet=GRID2VR/payload/dotnet -p:NuGetAudit=false "-p:Version=$Version" "-p:ReleaseChannel=$Channel" "-p:BuildUtc=$built" "-p:BuildRevision=$buildRevision"
 if($LASTEXITCODE) { throw 'Private-runtime launcher publish failed.' }
 if([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $launcherOutput 'GRID2VR.exe')).ProductVersion.Split('+')[0] -ne $Version) { throw 'Built launcher version differs from the release download URL.' }

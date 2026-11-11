@@ -58,6 +58,9 @@ assert re.search(r'resetEvent=15,eventSlotsOffset=0x1adc,delegateBytes=12', head
 # The block flag is the benchmark settings object's mode word: parser -benchmark 1 / -benchmarkAttract 2.
 assert re.search(r'benchmarkSettingsRva=0xe590f8;', header) and re.search(r'benchmarkModeOffset=0x84,benchmarkAttract=2;', header)
 assert constants['benchmarkSettingsRva'] + 0x84 == constants['blockFlagRva']
+# Plain -benchmark (AI-lap background-play readiness) is the parser's guarded mode-1 store.
+assert re.search(r'plainBenchmark=1;', header)
+assert data[offset(0x4ee7a6):offset(0x4ee7a6) + 10] == bytes([0xc7, 0x86, 0x84, 0, 0, 0, 1, 0, 0, 0])
 # The flag lives in .data, outside .text and every integrity-hashed code range.
 data_rva = next(address for name, _, address, _, _ in sections if name.startswith(b'.data'))
 assert data_rva <= constants['blockFlagRva'] < data_rva + 0x1436f0

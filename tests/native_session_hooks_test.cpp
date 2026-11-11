@@ -6,7 +6,7 @@
 #include <string>
 
 namespace {
-bool runtimeSession{},runtimeStopped{},nativeHooksInstalled{},nativeLaunch{},localRaceReady{},soloReady{},exitReady{};
+bool runtimeSession{},runtimeStopped{},nativeHooksInstalled{},nativeLaunch{},localRaceReady{},soloReady{},exitReady{},aiBenchmarkReady{};
 unsigned exitCalls{};
 uintptr_t gameBase=0x400000;
 uint64_t f=3000;
@@ -15,6 +15,7 @@ std::map<uintptr_t,uintptr_t> memory;
 std::string installed;
 bool EnsureExitHandler() { ++exitCalls;return exitReady; }
 bool NormalSoloRaceReady(uintptr_t) { return soloReady; }
+template<class Reader> bool BenchmarkAiRaceReady(uintptr_t,Reader) { return aiBenchmarkReady; }
 bool ReadMemory(const void* at,void* value,size_t size) {
     const auto found=memory.find(reinterpret_cast<uintptr_t>(at));
     if(size!=sizeof(uintptr_t) || found==memory.end())return false;
@@ -33,7 +34,7 @@ void Tick() {
 }
 void Reset() {
     runtimeSession=true;runtimeStopped=false;nativeHooksInstalled=false;
-    nativeLaunch=false;localRaceReady=false;soloReady=false;exitReady=true;
+    nativeLaunch=false;localRaceReady=false;soloReady=false;exitReady=true;aiBenchmarkReady=false;
     exitCalls=0;installed.clear();memory.clear();
 }
 void Replay(unsigned cars=1) {
@@ -68,6 +69,18 @@ int main() {
     if(!Check(!exitCalls && installed.empty(),"non-runtime session is untouched"))return 9;
     Reset();runtimeStopped=true;soloReady=true;Tick();
     if(!Check(!exitCalls && installed.empty(),"stopped session cannot reinstall"))return 10;
+    // Plain -benchmark AI lap: background play only, never for native launches,
+    // never without exit cleanup, and the human routes keep precedence.
+    Reset();aiBenchmarkReady=true;Tick();
+    if(!Check(exitCalls==1 && installed=="b" && nativeHooksInstalled,"AI benchmark installs background play only"))return 11;
+    Tick();
+    if(!Check(installed=="b","AI benchmark installs once"))return 12;
+    Reset();aiBenchmarkReady=true;exitReady=false;Tick();
+    if(!Check(installed.empty() && !nativeHooksInstalled,"AI benchmark requires exit cleanup"))return 13;
+    Reset();aiBenchmarkReady=true;nativeLaunch=true;Tick();
+    if(!Check(installed.empty() && !nativeHooksInstalled,"native launch never uses AI benchmark readiness"))return 14;
+    Reset();aiBenchmarkReady=true;soloReady=true;Tick();
+    if(!Check(installed=="bca","human Practice readiness keeps precedence"))return 15;
     std::puts("Actual desktop/native startup gate requires exit cleanup and preserves native readiness routes.");
     return 0;
 }

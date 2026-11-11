@@ -129,7 +129,10 @@ Assert-Grid2LaunchCareer $launchBackend $CareerProfile
 $runtime=if($Mode -ne 'Desktop'){Get-Grid2VrRuntimeManifest $XrRuntime}else{$null}
 $proxy=Get-Grid2Proxy $root
 if($DiagnosticProxy) {
-    if(!$FlickerDiagnostic -and !$ChaseCameraObserver -and !$ChaseFreeLook -and $CockpitTextures -eq 'Off') { throw 'A diagnostic proxy override requires FlickerDiagnostic, ChaseCameraObserver, ChaseFreeLook or CockpitTextures.' }
+    # Also the bounded unattended background-play probe (custom-track AI laps): no
+    # user session, no rendering hooks, owned-process recovery at the timeout.
+    $unattendedBackgroundProbe=$Mode -in @('Desktop','Preflight') -and $RuntimeSession -and $PlayerControlOnly -and !$UntilExit -and $BackgroundPlay -eq 'Suppress' -and $PlayerControlProbe -eq 'Off'
+    if(!$FlickerDiagnostic -and !$ChaseCameraObserver -and !$ChaseFreeLook -and $CockpitTextures -eq 'Off' -and !$unattendedBackgroundProbe) { throw 'A diagnostic proxy override requires FlickerDiagnostic, ChaseCameraObserver, ChaseFreeLook, CockpitTextures or an unattended background-play probe.' }
     $proxy=(Resolve-Path -LiteralPath $DiagnosticProxy).Path
 }
 if($FlickerDiagnostic -and (!$RuntimeSession -or $PlayerControlOnly)) { throw 'Flicker capture requires the stereo runtime.' }
@@ -432,7 +435,7 @@ try {
     $parameters.ChaseStickSensitivity=$ChaseStickSensitivity; $parameters.ChaseInvertVertical=$ChaseInvertVertical; $parameters.ChaseHorizontalOnly=$ChaseHorizontalOnly
     $parameters.CockpitTextures=$CockpitTextures
     # The non-rendering desktop branch also needs the explicitly selected DLL.
-    if($ChaseCameraObserver -or $ChaseFreeLook -or $CockpitTextures -ne 'Off') { $parameters.DiagnosticProxy=$DiagnosticProxy }
+    if($ChaseCameraObserver -or $ChaseFreeLook -or $CockpitTextures -ne 'Off' -or ($DiagnosticProxy -and $unattendedBackgroundProbe)) { $parameters.DiagnosticProxy=$DiagnosticProxy }
     & (Join-Path $PSScriptRoot 'Run-Diagnostic.ps1') @parameters | ForEach-Object {
         $output.Add($_)
         if ($UntilExit -and $_ -is [string] -and $_ -like 'Diagnostic evidence: *') {

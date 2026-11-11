@@ -21,6 +21,8 @@ inline constexpr uintptr_t modeIndexRva=0xdd2198,blockFlagRva=0xe5917c;
 // .data is outside every decoded integrity range.
 inline constexpr uintptr_t benchmarkSettingsRva=0xe590f8;
 inline constexpr uint32_t benchmarkModeOffset=0x84,benchmarkAttract=2;
+// -benchmark: the parser's mode-1 store at 0x4ee7a6 is pinned in codeGuards below.
+inline constexpr uint32_t plainBenchmark=1;
 static_assert(blockFlagRva==benchmarkSettingsRva+benchmarkModeOffset);
 // Attach registers resetCallback (remaining=maximum, used=0) for event 15 on the
 // dispatcher at [[context+4]+dispatcherIndex]; slots are {begin,end} vectors of

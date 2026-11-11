@@ -133,7 +133,7 @@ def stage(a):
     copy(ROOT/'.deps/OpenXR-SDK/LICENSES/Apache-2.0.txt',mod/'licenses/Apache-2.0.txt')
     copy(ROOT.parent/'DiRT2VR/licenses/MiscUtil.txt',mod/'licenses/MiscUtil.txt')
     # Keep the original NuGet metadata/notices with the unchanged converter dependencies.
-    packages={'bcnencoder.net':'2.2.1','zstdsharp.port':'0.7.2','sharpgltf.core':'1.0.6','sharpgltf.runtime':'1.0.6','sharpgltf.toolkit':'1.0.6','communitytoolkit.highperformance':'8.4.0','system.io.hashing':'10.0.11','system.io.packaging':'10.0.11','sixlabors.imagesharp':'2.1.13','k4os.compression.lz4':'1.3.8'}
+    packages={'bcnencoder.net':'2.2.1','zstdsharp.port':'0.7.2','sharpgltf.core':'1.0.6','sharpgltf.runtime':'1.0.6','sharpgltf.toolkit':'1.0.6','communitytoolkit.highperformance':'8.4.0','communitytoolkit.diagnostics':'8.4.2','system.io.hashing':'10.0.11','system.io.packaging':'10.0.11','sixlabors.imagesharp':'2.1.13','k4os.compression.lz4':'1.3.8'}
     for name,version in packages.items():
         folder=Path.home()/'.nuget/packages'/name/version;target=mod/'licenses/converter'/name
         copy(folder/(name+'.nuspec'),target/(name+'.nuspec'))

@@ -34,6 +34,7 @@
 #include "chase_observer.h"
 #include "chase_camera.h"
 #include "solo_race.h"
+#include "benchmark_ai_race.h"
 #include "guarded_hooks.h"
 #include "instance_capacity.h"
 #include "headset_visibility_candidate.h"
@@ -815,6 +816,11 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
                 // Normal entry uses the game's own local controller unchanged.
                 if(!nativeLaunch && replayReady) playercontrol::Install(gameBase,output);
                 nativeHooksInstalled=true;Log("session native hooks reached %s readiness frame=%llu",localRaceReady?"local_race":replayReady?"solo_replay":"solo_race",f+1);
+            } else if(!nativeLaunch && BenchmarkAiRaceReady(gameBase,[](uintptr_t at,void* out,size_t bytes){return ReadMemory(reinterpret_cast<void*>(at),out,bytes);})) {
+                // Unattended -benchmark AI lap: no local race exists, so only the
+                // focus-pause suppression is installed, at the race start.
+                backgroundplay::Install(gameBase,output);
+                nativeHooksInstalled=true;Log("session native hooks reached ai_benchmark readiness frame=%llu (background play only)",f+1);
             }
         }
         if (std::filesystem::remove(output/L"capture.request",error)) {

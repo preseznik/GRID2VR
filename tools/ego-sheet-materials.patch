@@ -1,0 +1,42 @@
+diff --git a/src/EgoEngineLibrary/Formats/TrackQuadTree/QuadTreeMeshData.cs b/src/EgoEngineLibrary/Formats/TrackQuadTree/QuadTreeMeshData.cs
+index 28a7e0e..6299409 100644
+--- a/src/EgoEngineLibrary/Formats/TrackQuadTree/QuadTreeMeshData.cs
++++ b/src/EgoEngineLibrary/Formats/TrackQuadTree/QuadTreeMeshData.cs
+@@ -71,8 +71,26 @@ public class QuadTreeMeshData
+             }
+         }
+ 
++        // The cache optimizer reorders triangles; keep each triangle's sheet info with it.
++        var sheets = new Dictionary<QuadTreeTriangle, int>(_triangles.Length);
++        for (var i = 0; i < _triangles.Length; ++i)
++        {
++            sheets[SheetKey(_triangles[i])] = _sheetInfo[i];
++        }
++
+         MeshOpt.OptimizeVertexCacheFifo(_triangles, _triangles, _vertices.Length, _vertices.Length, smallestVertexIndex);
++        for (var i = 0; i < _triangles.Length; ++i)
++        {
++            _sheetInfo[i] = sheets[SheetKey(_triangles[i])];
++        }
++
+         MeshOpt.OptimizeVertexFetch(_vertices, _triangles, _vertices);
++
++        static QuadTreeTriangle SheetKey(QuadTreeTriangle triangle)
++        {
++            triangle.EnsureFirstIndexLowest();
++            return triangle;
++        }
+     }
+ 
+     public bool PatchUp()
+@@ -194,8 +212,8 @@ public class QuadTreeMeshData
+             var p0 = data._vertices[tri.A];
+             var p1 = data._vertices[tri.B];
+             var p2 = data._vertices[tri.C];
+-            var matIndex = data._materials[tri.MaterialIndex];
+-            return new QuadTreeDataTriangle(p0, p1, p2, matIndex);
++            var material = data.TypeInfo.GetMaterial(data._materials[tri.MaterialIndex], data._sheetInfo[index]);
++            return new QuadTreeDataTriangle(p0, p1, p2, material);
+         }
+     }
+ }

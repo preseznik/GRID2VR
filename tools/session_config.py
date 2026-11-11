@@ -74,6 +74,75 @@ def installed_dlc(root):
             for kind in ('cars', 'tracks')}
 
 
+CUSTOM_MANIFEST = 'custom-track.json'
+CUSTOM_PREFIX = 'g2vr_'
+MODLIST_FILENAME = 'modlist.xml'
+
+
+def data_root():
+    """GRID2VR's per-user data folder, as tools/Paths.ps1 Get-Grid2DataRoot."""
+    package = Path(__file__).resolve().parent.parent
+    if not (package/'package.json').is_file():
+        return package/'artifacts'
+    import os
+    game = str(package.parent).upper()
+    base = Path(os.environ.get('GRID2VR_USER_BASE') or Path(os.environ['LOCALAPPDATA'])/'GRID2VR')
+    if not base.is_absolute():
+        raise ValueError('User-data location must be absolute')
+    return base/hashlib.sha256(game.encode('utf-8')).hexdigest().upper()[:24]
+
+
+def custom_tracks_root():
+    return data_root()/'custom-tracks'
+
+
+def custom_tracks():
+    """Converted tracks installed as GRID 2 -mod overlays (never inside the game).
+
+    A pack is a folder with custom-track.json and its overlay folder. Location names
+    must start with g2vr_ so an overlay can never replace stock content.
+    """
+    root = custom_tracks_root()
+    plain_path(root)
+    if not root.is_dir():
+        return []
+    tracks = []
+    for pack in sorted(root.iterdir()):
+        manifest = pack/CUSTOM_MANIFEST
+        plain_path(manifest)
+        if not pack.is_dir() or not manifest.is_file() or manifest.stat().st_size > 65536:
+            continue
+        data = json.loads(manifest.read_text(encoding='utf-8'))
+        if not isinstance(data, dict) or data.get('schema') != 1 or not isinstance(data.get('tracks'), list):
+            raise ValueError(f'Invalid custom track manifest: {manifest}')
+        overlay = plain_path(pack/'overlay')
+        if not overlay.is_dir():
+            continue
+        for entry in data['tracks']:
+            parts = str(entry.get('id', '')).split('/')
+            if (len(parts) != 3 or not all(TOKEN.fullmatch(p) for p in parts) or parts[0] not in ('circuits', 'cities', 'p2p')
+                    or not parts[1].startswith(CUSTOM_PREFIX) or not re.fullmatch(r'route_\d+', parts[2])):
+                raise ValueError(f'Invalid custom track id in {manifest}')
+            route = overlay/'tracks/locations'/parts[0]/parts[1]/parts[2]
+            if not all(regular(route/name) for name in ('track.jpk', 'route_objects.pssg', 'progress_track.xml')):
+                continue
+            label = entry.get('label')
+            if any(t['id'] == '/'.join(parts) for t in tracks):
+                raise ValueError(f'Two installed custom tracks use {"/".join(parts)}; remove one of them')
+            tracks.append(dict(id='/'.join(parts), country=parts[0], name=parts[1], route=parts[2], custom=True,
+                               label=label if isinstance(label, str) and 0 < len(label) <= 80 else None,
+                               overlay=str(overlay), pack=str(pack)))
+    return tracks
+
+
+def modlist(overlay):
+    """GRID 2's documented -mod configuration for one overlay folder."""
+    root = ET.Element('ModList')
+    ET.SubElement(root, 'Mod', Path=str(overlay))
+    ET.indent(root, space='  ')
+    return ET.tostring(root, encoding='utf-8', xml_declaration=True)+b'\n'
+
+
 def catalog(game_root):
     root = plain_path(game_root)
     if not regular(root/'grid2_avx.exe'):
@@ -122,6 +191,11 @@ def catalog(game_root):
         tracks.append(dict(id=track['id'], country=category, name=location, route=route,
                            dlc=True, archives=track['archives']))
         track_ids.add(track['id'])
+    # Stock content wins any identifier clash; a converted track never shadows it.
+    for track in custom_tracks():
+        if track['id'] not in track_ids:
+            tracks.append(track)
+            track_ids.add(track['id'])
     return dict(schema=1, gameRoot=str(root), cars=cars, tracks=tracks,
                 limits='Loose content and fingerprint-verified installed DLC. Game ownership checks still apply. DLC cockpit cameras require the guarded native loader; presence does not establish headset visual acceptance.')
 
@@ -174,6 +248,25 @@ def configuration(installed, car, track, livery='user', mode='benchmark', lighti
     return ET.tostring(config, encoding='utf-8', xml_declaration=True)+b'\n'
 
 
+def custom_route(installed, track):
+    return next((v for v in installed['tracks'] if v['id'] == track and v.get('custom')), None)
+
+
+def verify_custom(installed, data, folder):
+    """A prepared custom-track session must still match its installed overlay."""
+    custom = custom_route(installed, data['selection'].get('track'))
+    if custom is None:
+        if 'modList' in data or 'customTrack' in data:
+            raise ValueError('Prepared session names an overlay for a stock track')
+        return
+    path = folder/MODLIST_FILENAME
+    expected = modlist(custom['overlay'])
+    if (data.get('modList') != str(path) or not regular(path) or path.stat().st_size > 16384 or path.read_bytes() != expected
+            or data.get('customTrack') != dict(id=custom['id'], overlay=custom['overlay'], pack=custom['pack'],
+                                               modListSha256=hashlib.sha256(expected).hexdigest())):
+        raise ValueError('Custom track overlay changed; regenerate the session')
+
+
 def launch_flag(mode):
     return '-benchmarkAttract' if mode in ('attract', 'practice', 'race') else '-benchmark'
 
@@ -222,9 +315,19 @@ def prepare(game_root, output, practice_bundle=None, **selection):
                   limits='Generated configuration only. Selected-content loading and player-control handoff require runtime evidence.')
     if practice_bundle is not None:
         result['practiceBundle'] = str(plain_path(practice_bundle))
+    custom = custom_route(installed, selection['track'])
+    mods = None
+    if custom is not None:
+        # Converted tracks load through GRID 2's own -mod overlay; the session owns its ModList.
+        mods = modlist(custom['overlay'])
+        result['modList'] = str(destination/MODLIST_FILENAME)
+        result['customTrack'] = dict(id=custom['id'], overlay=custom['overlay'], pack=custom['pack'],
+                                     modListSha256=hashlib.sha256(mods).hexdigest())
     # Own a new directory. Never overwrite an existing prepared session or use
     # filenames/paths supplied by a catalog as output paths.
     destination.mkdir(parents=True, exist_ok=False)
+    if mods is not None:
+        (destination/MODLIST_FILENAME).write_bytes(mods)
     (destination/'session.xml').write_bytes(payload)
     (destination/'session.json').write_text(json.dumps(result, indent=2)+'\n', encoding='utf-8')
     return result
@@ -271,6 +374,7 @@ def verify(game_root, session):
         raise ValueError('Prepared session was changed; regenerate it instead')
     if 'nativeArguments' in data and data['nativeArguments'] != [flag, SESSION_FILENAME]:
         raise ValueError('Prepared native launch arguments were changed; regenerate the session')
+    verify_custom(installed, data, folder)
     return data
 
 
@@ -316,6 +420,16 @@ def stage(game_root, session, run_directory):
         result['practiceFlow'] = str(flow_output)
         result['practiceFlowSha256'] = practice['modifiedFlowSha256']
         result['postPracticeMenus'] = practice.get('resultsMenus', False)
+    if 'modList' in data:
+        # Run-owned ModList copy; the launch passes its absolute path after -mod.
+        mods = plain_path(data['modList']).read_bytes()
+        if hashlib.sha256(mods).hexdigest() != data['customTrack']['modListSha256']:
+            raise ValueError('Custom track ModList changed during staging')
+        mod_output = plain_path(run/MODLIST_FILENAME)
+        with mod_output.open('xb') as stream:
+            stream.write(mods)
+        result['modList'] = str(mod_output)
+        result['customTrack'] = data['customTrack']
     return result
 
 

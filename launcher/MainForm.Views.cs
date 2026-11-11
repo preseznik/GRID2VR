@@ -22,6 +22,7 @@ internal sealed partial class MainForm
         var columns = new QuickStartColumns(); root.Controls.Add(columns); var play = columns.First; var performance = columns.Second;
         Section(play, "Play");
         MoveRow(runtime, play); MoveRow(launchMode, play);
+        Move(customTracks, play); simpleEventRows.Add(customTracks);
         foreach (var editor in new Control[] { eventChoice, track, carSearch, car }) simpleEventRows.Add(MoveRow(editor, play));
         Move(carCount, play); simpleEventRows.Add(carCount);
         foreach (var editor in new Control[] { opponents, opponentCars, laps })

@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "track": "ks_nordschleife",
+  "layout": "nordschleife",
+  "note": "Assetto Corsa files the converter reads, pinned to the version the GRID2VR conversion was validated on (same hashes as DiRT2VR tools/nordschleife-converter/nordschleife-sources.json at a617f7a). Paths are relative to content/tracks/ks_nordschleife.",
+  "files": [
+    {
+      "Path": "10.kn5",
+      "Sha256": "E42224C5F59F6D76BE2D867E41B2118DB32DFFD1CB5C77793F9D16CEC037D3DE"
+    },
+    {
+      "Path": "118.kn5",
+      "Sha256": "C1C7CDA5A8AFB45786101FCF3DFF7AFEBB7167C7154B0C83D7EEE1814963832E"
+    },
+    {
+      "Path": "119.kn5",
+      "Sha256": "85A4E3DD42ADC137FE3B7380E79C77CEE8AFDAAF5655237C3D5E732F6471F11E"
+    },
+    {
+      "Path": "120.kn5",
+      "Sha256": "062D51616BB7F95018A1C9E8ADFCF1B92E8E0E282096C561591EC7FBC621582E"
+    },
+    {
+      "Path": "14.kn5",
+      "Sha256": "32C3B5A37D81D87EA41F83975A0A152FFBC8EF25A86314152EBEDA51B8D9E503"
+    },
+    {
+      "Path": "15.kn5",
+      "Sha256": "CF9B97C038D36BBFDC4301081C6EF9CAF76B84C6D42A45A5DE5BE7642049E132"
+    },
+    {
+      "Path": "17.kn5",
+      "Sha256": "7F192DCE1847219C2129E1DFED9E7E5B3B856BD1C92CF78D5ECA79E304C996F9"
+    },
+    {
+      "Path": "18.kn5",
+      "Sha256": "2EF60517BC777D3D78AE1E2B58196674CCCA11ABA7471C6B0C94DA84FD04A80E"
+    },
+    {
+      "Path": "22.kn5",
+      "Sha256": "8A131606A86320BE76DBCAA8986E0BD811CA6936BCD4A03A98BD94C6138D6D85"
+    },
+    {
+      "Path": "25.kn5",
+      "Sha256": "3688BCCAD5E6397170A66B56537709AAF953CF2892E18B2B7B2C858B2ADAA328"
+    },
+    {
+      "Path": "26.kn5",
+      "Sha256": "060B59147CC9E3A0AF49B80EBD3FEEB9C9C421F7403BCA165798A4BFB97B2D4E"
+    },
+    {
+      "Path": "3.kn5",
+      "Sha256": "E556AFFD4CCA01F18AA45E0C49AE592370BE23DDF9A0928F2D359A43C70EB727"
+    },
+    {
+      "Path": "4b.kn5",
+      "Sha256": "DC8E2430FA7BFF4F0FDFB3B0AAE3D71DF12E1C2AACDFBCD195096D857A40DF40"
+    },
+    {
+      "Path": "ks_nordschleife.kn5",
+      "Sha256": "E43CD13337B2AD92FD165EADD9FB85E9DACCB81EEF8FBC39D3D8EE13A41E8DD9"
+    },
+    {
+      "Path": "models_nordschleife.ini",
+      "Sha256": "E1EB6D1F59A3CA404ECE8CA2E46394823F97B657FA272FAFE44FF0C49BFAD838"
+    },
+    {
+      "Path": "nordschleife/ai/fast_lane.ai",
+      "Sha256": "03743AFAE9BB06AA53505DD6E88B04315344C8A1BB00D7826EDEC883DBFEC4AB"
+    },
+    {
+      "Path": "nordschleife/data/surfaces.ini",
+      "Sha256": "85B0EBB6B9DBF2FDAAEEA6D83A79AC371F12992659B6264DFE93081806F313BA"
+    }
+  ]
+}

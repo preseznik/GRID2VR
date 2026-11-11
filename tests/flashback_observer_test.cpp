@@ -109,6 +109,20 @@ int main() {
         Sample s=racing;change(s);
         if(policy.Next(s,true)!=FlagAction::None) return 16;
     }
+    // Plain -benchmark AI race (background-play readiness): the observed race
+    // sample, and each departure from it, including the pause menu.
+    {
+        Sample ai=racing;ai.blocked=1;
+        if(!BenchmarkAiRacing(ai)) return 40;
+        const Change departures[]{[](Sample& s){s.blocked=2;},[](Sample& s){s.blocked=0;},[](Sample& s){s.blocked=unread;},
+                                  [](Sample& s){s.found=Found::NoMonitor;},[](Sample& s){s.ownerIsCar=0;},[](Sample& s){s.ownerIsCar=-1;},
+                                  [](Sample& s){s.maximum=0;},[](Sample& s){s.maximum=unread;},[](Sample& s){s.raceState=9;},
+                                  [](Sample& s){s.raceState=unread;},[](Sample& s){s.worldRunning=0;},[](Sample& s){s.worldRunning=-1;},
+                                  [](Sample& s){s.replayActive=1;},[](Sample& s){s.replayActive=-1;}};
+        for(const auto change:departures) {Sample s=ai;change(s);if(BenchmarkAiRacing(s)) return 41;}
+        // The attract-mode flag policy never acts on a plain benchmark.
+        if(policy.Next(ai,true)!=FlagAction::None) return 42;
+    }
     if(grid2vr::IsBenchmarkAttractMode(base,0)) return 17;
     policy.Apply(policy.Next(racing,true),exchange);
     if(mode!=0 || !policy.Cleared() || policy.clears!=1 || !grid2vr::IsBenchmarkAttractMode(base,0) || grid2vr::IsBenchmarkAttractMode(base+4,0)) return 18;

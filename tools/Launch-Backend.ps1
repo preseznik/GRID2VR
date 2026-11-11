@@ -38,17 +38,26 @@ function Get-Grid2LaunchPlan {
     } elseif(!$NormalLaunch) {
         $nativeArguments=@('-benchmark','example_benchmark.xml')
     }
+    # Converted custom tracks load through GRID 2's documented -mod overlay. The
+    # ModList is the verified, run-owned copy written by session_config.py stage.
+    $modArguments=@()
+    if($SelectedSession -and $SelectedSession.modList) {
+        $modList=[IO.Path]::GetFullPath([string]$SelectedSession.modList)
+        if([IO.Path]::GetFileName($modList) -cne 'modlist.xml' -or !(Test-Path -LiteralPath $modList -PathType Leaf)) { throw 'Custom track ModList is missing.' }
+        if($modList.StartsWith($gamePath+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Custom track ModList must be outside the game.' }
+        $modArguments=@('-mod',$(if($modList.Contains(' ')){"`"$modList`""}else{$modList}))
+    }
     if($Backend -eq 'Direct') {
         $executable=Join-Path $gamePath 'grid2_avx.exe'
-        $arguments=@($nativeArguments)
+        $arguments=@($modArguments)+@($nativeArguments)
         $workingDirectory=$gamePath
     } else {
         $executable=Join-Path (Get-Grid2SteamRoot) 'steam.exe'
-        $arguments=@('-applaunch','44350')+$nativeArguments
+        $arguments=@('-applaunch','44350')+$modArguments+$nativeArguments
         $workingDirectory=$null
     }
     return [pscustomobject]@{backend=$Backend;gameRoot=$gamePath;executable=$executable;
-        workingDirectory=$workingDirectory;arguments=$arguments;nativeArguments=$nativeArguments}
+        workingDirectory=$workingDirectory;arguments=$arguments;nativeArguments=$nativeArguments;modArguments=$modArguments}
 }
 
 function Start-Grid2Launch {

@@ -11,6 +11,7 @@ $inputBuild=Join-Path $root 'build/driving-input-vs-x64'
 if($LASTEXITCODE) { throw 'Controller capture configuration failed.' }
 & $cmake --build $inputBuild --config Release --parallel 4
 if($LASTEXITCODE) { throw 'Controller capture build failed.' }
+& (Join-Path $PSScriptRoot 'Bootstrap-Ego.ps1') # the launcher contains the track converter
 & dotnet build (Join-Path $root 'launcher/GRID2VR.csproj') -c Release --nologo -o $OutputDirectory -p:NuGetAudit=false
 if($LASTEXITCODE) { throw 'Launcher build failed.' }
 Copy-Item -LiteralPath (Join-Path $inputBuild 'Release/driving_input.dll') -Destination (Join-Path $OutputDirectory 'driving_input.dll') -Force
