@@ -3,6 +3,7 @@
 #include "replay_state.h"
 #include "eye_projection.h"
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace grid2vr {
@@ -189,19 +190,25 @@ inline bool ApplyScenePose(const CameraContext& camera,const SceneView& source,
     }
     std::array<float,3> position{},nativePosition{};
     memcpy(position.data(),source.data()+0x40,12);memcpy(nativePosition.data(),camera.data()+0xa0,12);
-    for (size_t i=0;i<3;++i) {
+    for (size_t i=0;i<3;++i)
         if (!std::isfinite(position[i]) || !std::isfinite(nativePosition[i]) ||
             std::abs(position[i])>100000 || std::abs(nativePosition[i])>100000) return false;
-        // Source position and native inverted-camera translation round
-        // independently. At the startup camera near +/-10000, two float ULPs
-        // are .001953125, exceeding the ordinary .001 agreement bound. Permit
-        // only that representational error, capped at .01 native units; all
-        // basis, affine and bidirectional inverse checks above still apply.
-        const float magnitude=(std::max)(std::abs(position[i]),std::abs(nativePosition[i]));
-        const double ulp=double(std::nextafter(magnitude,std::numeric_limits<float>::infinity()))-magnitude;
-        const double tolerance=(std::max)(double(.001f),(std::min)(.01,2*ulp));
+    // Source position and native inverted-camera translation round
+    // independently, and the inversion mixes all three axes, so the error
+    // scales with the distance from the origin, not with one coordinate.
+    // Observed: startup camera near +/-10000, two ULPs (.001953125); converted
+    // Nordschleife (|p| ~6250) .00146 in Z at 4779.59 (run 20261112-004120-418,
+    // frame 1807) and .00122 in X at 4084.13 (five ULPs of X, 2.5 of |p|; run
+    // 20261112-011740-179, frame 1481), all above the ordinary .001 bound.
+    // Permit eight ULPs of |p| per axis, still capped at .01 native units; all
+    // basis, affine and bidirectional inverse checks above still apply.
+    double squared{},nativeSquared{};
+    for (size_t i=0;i<3;++i) { squared+=double(position[i])*position[i];nativeSquared+=double(nativePosition[i])*nativePosition[i]; }
+    const float magnitude=float(std::sqrt((std::max)(squared,nativeSquared)));
+    const double ulp=double(std::nextafter(magnitude,std::numeric_limits<float>::infinity()))-magnitude;
+    const double tolerance=(std::max)(double(.001f),(std::min)(.01,8*ulp));
+    for (size_t i=0;i<3;++i)
         if (std::abs(double(position[i])-nativePosition[i])>tolerance) return false;
-    }
     ComposeSceneView(source,basis,position,rotation,pose,result);return true;
 }
 inline bool SeparateSceneEyes(const ScenePose& center,float separation,std::array<ScenePose,2>& result) {

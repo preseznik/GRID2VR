@@ -1167,12 +1167,13 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
         if (!MatchesInstructions(reinterpret_cast<void*>(gameBase+0x25bf00),cameraBuilder)) return refuse("eye_builder_instructions");
         if (!(fullEyePose ? ApplyScenePose(scene.context,view,pose,view) :
                 OffsetSceneView(scene.context,view,diagnosticEyeOffset,view,eyeYaw))) {
-            // One small exact CPU input receipt for offline reproduction. No
+            // Small exact CPU input receipts for offline reproduction: the first
+            // in camera-rejection.json, it and the next fifteen as lines of
+            // camera-rejections.jsonl (one run refused nine intro cameras). No
             // per-frame dumps or GPU readback, including in sustained sessions.
-            static bool recordedRejection=false;
-            if (!recordedRejection) {
-                recordedRejection=true;
-                std::ofstream receipt(output/L"camera-rejection.json");
+            static unsigned recordedRejections=0;
+            for (int file=recordedRejections==0?0:1;file<2 && recordedRejections<16;++file) {
+                std::ofstream receipt(output/(file==0?L"camera-rejection.json":L"camera-rejections.jsonl"),file==0?std::ios::trunc:std::ios::app);
                 receipt << "{\"frame\":" << scene.frame << ",\"eye\":" << replayPass;
                 auto bytes=[&](const char* name,const void* data,size_t size) {
                     constexpr char hex[]{"0123456789abcdef"};
@@ -1187,6 +1188,7 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
                 bytes("position",pose.position.data(),sizeof(pose.position));
                 receipt << "}\n";
             }
+            if (recordedRejections<16) ++recordedRejections;
             return refuse("eye_camera_pose");
         }
     }

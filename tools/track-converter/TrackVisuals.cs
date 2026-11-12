@@ -15,12 +15,15 @@ internal static class TrackVisuals
 {
     sealed class State : PssgModelWriterState { }
 
-    // GRID 2 draws venue tracksplit tiles only with terrain shaders: a Brands Hatch control
-    // re-exported with Object.fx drew nothing, the same geometry with stock terrain shaders drew.
     internal const string Opaque = "terrain_simple.fx";
-    internal const string Cutout = "Object_2SidedCov.fx";
-    // Cutouts (foliage, fences, guardrail): GRID 2's decal shader takes alpha from
-    // TDiffuseAlphaMap.a x vertex alpha and discards below 0.01 (disassembled offline).
+    // Alpha-tested cutouts (trees, *_AT fences/guardrail): the decal below with the stock
+    // object cutout states, added to the overlay shaderpack (CutoutShader). The plain decal
+    // never writes depth, so foliage overlapped in draw order (0.2.23 test build), and the
+    // stock Object_2SidedCov.fx drew untextured white cards from a tracksplit (run
+    // 20261112-005451-060).
+    internal const string Cutout = CutoutShader.Group + ".fx";
+    // Translucent (blended) materials: GRID 2's decal shader takes alpha from
+    // TDiffuseAlphaMap.a x vertex alpha, discards below 0.01, blends without depth write.
     internal const string Decal = "decal_ao_vc_flat.fx";
     // 32-bit game budget: AC maps above this lose whole top mip levels.
     internal const uint MaxTextureSize = 1024;
@@ -34,14 +37,16 @@ internal static class TrackVisuals
         "ksPerPixelMultiMap_AT_NMDetail", "ksPerPixelMultiMapSimpleRefl", "ksFlags"
     };
 
-    // Opaque surfaces use GRID 2's Object.fx; anything with coverage (foliage, fences,
-    // glass) uses the two-sided coverage variant. Road layering is not reproduced yet.
+    // Opaque surfaces: terrain_simple; alpha-tested cutouts: two-sided coverage object
+    // shader; blended materials: decal. Road layering is not reproduced yet.
     internal static string Target(Material material)
     {
         if (material.StockGroup is not null) return material.StockGroup;
         if (!Supported.Contains(material.Shader)) throw new InvalidDataException("Unmapped AC shader: " + material.Shader);
-        return IsOpaque(material) ? Opaque : Decal;
+        return IsOpaque(material) ? Opaque : IsAlphaTested(material) ? Cutout : Decal;
     }
+    internal static bool IsAlphaTested(Material material) => material.Blend == 0 && material.Shader != "ksPerPixelAlpha" &&
+        (material.AlphaTest || material.Shader is "ksTree" or "ksPerPixelAT" || material.Shader.Contains("_AT", StringComparison.Ordinal));
     internal static bool IsOpaque(Material material) => material.Blend == 0 && !material.AlphaTest &&
         material.Shader is not ("ksTree" or "ksGrass" or "ksPerPixelAT" or "ksPerPixelAlpha") && !material.Shader.Contains("_AT", StringComparison.Ordinal);
 
@@ -68,6 +73,13 @@ internal static class TrackVisuals
             var group = file.GetObject<PssgShaderGroup>(id.AsMemory());
             var instance = file.Elements<PssgShaderInstance>().First(i => i.ShaderGroup == "#" + id);
             templates[id] = (Element(group), Element(instance));
+        }
+        // Cutout: the decal's tracksplit group and inputs under the overlay shaderpack's new id.
+        {
+            var (group, instance) = templates[Decal];
+            var cutoutGroup = new XElement(group); cutoutGroup.SetAttributeValue("id", Cutout);
+            var cutoutInstance = new XElement(instance); cutoutInstance.SetAttributeValue("shaderGroup", "#" + Cutout);
+            templates[Cutout] = (cutoutGroup, cutoutInstance); layouts[Cutout] = layouts[Decal];
         }
         // ROOT tiles' depth batches use the donor's own HIGHBATCH material ("batchmaterial" on
         // Brands Hatch); "batchmaterial!0" is the LAND/NONLOD one. They differ only by id.
@@ -195,7 +207,8 @@ internal static class TrackVisuals
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
                 ColourMap = layer?.Shading, DetailScale = layer?.Scale,
                 Approximation = layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
-                    : target == Decal ? "Cutout/blend: diffuse alpha through decal_ao_vc_flat; no depth batch, no distant LOD."
+                    : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat (no depth write); no depth batch, no distant LOD."
+                    : target == Cutout ? "Cutout: decal_ao_vc_flat programs with object_2sidedcov states (alpha test + coverage, depth written, two-sided); no depth batch, no distant LOD."
                     : "Source diffuse and UVs; specular black, occlusion white. Normal maps and reflections are not reproduced." });
             // Cutouts have no distant (LOW) version.
             if (target != Opaque) continue;
@@ -283,7 +296,7 @@ internal static class TrackVisuals
             foreach (var mesh in mergeDraws ? VisualBatches.Combine(parts[t].Select(RecentreUV)) : parts[t].Select(RecentreUV))
             {
                 string id = "g2vr_RDS_" + meshId++; var writer = new RenderDataSourceWriter(id);
-                // Cutouts: decal_ao_vc_flat alpha = texture alpha x vertex colour w.
+                // Non-opaque: decal_ao_vc_flat alpha = texture alpha x vertex colour w (white).
                 bool cutout = mesh.Material.StockGroup is null && !IsOpaque(mesh.Material);
                 for (int i = 0; i < mesh.Positions.Length; i++)
                 {
@@ -296,7 +309,8 @@ internal static class TrackVisuals
                     writer.TexCoords2.Add(Set(2)); writer.TexCoords3.Add(Set(3));
                 }
                 writer.Indices.AddRange(mesh.Indices.Select(i => (uint)i));
-                var drawNode = cutout ? decal : high;
+                // Blended materials draw as decals; opaque and alpha-tested ones in HIGH (depth written).
+                var drawNode = cutout && Target(mesh.Material) == Decal ? decal : high;
                 writer.Write(layouts[Target(mesh.Material)], SetFor(drawNode), dataLib, state);
                 Draw(drawNode, id, ids[mesh.Material.Id]); Grow(drawNode, mesh.Positions);
                 // LOW: the same triangles through terrain_lod.fx (position + UV).

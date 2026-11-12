@@ -188,15 +188,68 @@ int main(int argc,char** argv) {
             !(i>=0x40 && i<0x4c) && capturedView[i]!=posed[i]) return 35;
     auto roundedView=capturedView;
     float rounded=nativeY;
-    for (unsigned steps=1;steps<=3;++steps) {
+    // |p| = 14140.57: eight ULPs of |p| = .0078125 = eight ULPs of Y at -10000.
+    for (unsigned steps=1;steps<=9;++steps) {
         rounded=std::nextafter(rounded,std::numeric_limits<float>::infinity());
         memcpy(roundedView.data()+0x44,&rounded,4);
         posed=startupGood;
-        if (ApplyScenePose(captured,roundedView,capturedPose,posed)!=(steps<=2) ||
-            (steps==3 && posed!=startupGood)) return 36;
+        if (ApplyScenePose(captured,roundedView,capturedPose,posed)!=(steps<=8) ||
+            (steps==9 && posed!=startupGood)) return 36;
     }
     memcpy(entry.data()+0x10,captured.data()+0x190,64);
     if (!PreparePoseHistory(captured,capturedView,entry,capturedPose,prepared,&diagnosticFrustum)) return 37;
+    // Exact second-eye rejection on the converted Nordschleife start line,
+    // run 20261112-004120-418 frame 1807 (camera-rejection.json): source and
+    // native Z differ by three float ULPs at 4779.59. |p| = 6294.1, so the limit is
+    // eight ULPs of |p| (.00390625) = eight ULPs of Z.
+    {
+        CameraContext nordCamera{};SceneView nordView{};ScenePose nordPose{};
+        std::ifstream nc(fixtures/"native-nordschleife-1807-context.bin",std::ios::binary),
+            nv(fixtures/"native-nordschleife-1807-view.bin",std::ios::binary),
+            np(fixtures/"native-nordschleife-1807-pose.bin",std::ios::binary);
+        if (!nc.read(reinterpret_cast<char*>(nordCamera.data()),nordCamera.size()) || nc.peek()!=EOF ||
+            !nv.read(reinterpret_cast<char*>(nordView.data()),nordView.size()) || nv.peek()!=EOF ||
+            !np.read(reinterpret_cast<char*>(&nordPose),sizeof nordPose) || np.peek()!=EOF) return 43;
+        float sourceZ{},nativeZ{};
+        memcpy(&sourceZ,nordView.data()+0x48,4);memcpy(&nativeZ,nordCamera.data()+0xa8,4);
+        if (std::abs(double(sourceZ)-nativeZ)!=.00146484375) return 44;
+        SceneView nordPosed{};
+        if (!ApplyScenePose(nordCamera,nordView,nordPose,nordPosed)) return 45;
+        const auto nordGood=nordPosed;
+        auto further=nordView;float shifted=nativeZ;
+        for (unsigned steps=1;steps<=9;++steps) {
+            shifted=std::nextafter(shifted,std::numeric_limits<float>::infinity());
+            memcpy(further.data()+0x48,&shifted,4);nordPosed=nordGood;
+            if (ApplyScenePose(nordCamera,further,nordPose,nordPosed)!=(steps<=8) ||
+                (steps==9 && nordPosed!=nordGood)) return 46;
+        }
+    }
+    // Exact first-eye rejection in the Nordschleife intro, run 20261112-011740-179
+    // frame 1481: X differs by five ULPs of X (.001220703125 at 4084.13), Z by four
+    // ULPs (.001953125). The error follows |p|, not the axis: X may now differ by
+    // sixteen ULPs of X (eight of |p|), the seventeenth is refused.
+    {
+        CameraContext nordCamera{};SceneView nordView{};ScenePose nordPose{};
+        std::ifstream nc(fixtures/"native-nordschleife-1481-context.bin",std::ios::binary),
+            nv(fixtures/"native-nordschleife-1481-view.bin",std::ios::binary),
+            np(fixtures/"native-nordschleife-1481-pose.bin",std::ios::binary);
+        if (!nc.read(reinterpret_cast<char*>(nordCamera.data()),nordCamera.size()) || nc.peek()!=EOF ||
+            !nv.read(reinterpret_cast<char*>(nordView.data()),nordView.size()) || nv.peek()!=EOF ||
+            !np.read(reinterpret_cast<char*>(&nordPose),sizeof nordPose) || np.peek()!=EOF) return 47;
+        float sourceX{},nativeX{};
+        memcpy(&sourceX,nordView.data()+0x40,4);memcpy(&nativeX,nordCamera.data()+0xa0,4);
+        if (double(sourceX)-nativeX!=.001220703125) return 48;
+        SceneView nordPosed{};
+        if (!ApplyScenePose(nordCamera,nordView,nordPose,nordPosed)) return 49;
+        const auto nordGood=nordPosed;
+        auto further=nordView;float shifted=nativeX;
+        for (unsigned steps=1;steps<=17;++steps) {
+            shifted=std::nextafter(shifted,std::numeric_limits<float>::infinity());
+            memcpy(further.data()+0x40,&shifted,4);nordPosed=nordGood;
+            if (ApplyScenePose(nordCamera,further,nordPose,nordPosed)!=(steps<=16) ||
+                (steps==17 && nordPosed!=nordGood)) return 50;
+        }
+    }
     // The former ordinary-coordinate bound is unchanged.
     for (float difference:{.0009f,.0011f}) {
         auto nearby=view;const float x=3+difference;memcpy(nearby.data()+0x40,&x,4);

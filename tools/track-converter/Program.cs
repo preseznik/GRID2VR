@@ -42,6 +42,50 @@ internal static class Program
                             }
                         return 0;
                     }
+                case "groups" when args.Length == 2:
+                    {
+                        // Shader groups with their sorting attributes and instance count.
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var instances = doc.Descendants().Where(e => e.Name.LocalName == "SHADERINSTANCE").ToArray();
+                        foreach (var group in doc.Descendants().Where(e => e.Name.LocalName == "SHADERGROUP"))
+                        {
+                            var id = (string?)group.Attribute("id");
+                            var mine = instances.Where(i => (string?)i.Attribute("shaderGroup") == "#" + id).ToArray();
+                            var priorities = string.Join(",", mine.Select(i => (string?)i.Attribute("renderSortPriority") ?? "-").Distinct().Take(5));
+                            Console.WriteLine($"{id,-44} sorting={(string?)group.Attribute("instancesRequireSorting")} defaultPriority={(string?)group.Attribute("defaultRenderSortPriority")} instances={mine.Length} priorities={priorities}");
+                        }
+                        return 0;
+                    }
+                case "pass-states" when args.Length == 2:
+                    {
+                        // Per shader group: main pass depth/blend/coverage states and whether it samples TDiffuseAlphaMap.
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        foreach (var group in doc.Descendants().Where(e => e.Name.LocalName == "SHADERGROUP"))
+                        {
+                            var pass = group.Elements("SHADERGROUPPASS").FirstOrDefault();
+                            if (pass is null) continue;
+                            string A(string n) => (string?)pass.Attribute(n) ?? "-";
+                            var streams = string.Join(",", group.Elements("SHADERSTREAMDEFINITION").Select(s => (string?)s.Attribute("renderTypeName")));
+                            var alphaMap = group.Elements("SHADERINPUTDEFINITION").Any(d => (string?)d.Attribute("name") == "TDiffuseAlphaMap");
+                            Console.WriteLine($"{(string?)group.Attribute("id"),-46} depth={A("depthMaskEnable")} blend={A("blendEnable")} a2c={A("alphaToCoverageEnable")} test={A("alphaTestEnable")} cull={A("cullFaceType")} alphaMap={alphaMap} streams={streams} passes={group.Elements("SHADERGROUPPASS").Count()}");
+                        }
+                        return 0;
+                    }
+                case "group-xml" when args.Length == 3:
+                    {
+                        // A shader group's full element tree (passes, render states), without data blobs.
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var group = doc.Descendants().First(e => e.Name.LocalName == "SHADERGROUP" && (string?)e.Attribute("id") == args[2]);
+                        void Print(System.Xml.Linq.XElement e, int depth)
+                        {
+                            if (e.Name.LocalName == "SHADERINPUTDEFINITION") return;
+                            var text = e.HasElements ? "" : " = " + (e.Value.Length > 80 ? e.Value[..80] + "…" : e.Value);
+                            Console.WriteLine(new string(' ', depth * 2) + e.Name.LocalName + " " + string.Join(" ", e.Attributes().Select(a => $"{a.Name}={a.Value}")) + text);
+                            foreach (var child in e.Elements()) Print(child, depth + 1);
+                        }
+                        Print(group, 0);
+                        return 0;
+                    }
                 case "check-node-boxes" when args.Length == 2:
                     {
                         // Render nodes with draws: stored BOUNDINGBOX vs the bounds of their geometry.
@@ -218,6 +262,30 @@ internal static class Program
                                 string.Join(" ", m.Textures.Select(t => $"{t.Key}={t.Value}")) + "\n            " +
                                 string.Join(" ", m.Properties.Where(p => p.Key is not ("ksAmbient" or "ksDiffuse" or "ksSpecular" or "ksSpecularEXP" or "ksEmissive" or "ksAlphaRef"))
                                     .Select(p => $"{p.Key}={string.Join(",", p.Value.Take(p.Key.StartsWith("mult") || p.Key.Contains("Mult") ? 1 : 4).Select(v => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}")));
+                        return 0;
+                    }
+                case "ac-cutouts" when args.Length == 3:
+                    {
+                        // Alpha-tested source materials: triangles by mesh LOD range, and triangles whose
+                        // exact reversed copy (same positions, opposite winding) also exists.
+                        var source = AcSource.Read(args[1], args[2], (min, max) => min, visuals: true);
+                        foreach (var g in source.Visuals.Where(m => m.Material.StockGroup is null && TrackVisuals.IsAlphaTested(m.Material)).GroupBy(m => m.Material.Name).OrderBy(g => g.Key))
+                        {
+                            var faces = new HashSet<(System.Numerics.Vector3, System.Numerics.Vector3, System.Numerics.Vector3)>(); int total = 0, reversed = 0, same = 0;
+                            (System.Numerics.Vector3, System.Numerics.Vector3, System.Numerics.Vector3) Key(System.Numerics.Vector3 a, System.Numerics.Vector3 b, System.Numerics.Vector3 c)
+                            { // rotation-invariant key for one winding
+                                var r = new[] { (a, b, c), (b, c, a), (c, a, b) };
+                                return r.OrderBy(t => t.Item1.X).ThenBy(t => t.Item1.Y).ThenBy(t => t.Item1.Z).First();
+                            }
+                            foreach (var m in g) for (int i = 0; i + 2 < m.Indices.Length; i += 3)
+                            {
+                                var (a, b, c) = (m.Positions[m.Indices[i]], m.Positions[m.Indices[i + 1]], m.Positions[m.Indices[i + 2]]); total++;
+                                if (faces.Contains(Key(a, c, b))) reversed++;
+                                if (!faces.Add(Key(a, b, c))) same++;
+                            }
+                            var lods = string.Join(" ", g.GroupBy(m => (m.LodIn, m.LodOut)).Select(l => $"[{l.Key.LodIn:0}-{l.Key.LodOut:0}]x{l.Count()}:{l.Sum(m => m.Indices.Length / 3)}"));
+                            Console.WriteLine($"{g.Key,-22} {g.First().Material.Shader,-26} tris={total,8:N0} reversedDup={reversed,7:N0} sameDup={same,6:N0} lods {lods}");
+                        }
                         return 0;
                     }
                 case "roundtrip-diff" when args.Length == 2:

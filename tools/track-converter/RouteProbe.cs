@@ -62,7 +62,7 @@ internal static class RouteProbe
             var (tiles, report) = TrackVisuals.Build(source, donor, venueOut, reverseTileIds: reverseTileIds);
             var vis = Visibility.Write(tiles, File.ReadAllBytes(Path.Combine(donorRoute, "track.vis")));
             File.WriteAllBytes(Replace(routeOut, "track.vis"), vis);
-            visualReport = report;
+            visualReport = new { Scenery = report, CutoutShader = CutoutShader.Write(gameRoot, Path.Combine(output, "overlay"), inputs) };
             Console.WriteLine($"Visuals: {tiles.Length} tiles in tracksplit.pssg, conservative all-visible track.vis.");
         }
         WriteSession(output, layout);

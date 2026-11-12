@@ -1,0 +1,12 @@
+native-nordschleife-1481-{context,view,pose}.bin
+
+Source: camera-rejection.json of the xr-sim VR Practice session 20261112-011740-179
+(Release proxy with the four-ULP-per-axis allowance, converted Nordschleife custom
+track), frame 1481, first eye, during the track intro. The bytes are the renderer's
+own receipt of the camera context (512 bytes), scene view (144 bytes) and eye pose
+(orientation x,y,z,w then position x,y,z, 28 bytes), unmodified.
+
+Source and native inverted-camera positions differ by .001220703125 in X at 4084.13
+(five ULPs of X) and .001953125 in Z at 4779.71 (four ULPs of Z); |p| = 6294.4.
+The per-axis four-ULP allowance refused it; nine such intro refusals preceded the
+fatal eye_previous_camera_or_history at frame 1905, and the session fell back to flat.

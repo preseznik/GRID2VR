@@ -1,0 +1,12 @@
+native-nordschleife-1807-{context,view,pose}.bin
+
+Source: camera-rejection.json of the VR Practice session 20261112-004120-418
+(GRID2VR test build, converted Nordschleife custom track, Meta Quest 3 via
+VirtualDesktopXR), frame 1807, second eye. The bytes are the renderer's own
+receipt of the camera context (512 bytes), scene view (144 bytes) and eye pose
+(orientation x,y,z,w then position x,y,z, 28 bytes), unmodified.
+
+The scene view and the native inverted camera place the start-line camera at
+z=4779.58740234375 and z=4779.5859375: three float ULPs apart. The former
+two-ULP allowance refused the eye pose, which suspended stereo and, on resume,
+failed the session (eye_previous_camera_or_history).
