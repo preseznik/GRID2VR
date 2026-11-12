@@ -260,8 +260,32 @@ internal static class Program
                         foreach (var (m, n) in rows)
                             Console.WriteLine($"{n,9:N0} {m.Shader,-28} blend={m.Blend} at={m.AlphaTest} {m.Name}\n            " +
                                 string.Join(" ", m.Textures.Select(t => $"{t.Key}={t.Value}")) + "\n            " +
-                                string.Join(" ", m.Properties.Where(p => p.Key is not ("ksAmbient" or "ksDiffuse" or "ksSpecular" or "ksSpecularEXP" or "ksEmissive" or "ksAlphaRef"))
+                                string.Join(" ", m.Properties.Where(p => p.Key is not ("ksSpecular" or "ksSpecularEXP" or "ksAlphaRef"))
                                     .Select(p => $"{p.Key}={string.Join(",", p.Value.Take(p.Key.StartsWith("mult") || p.Key.Contains("Mult") ? 1 : 4).Select(v => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}")));
+                        return 0;
+                    }
+                case "pssg-textures" when args.Length == 4:
+                    {
+                        // Up to N textures of a PSSG file as DDS files in a new folder (stock lightmaps etc.).
+                        if (Directory.Exists(args[2])) throw new IOException("Output must be new: " + args[2]);
+                        Directory.CreateDirectory(args[2]);
+                        foreach (var texture in Files.Pssg(args[1]).Elements<EgoEngineLibrary.Graphics.Pssg.Elements.PssgTexture>().Take(int.Parse(args[3])))
+                        {
+                            using var stream = File.Create(Path.Combine(args[2], string.Concat(texture.Id.Select(c => char.IsLetterOrDigit(c) || c is '_' or '-' or '.' ? c : '_')) + ".dds"));
+                            EgoEngineLibrary.Graphics.GraphicsExtensions.ToDdsFile(texture).Write(stream);
+                            Console.WriteLine($"{texture.Id} {texture.Width}x{texture.Height} {texture.TexelFormat}");
+                        }
+                        return 0;
+                    }
+                case "ac-texture" when args.Length == 5:
+                    {
+                        // Embedded source textures (comma-separated names) as DDS files in a new folder.
+                        var source = AcSource.Read(args[1], args[2], (min, max) => min, visuals: true);
+                        if (Directory.Exists(args[4])) throw new IOException("Output must be new: " + args[4]);
+                        Directory.CreateDirectory(args[4]);
+                        foreach (var name in args[3].Split(','))
+                            if (source.Textures.TryGetValue(name, out var texture)) File.WriteAllBytes(Path.Combine(args[4], Path.GetFileName(name)), texture.Dds);
+                            else Console.WriteLine("missing " + name);
                         return 0;
                     }
                 case "ac-cutouts" when args.Length == 3:

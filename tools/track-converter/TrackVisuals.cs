@@ -25,6 +25,27 @@ internal static class TrackVisuals
     // Translucent (blended) materials: GRID 2's decal shader takes alpha from
     // TDiffuseAlphaMap.a x vertex alpha, discards below 0.01, blends without depth write.
     internal const string Decal = "decal_ao_vc_flat.fx";
+    // Baked lighting. terrain_simple and the decal/cutout shaders take ambient light from
+    // the AO texture's RGB and baked sun visibility from its alpha (disassembled offline);
+    // white gave every surface full, untinted ambient. Stock lightmaps hold a sky-blue open
+    // ambient instead: Brands Hatch terrain_lm_day sections, 95th percentile (133,172,219).
+    internal const string AmbientRamp = "g2vr_ao_ramp", SkyAmbient = "g2vr_ao_sky";
+    const int RampWidth = 256;
+    static readonly (byte R, byte G, byte B) Sky = (133, 172, 219);
+    // Writer colour for a shader-side (r,g,b,a). EGO packs (X,Y,Z,W) as ARGB bytes and the
+    // engine reads them as B8G8R8A8, so the shader sees (Y,X,W,Z) (DiRT2VR NordObjectVertex
+    // decodes .yxw for the same reason). A grey tint written as (s,s,s,1) reached the decal
+    // shader as (s,s,1) with alpha s: lavender road lines and thinner foliage (xr-sim run
+    // 20261112-015202-285).
+    internal static Vector4 ShaderColor(float r, float g, float b, float a) => new(g, r, a, b);
+    // UV into AmbientRamp for ambient factor a (texel centres; V mid-row).
+    static Vector2 RampUV(float a) => new((Math.Clamp(a, 0, 1) * (RampWidth - 1) + .5f) / RampWidth, .5f);
+    // AC material brightness relative to its neutral 0.3 (DiRT2VR NordMaterials normalises the same way).
+    internal static float Brightness(Material material)
+    {
+        float Get(string key) => material.Properties.TryGetValue(key, out var v) && v.Length > 0 && float.IsFinite(v[0]) && v[0] >= 0 ? v[0] : .3f;
+        return Math.Clamp((Get("ksAmbient") + Get("ksDiffuse")) / 2 / .3f, .2f, 1.6f);
+    }
     // 32-bit game budget: AC maps above this lose whole top mip levels.
     internal const uint MaxTextureSize = 1024;
     const string Depth = "batched_track.fx";
@@ -59,7 +80,7 @@ internal static class TrackVisuals
 
     // Builds the venue tracksplit.pssg: donor terrain removed, source visuals as tiles.
     // Returns the tile bounds in VIS identity order.
-    internal static (Box[] Tiles, object Report) Build(AcSource source, string donorVenue, string venueOut, Vector4[]? weightVariants = null, bool lodOverrides = true, bool keepDonorLand = false, int? fixedTiles = null, bool mergeDraws = true, bool lowCopies = false, bool reverseTileIds = false)
+    internal static (Box[] Tiles, object Report) Build(AcSource source, string donorVenue, string venueOut, Vector4[]? weightVariants = null, bool lodOverrides = true, bool keepDonorLand = false, int? fixedTiles = null, bool mergeDraws = true, bool lowCopies = false, bool reverseTileIds = false, bool grassTufts = true)
     {
         var tracksplit = Files.Pssg(Path.Combine(donorVenue, "tracksplit.pssg"));
         var objects = Files.Pssg(Path.Combine(donorVenue, "objects.pssg"));
@@ -106,8 +127,9 @@ internal static class TrackVisuals
         // Kept LAND data sources stay inside their segment sets; drop other sources there.
         foreach (var set in keptData.OfType<PssgSegmentSet>()) { foreach (var s in set.Segments.Where(s => !keptData.Contains(s)).ToArray()) set.RemoveChild(s); set.SegmentCount = (uint)set.Segments.Count(); }
 
-        // Grass tufts (ksGrass, 1.8 M triangles on the Nordschleife) wait for per-area visibility.
-        var visuals = source.Visuals.Where(m => m.Material.StockGroup is not null || m.Material.Shader != "ksGrass")
+        // Grass tufts (ksGrass, 1.86 M triangles on the Nordschleife) draw as cutouts at their
+        // authored density, as in DiRT2VR; grassTufts=false leaves them out (budget control).
+        var visuals = source.Visuals.Where(m => grassTufts || m.Material.StockGroup is not null || m.Material.Shader != "ksGrass")
             .Select(m => MultilayerMaterial.Read(m.Material) is { } layer ? layer.Apply(m, source.Origin) : m).ToList();
         int omittedCoverage = source.Visuals.Sum(m => m.Indices.Length / 3) - visuals.Sum(m => m.Indices.Length / 3);
         List<List<Mesh>> parts; int tileSize, farSize = 0;
@@ -184,7 +206,9 @@ internal static class TrackVisuals
                 string texture = name switch
                 {
                     "TDiffuseAlphaMap" or "TDiffuseSpecMap1" => diffuseId,
-                    "TOcclusionMap" or "TAmbientOcclusion" or "TAmbientOcclusionMap" => "g2vr_white",
+                    // Baked ambient (RGB) and sun visibility (A): per-vertex ramp lookup, or
+                    // open-sky constant where the AO UV set carries the multilayer shading map.
+                    "TOcclusionMap" or "TAmbientOcclusion" or "TAmbientOcclusionMap" => layer is null ? AmbientRamp : SkyAmbient,
                     // Grey x ColourMapScale 2 = unchanged colour; multilayer: AC shading map x 1.
                     "TColourMap" => colourId,
                     "TNormalMap" => "g2vr_normal",
@@ -193,7 +217,9 @@ internal static class TrackVisuals
                 input.SetAttributeValue("type", "texture"); input.SetAttributeValue("texture", "#" + texture); input.RemoveNodes();
             }
             // Source UVs as authored; no terrain specular from AC's diffuse alpha.
-            foreach (var (name, value) in new[] { ("Map1UVScaleAndOffset", "1 1 0 0"), ("PhongColour", "0 0 0"), ("ColourMapScale", layer is null ? "2" : "1"), ("TrackAOScale", "1"), ("SpecScale", "0") })
+            // ColourMapScale also carries AC's own material brightness (ksAmbient/ksDiffuse, 0.3 neutral).
+            string colourScale = ((layer is null ? 2 : 1) * Brightness(material)).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            foreach (var (name, value) in new[] { ("Map1UVScaleAndOffset", "1 1 0 0"), ("PhongColour", "0 0 0"), ("ColourMapScale", colourScale), ("TrackAOScale", "1"), ("SpecScale", "0") })
             {
                 int parameter = Array.FindIndex(definitions, d => (string?)d.Attribute("name") == name);
                 if (parameter < 0) continue;
@@ -205,11 +231,11 @@ internal static class TrackVisuals
             instance.SetAttributeValue("parameterSavedCount", instance.Elements("SHADERINPUT").Count());
             Library("SHADERINSTANCE").Add(instance);
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
-                ColourMap = layer?.Shading, DetailScale = layer?.Scale,
+                ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Ambient = layer is null ? "per-vertex" : "open sky",
                 Approximation = layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
                     : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat (no depth write); no depth batch, no distant LOD."
                     : target == Cutout ? "Cutout: decal_ao_vc_flat programs with object_2sidedcov states (alpha test + coverage, depth written, two-sided); no depth batch, no distant LOD."
-                    : "Source diffuse and UVs; specular black, occlusion white. Normal maps and reflections are not reproduced." });
+                    : "Source diffuse and UVs; specular black, baked ambient per vertex. Normal maps and reflections are not reproduced." });
             // Cutouts have no distant (LOW) version.
             if (target != Opaque) continue;
             // Distant (LOW) version: terrain_lod.fx with the same diffuse.
@@ -220,7 +246,7 @@ internal static class TrackVisuals
         long textureBytesTrimmed = 0;
         var textureTemplate = doc.Descendants("TEXTURE").First();
         var textureLibrary = textureTemplate.Parent!;
-        foreach (var id in textureBytes.Keys.Concat(["g2vr_white", "g2vr_black", "g2vr_grey", "g2vr_normal"]))
+        foreach (var id in textureBytes.Keys.Concat(["g2vr_white", "g2vr_black", "g2vr_grey", "g2vr_normal", AmbientRamp, SkyAmbient]))
         {
             // Keep the image-block structure the DDS importer fills; drop the donor pixels.
             var texture = new XElement(textureTemplate); texture.SetAttributeValue("id", id);
@@ -238,11 +264,28 @@ internal static class TrackVisuals
                 textureBytesTrimmed += DdsAlpha.Shrink(dds, MaxTextureSize);
                 DdsAlpha.Prepare(dds, texture.Id.EndsWith("_opaque", StringComparison.Ordinal));
             }
+            else if (texture.Id == AmbientRamp)
+            {
+                // 256x4 A8R8G8B8 (memory B,G,R,A): texel i = stock open-sky ambient x i/255,
+                // sun visibility 1. Bilinear filtering between per-vertex lookups reproduces
+                // linear interpolation of the vertex values exactly.
+                dds = new DdsFile(); dds.header.width = RampWidth; dds.header.height = 4; dds.header.mipMapCount = 1;
+                dds.header.flags |= DdsHeader.Flags.DDSD_PITCH; dds.header.pitchOrLinearSize = RampWidth * 4;
+                dds.header.ddspf.flags = DdsPixelFormat.Flags.DDPF_RGB | DdsPixelFormat.Flags.DDPF_ALPHAPIXELS; dds.header.ddspf.rGBBitCount = 32;
+                dds.header.ddspf.rBitMask = 0x00ff0000; dds.header.ddspf.gBitMask = 0x0000ff00; dds.header.ddspf.bBitMask = 0x000000ff; dds.header.ddspf.aBitMask = 0xff000000;
+                dds.bdata = new byte[RampWidth * 4 * 4];
+                for (int y = 0; y < 4; y++) for (int x = 0; x < RampWidth; x++)
+                {
+                    int o = (y * RampWidth + x) * 4; float a = x / (RampWidth - 1f);
+                    dds.bdata[o] = (byte)MathF.Round(Sky.B * a); dds.bdata[o + 1] = (byte)MathF.Round(Sky.G * a); dds.bdata[o + 2] = (byte)MathF.Round(Sky.R * a); dds.bdata[o + 3] = 255;
+                }
+            }
             else
             {
                 // Solid-colour 64x64 DXT1 (stock textures are all block-compressed; 1x1 RGBA
                 // constants left converted terrain flat black/white). RGB565 colour, indices 0.
-                ushort colour = texture.Id switch { "g2vr_white" => 0xFFFF, "g2vr_grey" => 0x8410, "g2vr_normal" => 0x841F, _ => 0x0000 };
+                ushort colour = texture.Id switch { "g2vr_white" => 0xFFFF, "g2vr_grey" => 0x8410, "g2vr_normal" => 0x841F,
+                    SkyAmbient => (ushort)((int)MathF.Round(Sky.R / 255f * 31) << 11 | (int)MathF.Round(Sky.G / 255f * 63) << 5 | (int)MathF.Round(Sky.B / 255f * 31)), _ => 0x0000 };
                 dds = new DdsFile(); dds.header.width = 64; dds.header.height = 64; dds.header.mipMapCount = 1;
                 dds.header.flags |= DdsHeader.Flags.DDSD_LINEARSIZE; dds.header.pitchOrLinearSize = 16 * 16 * 8;
                 dds.header.ddspf.flags = DdsPixelFormat.Flags.DDPF_FOURCC; dds.header.ddspf.fourCC = 0x31545844; // DXT1
@@ -298,13 +341,21 @@ internal static class TrackVisuals
                 string id = "g2vr_RDS_" + meshId++; var writer = new RenderDataSourceWriter(id);
                 // Non-opaque: decal_ao_vc_flat alpha = texture alpha x vertex colour w (white).
                 bool cutout = mesh.Material.StockGroup is null && !IsOpaque(mesh.Material);
+                // Non-opaque vertex colour RGB scales the whole lit result: AC material brightness.
+                float shade = Math.Min(1, Brightness(mesh.Material));
+                var tint = ShaderColor(shade, shade, shade, 1);
+                // Baked ambient lookup: terrain_simple reads AO with UV set 2, decal/cutout with
+                // set 1 (zw of its 4-component ST). Multilayer meshes (explicit sets) keep set 2
+                // for their shading map and use the open-sky constant instead.
+                int rampSet = mesh.Material.StockGroup is null && mesh.TexCoords is null ? (cutout ? 1 : 2) : -1;
                 for (int i = 0; i < mesh.Positions.Length; i++)
                 {
                     var p = mesh.Positions[i]; tileBox = tileBox is { } b ? b.Union(new(p, p)) : new(p, p);
                     writer.Positions.Add(p); writer.Normals.Add(mesh.Normals[i]); writer.Tangents.Add(new(mesh.Tangents[i], 1));
-                    writer.Colors.Add(mesh.Colors?[i] ?? (cutout ? Vector4.One : weightVariants is { Length: > 0 } v ? v[t % v.Length] : TerrainWeights));
+                    writer.Colors.Add(mesh.Colors?[i] ?? (cutout ? tint : weightVariants is { Length: > 0 } v ? v[t % v.Length] : TerrainWeights));
                     // Explicit UV sets (stock controls) are written as given; otherwise the source UV fills all.
-                    Vector2 Set(int k) => mesh.TexCoords is { } sets && sets.Length > 0 ? sets[Math.Min(k, sets.Length - 1)][i] : mesh.UV[i];
+                    Vector2 Set(int k) => k == rampSet ? RampUV(mesh.Ambient?[i] ?? 1) :
+                        mesh.TexCoords is { } sets && sets.Length > 0 ? sets[Math.Min(k, sets.Length - 1)][i] : mesh.UV[i];
                     writer.TexCoords0.Add(Set(0)); writer.TexCoords1.Add(Set(1));
                     writer.TexCoords2.Add(Set(2)); writer.TexCoords3.Add(Set(3));
                 }

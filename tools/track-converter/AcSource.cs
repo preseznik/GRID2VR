@@ -13,6 +13,7 @@ internal sealed class AcSource
     internal readonly List<QuadTreeDataTriangle> Collision = [];
     internal readonly List<Mesh> Visuals = [];
     internal readonly Dictionary<string, Texture> Textures = new(StringComparer.OrdinalIgnoreCase);
+    internal VertexAmbient? Ambient { get; private set; }
     internal readonly Dictionary<string, string> Inputs = new(StringComparer.OrdinalIgnoreCase);
     internal readonly Dictionary<string, long> Surfaces = new(StringComparer.Ordinal);
     internal readonly Dictionary<string, string> CollisionMappings = new(StringComparer.Ordinal);
@@ -60,6 +61,8 @@ internal sealed class AcSource
                     throw new InvalidDataException("Invalid spline side widths.");
             }
         }
+        // Optional and outside the pinned track files: hashed into the build's inputs by the caller.
+        if (visuals) source.Ambient = VertexAmbient.TryLoad(trackRoot, Console.WriteLine);
         var min = points.Aggregate(Vector3.Min); var max = points.Aggregate(Vector3.Max);
         source.Origin = placeOrigin(min, max);
         var gates = new List<Gate>(); float distance = 0;
@@ -84,7 +87,7 @@ internal sealed class AcSource
             Kn5.Read(path, Matrix4x4.CreateTranslation(position - source.Origin), textures, mesh =>
             {
                 // Numeric (physical) source meshes can also be the visible asphalt and kerbs.
-                if (visuals && mesh.Visible && !IsGameMarker(mesh.Name)) source.Visuals.Add(mesh);
+                if (visuals && mesh.Visible && !IsGameMarker(mesh.Name)) source.Visuals.Add(source.Ambient?.Apply(mesh) ?? mesh);
                 if (!mesh.Active || !mesh.Physical) return;
                 string surface = Surface(mesh.Name);
                 source.CollisionMappings[mesh.Name] = surface;
@@ -109,7 +112,8 @@ internal sealed class AcSource
             Tangents = used.Select(i => mesh.Tangents[i]).ToArray(), Indices = selected.Select(i => map[i]).ToArray(),
             Colors = mesh.Colors is null ? null : used.Select(i => mesh.Colors[i]).ToArray(),
             TexCoords = mesh.TexCoords?.Select(set => used.Select(i => set[i]).ToArray()).ToArray(),
-            Binormals = mesh.Binormals is null ? null : used.Select(i => mesh.Binormals[i]).ToArray()
+            Binormals = mesh.Binormals is null ? null : used.Select(i => mesh.Binormals[i]).ToArray(),
+            Ambient = mesh.Ambient is null ? null : used.Select(i => mesh.Ambient[i]).ToArray()
         };
     }
 

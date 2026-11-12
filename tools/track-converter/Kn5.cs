@@ -26,6 +26,8 @@ internal sealed record Mesh(string Name, Material Material, bool Physical, Vecto
     internal Vector4[]? Colors { get; init; }
     internal Vector2[][]? TexCoords { get; init; }
     internal Vector3[]? Binormals { get; init; }
+    // Per-vertex ambient factor 0..1 (VertexAmbient); null = open sky.
+    internal float[]? Ambient { get; init; }
 }
 internal sealed record Texture(byte[] Dds, string Hash);
 

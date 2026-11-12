@@ -48,6 +48,7 @@ internal static class RouteProbe
         var source = AcSource.Read(acTrack, layout, (min, max) => new Vector3(min.X - (donorMaxX + 1500), min.Y - 20, min.Z), visuals);
         SourcePins.CheckInputs(acTrack, layout, source.Inputs);
         foreach (var (path, hash) in source.Inputs) inputs[path] = hash;
+        if (source.Ambient is { } ambient) inputs[ambient.Path] = ambient.Hash;
         Console.WriteLine($"Course {source.Length:N0} m, {source.Gates.Length} gates, {source.Collision.Count:N0} collision triangles" +
             (visuals ? $", {source.Visuals.Sum(m => m.Indices.Length / 3):N0} visual triangles, {source.Textures.Count} textures." : "."));
 
@@ -62,7 +63,8 @@ internal static class RouteProbe
             var (tiles, report) = TrackVisuals.Build(source, donor, venueOut, reverseTileIds: reverseTileIds);
             var vis = Visibility.Write(tiles, File.ReadAllBytes(Path.Combine(donorRoute, "track.vis")));
             File.WriteAllBytes(Replace(routeOut, "track.vis"), vis);
-            visualReport = new { Scenery = report, CutoutShader = CutoutShader.Write(gameRoot, Path.Combine(output, "overlay"), inputs) };
+            visualReport = new { Scenery = report, CutoutShader = CutoutShader.Write(gameRoot, Path.Combine(output, "overlay"), inputs),
+                VertexAmbient = (object?)source.Ambient?.Report() ?? "none (Custom Shaders Patch ambient occlusion not found or not readable); open-sky ambient" };
             Console.WriteLine($"Visuals: {tiles.Length} tiles in tracksplit.pssg, conservative all-visible track.vis.");
         }
         WriteSession(output, layout);

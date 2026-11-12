@@ -34,6 +34,8 @@ internal static class VisualBatches
             Tangents=meshes.SelectMany(m=>m.Tangents).ToArray(),Indices=indices.ToArray(),
             Colors=meshes[0].Colors is null?null:meshes.SelectMany(m=>m.Colors!).ToArray(),
             TexCoords=meshes[0].TexCoords is null?null:Enumerable.Range(0,meshes[0].TexCoords!.Length).Select(s=>meshes.SelectMany(m=>m.TexCoords![s]).ToArray()).ToArray(),
-            Binormals=meshes[0].Binormals is null?null:meshes.SelectMany(m=>m.Binormals!).ToArray()};
+            Binormals=meshes[0].Binormals is null?null:meshes.SelectMany(m=>m.Binormals!).ToArray(),
+            // Unmatched members keep open-sky ambient.
+            Ambient=meshes.All(m=>m.Ambient is null)?null:meshes.SelectMany(m=>m.Ambient??Enumerable.Repeat(1f,m.Positions.Length)).ToArray()};
     }
 }
