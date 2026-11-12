@@ -55,6 +55,7 @@ internal static class RouteProbe
         WriteCollision(source, routeOut);
         var route = WriteRoute(source, donorRoute, routeOut);
         var grid = WriteGrid(source, donorRoute, routeOut);
+        var cameras = ReplayCameras.Write(donorRoute, routeOut, source.Collision);
         WriteRecovery(source, routeOut);
         object? visualReport = null;
         if (visuals)
@@ -68,6 +69,8 @@ internal static class RouteProbe
             Console.WriteLine($"Visuals: {tiles.Length} tiles in tracksplit.pssg, conservative all-visible track.vis.");
         }
         WriteSession(output, layout);
+        // Race-intro title (GRID 2 shows its placeholder location/route for a g2vr_ location).
+        var title = TrackTitle.Write(gameRoot, Path.Combine(output, "overlay"), "NÜRBURGRING", "NORDSCHLEIFE", inputs);
         // Installed-pack manifest: tools/session_config.py lists this build as a track.
         Files.Json(Path.Combine(output, "custom-track.json"), new
         {
@@ -80,7 +83,7 @@ internal static class RouteProbe
         Files.Json(Path.Combine(output, "collision-materials.json"), source.CollisionMappings);
         Files.Json(Path.Combine(output, "build.json"), new
         {
-            Schema = 1, Kind = visuals ? "visual-probe" : "route-probe", Visuals = visualReport, SourceLayout = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(acTrack))}/{layout}",
+            Schema = 1, Kind = visuals ? "visual-probe" : "route-probe", Visuals = visualReport, Title = title, Cameras = cameras, SourceLayout = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(acTrack))}/{layout}",
             Donor = $"{DonorVenue}/{DonorRoute}", Location = $"circuits/{Location}/{Route}", LengthMetres = source.Length,
             Translation = new[] { -source.Origin.X, -source.Origin.Y, -source.Origin.Z }, Surfaces = source.Surfaces, Route = route, Grid = grid,
             DonorVisualsRetained = true, RuntimeValidated = false

@@ -266,6 +266,20 @@ internal static class Program
                                     .Select(p => $"{p.Key}={string.Join(",", p.Value.Take(p.Key.StartsWith("mult") || p.Key.Contains("Mult") ? 1 : 4).Select(v => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}")));
                         return 0;
                     }
+                case "instance-params" when args.Length >= 4:
+                    {
+                        // Named constant values of every instance of a shader group (unset = group default).
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var group = doc.Descendants("SHADERGROUP").First(g => (string?)g.Attribute("id") == args[2]);
+                        var defs = group.Elements("SHADERINPUTDEFINITION").Select(d => (string?)d.Attribute("name")).ToList();
+                        foreach (var instance in doc.Descendants("SHADERINSTANCE").Where(i => (string?)i.Attribute("shaderGroup") == "#" + args[2]).Take(40))
+                            Console.WriteLine($"{(string?)instance.Attribute("id"),-28} " + string.Join("  ", args.Skip(3).Select(n =>
+                            {
+                                int k = defs.IndexOf(n); var input = instance.Elements("SHADERINPUT").FirstOrDefault(x => (int?)x.Attribute("parameterID") == k);
+                                return $"{n}={(input is null ? "-" : string.Join(",", input.Value.Split((char[])null!, StringSplitOptions.RemoveEmptyEntries).Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))))}";
+                            })));
+                        return 0;
+                    }
                 case "element-xml" when args.Length == 4:
                     {
                         // Any element by name and id, with attributes and child elements (values shortened).

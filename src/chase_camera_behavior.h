@@ -137,6 +137,14 @@ struct ChaseCameraContext {
     // is elapsed monotonic input time, never a signed/paused recording timestep.
 };
 enum class ChaseCameraStep { Inactive, Invalid, AwaitingNeutral, Duplicate, Updated };
+// Input clock step for the live orbit (chase_camera.cpp). Live driving holds the turned
+// camera through a frame hitch (no step, no reset); replays refuse, since their own
+// ReplayClock must see every step.
+enum class ChaseClock { Step, Hold, Refuse };
+inline ChaseClock ClassifyChaseClock(bool replay,float dt) {
+    if(std::isfinite(dt) && dt>0 && dt<=.25f)return ChaseClock::Step;
+    return replay?ChaseClock::Refuse:ChaseClock::Hold;
+}
 
 struct ChaseCameraState {
     ChaseOrbit orbit;

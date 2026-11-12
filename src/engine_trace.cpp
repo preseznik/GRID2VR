@@ -1490,6 +1490,17 @@ bool __fastcall Predicate(void* renderer,void*) {
         struct NativeEyeRestore { ~NativeEyeRestore() { FinishNativeEye("scene_complete"); } } nativeEyeRestore;
         Log("scene complete id=%llu stage6_seen=%u native_stereo=%u caller_rva=0x%zx counter=%u",
             pendingScene.id,pendingScene.stage6Seen,result,caller,Read<uint32_t>(mainObject+0xc8));
+        // Bounded camera path for locating pre-race shots on converted tracks: every 10th
+        // completed scene, at most 200 lines (position at view+0x40, basis rows 0x10/0x20/0x30).
+        static unsigned cameraPathLines=0;
+        if (cameraPathLines<200 && pendingScene.frame%10==0) {
+            float v[16]{};std::memcpy(v,pendingScene.view.data()+0x10,sizeof(v));
+            std::ofstream path(output/L"camera-path.jsonl",std::ios::app);
+            path << "{\"frame\":" << pendingScene.frame << ",\"position\":[" << v[12] << ',' << v[13] << ',' << v[14]
+                 << "],\"b1\":[" << v[0] << ',' << v[1] << ',' << v[2] << "],\"b2\":[" << v[4] << ',' << v[5] << ',' << v[6]
+                 << "],\"b3\":[" << v[8] << ',' << v[9] << ',' << v[10] << "]}\n";
+            ++cameraPathLines;
+        }
         if (nativeEye.active && nativeEye.frame==pendingScene.frame && (!nativeEye.healthy || !nativeEye.uploads)) {
             // The game camera did not take the left projection: never present it as an eye.
             Log("native_eye projection_failed frame=%llu uploads=%u healthy=%u",nativeEye.frame,nativeEye.uploads,nativeEye.healthy);

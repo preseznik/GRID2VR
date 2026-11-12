@@ -374,7 +374,16 @@ void NativePoseMath() {
     }
 }
 }
+// A live frame hitch holds the orbit; only replays refuse (session 20261112-102906-634:
+// 7 snaps while driving, all from input_clock_discontinuity resets).
+void ClockHitches() {
+    for(float dt:{.0001f,.016f,.1f,.25f}) {assert(ClassifyChaseClock(false,dt)==ChaseClock::Step);assert(ClassifyChaseClock(true,dt)==ChaseClock::Step);}
+    for(float dt:{0.f,-.01f,.2501f,.6f,5.f,std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity()}) {
+        assert(ClassifyChaseClock(false,dt)==ChaseClock::Hold);
+        assert(ClassifyChaseClock(true,dt)==ChaseClock::Refuse);
+    }
+}
 int main() {
-    ConfigurationAndInput();OrbitAndZoom();StateAndRecovery();PausedReplayAndFrameRates();NativePoseMath();
+    ConfigurationAndInput();OrbitAndZoom();StateAndRecovery();PausedReplayAndFrameRates();NativePoseMath();ClockHitches();
     std::puts("chase camera behavior: configuration/input, orbit/zoom, recovery/deduplication, replay/timing and native-pose math passed");
 }

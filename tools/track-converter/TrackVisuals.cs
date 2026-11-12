@@ -50,6 +50,18 @@ internal static class TrackVisuals
     }
     // UV into AmbientRamp for ambient factor a (texel centres; V mid-row).
     static Vector2 RampUV(float a, float s) => new((Math.Clamp(a, 0, 1) * (RampWidth - 1) + .5f) / RampWidth, (Math.Clamp(s, 0, 1) * (RampHeight - 1) + .5f) / RampHeight);
+    // Terrain specular mask (diffuse alpha) per opaque material, on the stock Brands Hatch
+    // scale (grass/gravel 0-8, concrete 7-12, tarmac 10-35). AC's own multilayer values do not
+    // separate surfaces (grass carries tarmacSpecularMultiplier 4, like the GP asphalt); the
+    // R detail layer does. Tarmac detail 24; concrete, metal, carpet and kerb paint (White1)
+    // 10; everything else, grass included, 0. DiRT2VR's Nordschleife had the same over-shine
+    // and likewise stopped treating source alpha as specular.
+    internal static byte Specular(Material material)
+    {
+        if (!material.Shader.StartsWith("ksMultilayer", StringComparison.Ordinal) || !material.Textures.TryGetValue("txDetailR", out var detail)) return 0;
+        detail = detail.ToLowerInvariant();
+        return detail.Contains("tarmac") ? (byte)24 : detail.Contains("concrete") || detail.Contains("metal") || detail.Contains("carpet") || detail.StartsWith("white", StringComparison.Ordinal) ? (byte)10 : (byte)0;
+    }
     // AC material brightness relative to its neutral 0.3 (DiRT2VR NordMaterials normalises the same way).
     internal static float Brightness(Material material)
     {
@@ -209,10 +221,11 @@ internal static class TrackVisuals
         if (lodDiffuse < 0 || !lodTemplate.Elements("SHADERINPUT").Any(x => (int?)x.Attribute("parameterID") == lodDiffuse)) throw new InvalidDataException("Unexpected terrain_lod.fx template.");
         foreach (var target in materials.Where(m => m.StockGroup is null).Select(Target).Distinct())
             if (!Library("SHADERGROUP").Elements().Any(g => (string?)g.Attribute("id") == target)) Library("SHADERGROUP").Add(new XElement(templates[target].Group));
-        string TextureId(string name, bool opaque)
+        // Opaque ids carry the specular mask written into alpha ("_opaque" = 255, "_opaque_sN" = N).
+        string TextureId(string name, bool opaque, byte spec = 255)
         {
             if (!source.Textures.TryGetValue(name, out var texture)) throw new InvalidDataException("Missing embedded texture: " + name);
-            string id = "g2vr_tex_" + texture.Hash[..20] + (opaque ? "_opaque" : ""); textureBytes.TryAdd(id, texture.Dds); return id;
+            string id = "g2vr_tex_" + texture.Hash[..20] + (opaque ? "_opaque" + (spec == 255 ? "" : "_s" + spec) : ""); textureBytes.TryAdd(id, texture.Dds); return id;
         }
         for (int i = 0; i < materials.Length; i++)
         {
@@ -230,7 +243,7 @@ internal static class TrackVisuals
             var definitions = t.Group.Elements("SHADERINPUTDEFINITION").ToArray();
             if (!material.Textures.TryGetValue("txDiffuse", out var diffuse)) throw new InvalidDataException("Material has no diffuse map: " + material.Id);
             var layer = MultilayerMaterial.Read(material);
-            string diffuseId = TextureId(layer?.Detail ?? diffuse, IsOpaque(material));
+            string diffuseId = TextureId(layer?.Detail ?? diffuse, IsOpaque(material), Specular(material));
             string colourId = layer is null ? "g2vr_grey" : TextureId(layer.Shading, true);
             for (int j = 0; j < definitions.Length; j++)
             {
@@ -268,7 +281,7 @@ internal static class TrackVisuals
             instance.SetAttributeValue("parameterSavedCount", instance.Elements("SHADERINPUT").Count());
             Library("SHADERINSTANCE").Add(instance);
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
-                ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Lighting = target == TerrainVc ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
+                ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Specular = IsOpaque(material) ? Specular(material) : (byte)255, Lighting = target == TerrainVc ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
                 Approximation = layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
                     : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat (no depth write); no depth batch, no distant LOD."
                     : target == Cutout ? "Cutout: decal_ao_vc_flat programs with object_2sidedcov states (alpha test + coverage, depth written, two-sided); no depth batch, no distant LOD."
@@ -309,7 +322,9 @@ internal static class TrackVisuals
                 using var memory = new MemoryStream(payload, false); dds = new DdsFile(memory);
                 if (dds.header.width == 0 || dds.header.height == 0 || dds.header.width > 8192 || dds.header.height > 8192) throw new InvalidDataException("Invalid DDS dimensions.");
                 textureBytesTrimmed += DdsAlpha.Shrink(dds, MaxTextureSize);
-                DdsAlpha.Prepare(dds, texture.Id.EndsWith("_opaque", StringComparison.Ordinal));
+                int opaqueAt = texture.Id.IndexOf("_opaque", StringComparison.Ordinal);
+                byte spec = opaqueAt >= 0 && texture.Id.IndexOf("_s", opaqueAt, StringComparison.Ordinal) is int s and >= 0 ? byte.Parse(texture.Id[(s + 2)..]) : (byte)255;
+                DdsAlpha.Prepare(dds, opaqueAt >= 0, spec);
             }
             else if (texture.Id == AmbientRamp)
             {

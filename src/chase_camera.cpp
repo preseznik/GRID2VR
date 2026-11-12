@@ -124,7 +124,7 @@ bool InputAvailable() {
 // orbit, i.e. visibly snap the camera behind the car, and whether it was moving.
 struct ReasonCount {const char* reason;uint64_t all,snapped;};
 std::array<ReasonCount,48> reasonCounts{};
-uint64_t reasonOverflow{},selectionSnaps{},teleportSnaps{},snapsMoving{},snapsStationary{},lookPassthrough{};
+uint64_t reasonOverflow{},selectionSnaps{},teleportSnaps{},snapsMoving{},snapsStationary{},lookPassthrough{},clockHolds{};
 std::array<uint64_t,7> lookPassthroughStage{};
 constexpr std::array<const char*,lookPassthroughStage.size()> lookStageNames{"not_fresh","disabled_or_stopping","unfocused","input_unavailable",
     "camera_inactive","record_flags","other"};
@@ -372,7 +372,16 @@ void Apply(void* provider,void* output,uintptr_t returned,uintptr_t caller) {
             lastStepDt=dt;inputDt=0;
         }
     }
-    if(!std::isfinite(dt) || dt<=0 || dt>.25f) {Suspend("input_clock_discontinuity");return;}
+    // A frame hitch (input clock step > 0.25 s, or none) is not a camera change. Resetting
+    // here snapped a turned orbit behind the car and left it dead until the stick was
+    // centred: 7 snaps while driving, all from this refusal, in the 0.2.23 Nordschleife
+    // session 20261112-102906-634. Hold instead: keep orbit and zoom, apply the current pose
+    // without stepping input or the return, and restart the speed sample. Replays keep
+    // their own clock check below.
+    const auto clock=ClassifyChaseClock(replay,dt);
+    if(clock==ChaseClock::Refuse) {Suspend("input_clock_discontinuity");return;}
+    const bool hold=clock==ChaseClock::Hold;
+    if(hold) {CountReason("input_clock_hold",false);++clockHolds;havePosition=false;}
     ReplayClockResult playbackStep{};
     if(replay) {
         playbackStep=replayClock.Observe(playback.clock,inputFrame,dt);
@@ -382,7 +391,7 @@ void Apply(void* provider,void* output,uintptr_t returned,uintptr_t caller) {
     ChaseVector position{std::bit_cast<float>(snapshot.entityPositionWords[0]),
         std::bit_cast<float>(snapshot.entityPositionWords[1]),std::bit_cast<float>(snapshot.entityPositionWords[2])};
     float speed{};
-    if(havePosition && lastCamera==stage->camera && lastEntity==snapshot.entity) {
+    if(!hold && havePosition && lastCamera==stage->camera && lastEntity==snapshot.entity) {
         const float dx=position.x-lastPosition.x,dy=position.y-lastPosition.y,dz=position.z-lastPosition.z;
         // Fast playback multiplies wall-time displacement. Use recording time
         // for return-to-centre speed; ReplayClock handles replay discontinuities.
@@ -391,11 +400,13 @@ void Apply(void* provider,void* output,uintptr_t returned,uintptr_t caller) {
         if(!std::isfinite(speed) || (!replay && speed>500)) {if(NoteSnap())++teleportSnaps;behavior.Reset();speed=0;}
         else if(replay)speed=std::min(speed,500.f);
     }
-    lastSpeedKmh=speed;
-    ChaseCameraContext context{stage->camera,snapshot.entity,(selectionEpoch<<32)|snapshot.nameHash,inputFrame,dt,speed,true,true,true,replay,!replay || playbackStep.forward};
-    const auto result=behavior.Step(config,context,input);
-    if(result==ChaseCameraStep::Duplicate)++duplicate;
-    else {lastPosition=position;lastCamera=stage->camera;lastEntity=snapshot.entity;lastReplayTime=playback.clock.time;havePosition=true;}
+    if(!hold) {
+        lastSpeedKmh=speed;
+        ChaseCameraContext context{stage->camera,snapshot.entity,(selectionEpoch<<32)|snapshot.nameHash,inputFrame,dt,speed,true,true,true,replay,!replay || playbackStep.forward};
+        const auto result=behavior.Step(config,context,input);
+        if(result==ChaseCameraStep::Duplicate)++duplicate;
+        else {lastPosition=position;lastCamera=stage->camera;lastEntity=snapshot.entity;lastReplayTime=playback.clock.time;havePosition=true;}
+    }
     if(!behavior.active) {reason="awaiting_neutral_input";return;}
     Pose desired=source;
     ChaseQuaternion rotation;
@@ -633,7 +644,7 @@ Receipt StatusLocked() {
            <<",\"invertVertical\":"<<config.invertVertical<<",\"horizontalOnly\":"<<config.horizontalOnly<<"}";
     };
     const auto diagnostics=[&] {
-        out<<",\"snapDiagnostics\":{\"snapsMoving\":"<<snapsMoving<<",\"snapsStationary\":"<<snapsStationary
+        out<<",\"snapDiagnostics\":{\"clockHolds\":"<<clockHolds<<",\"snapsMoving\":"<<snapsMoving<<",\"snapsStationary\":"<<snapsStationary
            <<",\"selectionSnaps\":"<<selectionSnaps<<",\"teleportSnaps\":"<<teleportSnaps<<",\"refusalsByReason\":{";
         bool first=true;
         for(const auto& entry:reasonCounts) {
