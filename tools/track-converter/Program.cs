@@ -476,6 +476,14 @@ internal static class Program
                         }
                         return 0;
                     }
+                case "ac-material" when args.Length == 4:
+                    {
+                        // Textures and properties of every source material whose name matches (case-insensitive substring).
+                        var source = AcSource.Read(args[1], args[2], (min, max) => min, visuals: true);
+                        foreach (var m in source.Visuals.Select(v => v.Material).DistinctBy(m => m.Id).Where(m => m.Name.Contains(args[3], StringComparison.OrdinalIgnoreCase)))
+                            Console.WriteLine($"{m.Name} [{m.Shader}] blend={m.Blend} at={m.AlphaTest}\n  textures: {string.Join(", ", m.Textures.Select(t => $"{t.Key}={t.Value}"))}\n  properties: {string.Join(", ", m.Properties.Select(p => $"{p.Key}=[{string.Join(" ", p.Value)}]"))}");
+                        return 0;
+                    }
                 case "ac-lods" when args.Length == 3:
                     {
                         // Every visual mesh's LOD range (AC lodIn/lodOut, metres): triangles per range,

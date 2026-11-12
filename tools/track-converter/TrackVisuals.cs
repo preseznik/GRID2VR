@@ -117,26 +117,6 @@ internal static class TrackVisuals
     // the VR cockpit's coarse depth: AC double barrier panels 8-30 cm apart showed the back
     // panel through the front at iztok's graffiti wall (run 20261112-224418-782). Within 2 mm
     // only the higher build index of the pair goes, so one surface always stays.
-    // Foliage lit from one side: AC makes cards two-sided with back-to-back duplicate triangles
-    // whose normals point opposite ways, so the baked sun (turned-away faces keep full sun) and
-    // the shader's N.L lit one copy and shaded the other. Head motion near edge-on flipped which
-    // copy faced the eye: trees "flickering shadows" behind iztok's graffiti wall (run
-    // 20261112-230035-357). Every cutout vertex normal is turned to the sun's side, so both
-    // copies bake and light the same.
-    static (List<Mesh> Meshes, object Report) FacingFoliage(List<Mesh> meshes, Vector3 sun)
-    {
-        long flipped = 0, vertices = 0;
-        var result = meshes.Select(m =>
-        {
-            if (m.Material.StockGroup is not null || Target(m.Material) != Cutout) return m;
-            var normals = (Vector3[])m.Normals.Clone(); long f = 0;
-            for (int i = 0; i < normals.Length; i++) if (Vector3.Dot(normals[i], sun) < 0) { normals[i] = -normals[i]; f++; }
-            flipped += f; vertices += normals.Length;
-            return f == 0 ? m : m with { Normals = normals };
-        }).ToList();
-        return (result, new { CutoutVertices = vertices, TurnedToSun = flipped });
-    }
-
     internal static (List<Mesh> Meshes, object Report) DropHiddenLayers(List<Mesh> meshes)
     {
         bool Candidate(Mesh m) => m.Material.StockGroup is null && IsOpaque(m.Material);
@@ -301,7 +281,6 @@ internal static class TrackVisuals
         (visuals, var coincident) = DropCoincident(visuals);
         (visuals, var hiddenLayers) = DropHiddenLayers(visuals);
         var (sun, rotation, height) = SunShadow.FromLighting(Path.Combine(donorVenue, "lighting_day.xml"));
-        (visuals, var facedFoliage) = FacingFoliage(visuals, sun);
         // Baked sun shadows toward the location's own sun (the donor's lighting_day.xml,
         // which the venue copy keeps). Grass tufts and blended decals do not occlude.
         object? sunReport = null;
@@ -698,7 +677,7 @@ internal static class TrackVisuals
         object lod = lodOverrides ? WriteLodOverrides(donorVenue, venueOut, tileSize, Math.Max(tileSize, farSize), highToCull: !lowCopies) : "stock";
         // VIS identities cover every terrain tile, kept LAND tiles included (after ours).
         bounds = [.. bounds, .. savedTiles.Skip(parts.Count).Select(Visibility.Bounds)];
-        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, CoincidentDuplicates = coincident, HiddenLayersDropped = hiddenLayers, FoliageFacing = facedFoliage, FarLodCopiesDropped = new { Meshes = source.FarLodMeshes, Triangles = source.FarLodTriangles }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
+        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, CoincidentDuplicates = coincident, HiddenLayersDropped = hiddenLayers, FarLodCopiesDropped = new { Meshes = source.FarLodMeshes, Triangles = source.FarLodTriangles }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
             Materials = materials.Length, UniqueTextures = textureBytes.Count, TextureBytes = textureBytes.Values.Sum(b => (long)b.Length), TextureBytesTrimmed = textureBytesTrimmed, MaxTextureSize, LowCopies = lowCopies, ReverseTileIds = reverseTileIds, DonorTerrainRemoved = donorTiles.Length, OmittedCoverageTriangles = omittedCoverage });
     }
 
