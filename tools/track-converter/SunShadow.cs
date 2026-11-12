@@ -67,26 +67,27 @@ internal static class SunShadow
     internal sealed class Bvh
     {
         readonly Vector3[] a, e1, e2; readonly byte[] kind;
-        readonly int[] order;
+        readonly int[] order, meshOf;
         readonly List<Node> nodes = [];
         record struct Node(Vector3 Min, Vector3 Max, int Left, int Right, int Start, int Count);
         internal int OpaqueTriangles { get; } internal int FoliageTriangles { get; }
 
         internal Bvh(IReadOnlyList<Mesh> meshes, Func<Mesh, int> occluder)
         {
-            var tris = new List<(Vector3 A, Vector3 B, Vector3 C, byte K)>();
-            foreach (var mesh in meshes)
+            var tris = new List<(Vector3 A, Vector3 B, Vector3 C, byte K, int M)>();
+            for (int m = 0; m < meshes.Count; m++)
             {
+                var mesh = meshes[m];
                 int k = occluder(mesh); if (k == 0) continue;
                 for (int i = 0; i + 2 < mesh.Indices.Length; i += 3)
-                    tris.Add((mesh.Positions[mesh.Indices[i]], mesh.Positions[mesh.Indices[i + 1]], mesh.Positions[mesh.Indices[i + 2]], (byte)k));
+                    tris.Add((mesh.Positions[mesh.Indices[i]], mesh.Positions[mesh.Indices[i + 1]], mesh.Positions[mesh.Indices[i + 2]], (byte)k, m));
                 if (k == 1) OpaqueTriangles += mesh.Indices.Length / 3; else FoliageTriangles += mesh.Indices.Length / 3;
             }
-            int n = tris.Count; a = new Vector3[n]; e1 = new Vector3[n]; e2 = new Vector3[n]; kind = new byte[n];
+            int n = tris.Count; a = new Vector3[n]; e1 = new Vector3[n]; e2 = new Vector3[n]; kind = new byte[n]; meshOf = new int[n];
             var centre = new Vector3[n]; var lo = new Vector3[n]; var hi = new Vector3[n];
             for (int i = 0; i < n; i++)
             {
-                var t = tris[i]; a[i] = t.A; e1[i] = t.B - t.A; e2[i] = t.C - t.A; kind[i] = t.K;
+                var t = tris[i]; a[i] = t.A; e1[i] = t.B - t.A; e2[i] = t.C - t.A; kind[i] = t.K; meshOf[i] = t.M;
                 lo[i] = Vector3.Min(t.A, Vector3.Min(t.B, t.C)); hi[i] = Vector3.Max(t.A, Vector3.Max(t.B, t.C)); centre[i] = (lo[i] + hi[i]) / 2;
             }
             order = Enumerable.Range(0, n).ToArray();
@@ -137,6 +138,34 @@ internal static class SunShadow
                 stack[sp++] = node.Left; stack[sp++] = node.Right;
             }
             return t;
+        }
+
+        // Diagnostics: every triangle the segment crosses, with its mesh index, build-order triangle index
+        // (meshes in order, occluder kind != 0), distance and unit normal.
+        internal void Hits(Vector3 origin, Vector3 dir, float maxT, List<(int Mesh, int Triangle, float T, Vector3 Normal)> hits)
+        {
+            hits.Clear(); var inv = new Vector3(1 / dir.X, 1 / dir.Y, 1 / dir.Z);
+            Span<int> stack = stackalloc int[96]; int sp = 0; stack[sp++] = 0;
+            while (sp > 0)
+            {
+                var node = nodes[stack[--sp]];
+                if (!HitBox(node.Min, node.Max, origin, inv, maxT)) continue;
+                if (node.Left < 0)
+                {
+                    for (int i = node.Start; i < node.Start + node.Count; i++)
+                    {
+                        int tri = order[i]; var p = Vector3.Cross(dir, e2[tri]); float det = Vector3.Dot(e1[tri], p);
+                        if (MathF.Abs(det) < 1e-9f) continue;
+                        float inv2 = 1 / det; var s0 = origin - a[tri]; float u = Vector3.Dot(s0, p) * inv2; if (u < 0 || u > 1) continue;
+                        var q = Vector3.Cross(s0, e1[tri]); float v = Vector3.Dot(dir, q) * inv2; if (v < 0 || u + v > 1) continue;
+                        float t = Vector3.Dot(e2[tri], q) * inv2; if (t < 0 || t > maxT) continue;
+                        hits.Add((meshOf[tri], tri, t, Vector3.Normalize(Vector3.Cross(e1[tri], e2[tri]))));
+                    }
+                    continue;
+                }
+                if (sp + 2 > stack.Length) return;
+                stack[sp++] = node.Left; stack[sp++] = node.Right;
+            }
         }
 
         static bool HitBox(Vector3 min, Vector3 max, Vector3 o, Vector3 inv, float maxT)

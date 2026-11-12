@@ -12,6 +12,8 @@ internal sealed class AcSource
 {
     internal readonly List<QuadTreeDataTriangle> Collision = [];
     internal readonly List<Mesh> Visuals = [];
+    // AC far-LOD copies left out of Visuals (see Read).
+    internal int FarLodMeshes, FarLodTriangles;
     internal readonly Dictionary<string, Texture> Textures = new(StringComparer.OrdinalIgnoreCase);
     internal VertexAmbient? Ambient { get; private set; }
     internal readonly Dictionary<string, string> Inputs = new(StringComparer.OrdinalIgnoreCase);
@@ -87,7 +89,14 @@ internal sealed class AcSource
             Kn5.Read(path, Matrix4x4.CreateTranslation(position - source.Origin), textures, mesh =>
             {
                 // Numeric (physical) source meshes can also be the visible asphalt and kerbs.
-                if (visuals && mesh.Visible && !IsGameMarker(mesh.Name)) source.Visuals.Add(source.Ambient?.Apply(mesh) ?? mesh);
+                // AC swaps near and far copies of an object by camera distance (lodIn/lodOut, metres);
+                // GRID 2 draws every converted mesh at every distance. Far copies (lodIn > 0) sit within
+                // millimetres of their near versions (Pannello_Skin_00 [0-100] vs [95-500]/[95-600],
+                // tents [0-250] vs [240-500]: 106,684 of 122,840 and 24,654 of 99,241 triangles with a
+                // same-facing twin under 3 cm, `ac-overlaps`) and fought with them: barrier graffiti and
+                // start buildings flickering in the VR cockpit (2 cm near plane). The near copy is kept.
+                if (visuals && mesh.Visible && mesh.LodIn > 0 && !IsGameMarker(mesh.Name)) { source.FarLodMeshes++; source.FarLodTriangles += mesh.Indices.Length / 3; }
+                else if (visuals && mesh.Visible && !IsGameMarker(mesh.Name)) source.Visuals.Add(source.Ambient?.Apply(mesh) ?? mesh);
                 if (!mesh.Active || !mesh.Physical) return;
                 string surface = Surface(mesh.Name);
                 source.CollisionMappings[mesh.Name] = surface;
