@@ -64,8 +64,13 @@ internal class VerticalStack : Panel
     {
         if (control.Parent is VerticalStack parent)
         {
+            // Lay out only on a real change: the 2 s status refresh calls this for every
+            // event row, and a layout pass closes an open drop-down list (Track, Car).
+            var changed = parent.excluded.Contains(control) == shown;
             if (shown) parent.excluded.Remove(control); else parent.excluded.Add(control);
-            control.Visible = shown; parent.PerformLayout();
+            var visible = shown && !parent.collapsedHidden.Contains(control);
+            if (!changed && (!parent.Visible || control.Visible == visible)) return;
+            control.Visible = visible; parent.PerformLayout();
         }
         else control.Visible = shown;
     }

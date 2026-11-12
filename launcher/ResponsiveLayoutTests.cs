@@ -7,6 +7,21 @@ internal static class ResponsiveLayoutTests
     internal static void Run(string root, SessionClient fixture)
     {
         var evidence = new List<object>();
+        // The 2 s status refresh re-applies every row's shown state; an unchanged state must
+        // not lay the stack out, or an open Track/Car drop-down closes (0.2.23 test build).
+        using (var stack = new VerticalStack { Width = 400 })
+        {
+            var row = new Panel { Height = 30 }; stack.Controls.Add(row);
+            var layouts = 0; stack.Layout += (_, _) => layouts++;
+            VerticalStack.SetShown(row, true); VerticalStack.SetShown(row, true);
+            Require(layouts == 0 && row.Visible, "An unchanged shown row laid out its stack.");
+            VerticalStack.SetShown(row, false);
+            Require(layouts > 0 && !row.Visible && !VerticalStack.IsShown(row), "Hiding a row did not lay out its stack.");
+            var hidden = layouts; VerticalStack.SetShown(row, false);
+            Require(layouts == hidden, "An unchanged hidden row laid out its stack.");
+            VerticalStack.SetShown(row, true);
+            Require(layouts > hidden && row.Visible && VerticalStack.IsShown(row), "Showing a row did not lay out its stack.");
+        }
         using (var preparation = new PreparationForm(fixture.Root))
         {
             var content = preparation.Content; preparation.Controls.Remove(content);
