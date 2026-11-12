@@ -383,7 +383,23 @@ void ClockHitches() {
         assert(ClassifyChaseClock(true,dt)==ChaseClock::Refuse);
     }
 }
+// Catch-up travel after a hitch is not a teleport (session 20261112-131049-516: 6 of 9
+// moving snaps were false teleport resets); restarts and resets to track still are.
+void LiveTravel() {
+    // 250 km/h car, 16 ms input step, game camera step 50 ms of catch-up: 3.5 m.
+    auto t=LiveChaseTravel(3.5f,.016f,.05f);
+    assert(!t.teleport && std::abs(t.speedKmh-252)<1);
+    // Input clock alone would read 787 km/h; still under 25 m, so never a reset.
+    t=LiveChaseTravel(3.5f,.016f,.016f);assert(!t.teleport && t.speedKmh==500);
+    assert(!LiveChaseTravel(20,.25f,.25f).teleport);
+    // A restart to the grid or a reset to the track.
+    assert(LiveChaseTravel(400,.016f,.016f).teleport);
+    assert(LiveChaseTravel(30,.016f,.016f).teleport);
+    assert(LiveChaseTravel(std::numeric_limits<float>::infinity(),.016f,.016f).teleport);
+    assert(LiveChaseTravel(std::numeric_limits<float>::quiet_NaN(),.016f,.016f).teleport);
+    assert(!LiveChaseTravel(0,.016f,.016f).teleport && LiveChaseTravel(0,.016f,.016f).speedKmh==0);
+}
 int main() {
-    ConfigurationAndInput();OrbitAndZoom();StateAndRecovery();PausedReplayAndFrameRates();NativePoseMath();ClockHitches();
+    ConfigurationAndInput();OrbitAndZoom();StateAndRecovery();PausedReplayAndFrameRates();NativePoseMath();ClockHitches();LiveTravel();
     std::puts("chase camera behavior: configuration/input, orbit/zoom, recovery/deduplication, replay/timing and native-pose math passed");
 }

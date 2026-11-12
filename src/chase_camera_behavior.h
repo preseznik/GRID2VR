@@ -145,6 +145,22 @@ inline ChaseClock ClassifyChaseClock(bool replay,float dt) {
     if(std::isfinite(dt) && dt>0 && dt<=.25f)return ChaseClock::Step;
     return replay?ChaseClock::Refuse:ChaseClock::Hold;
 }
+// Live car travel between two camera steps. The input clock is wall time between input
+// polls; the game's own camera timestep can be longer (it catches up after a hitch), so a
+// normal input step may cover several frames of travel. Timing that against the input
+// clock alone read >500 km/h and reset a turned orbit: 6 of 9 snaps while driving in the
+// 0.2.23 Nordschleife session 20261112-131049-516. Speed uses the longer of the two
+// clocks; a teleport (restart, reset to track) must also move the car more than 25 m.
+struct ChaseTravel { float speedKmh; bool teleport; };
+inline ChaseTravel LiveChaseTravel(float distance,float inputDt,float nativeDt) {
+    constexpr float teleportKmh=500,teleportMetres=25;
+    const float time=std::max(std::isfinite(inputDt)?inputDt:0.f,std::isfinite(nativeDt)?nativeDt:0.f);
+    if(!std::isfinite(distance) || distance<0)return {0,true};
+    if(!(time>0))return {0,distance>teleportMetres};
+    const float speed=distance/time*3.6f;
+    if(distance>teleportMetres && speed>teleportKmh)return {0,true};
+    return {std::min(speed,teleportKmh),false};
+}
 
 struct ChaseCameraState {
     ChaseOrbit orbit;

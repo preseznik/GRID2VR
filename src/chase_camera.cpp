@@ -349,7 +349,11 @@ void Apply(void* provider,void* output,uintptr_t returned,uintptr_t caller) {
        (snapshot.recordWords[0x1a4/4]&12) || !std::isfinite(nativeLookX) || !std::isfinite(nativeLookY) ||
        std::abs(nativeLookX)>.001f || std::abs(nativeLookY)>.001f) {Suspend("native_look_settling");return;}
     const float nativeDt=std::bit_cast<float>(snapshot.timingWords[0]);
-    if(!Focused() || !std::isfinite(nativeDt) || std::abs(nativeDt)>.25f || (!replay && nativeDt<=0)) {Suspend("focus_or_inactive_timestep");return;}
+    if(!Focused()) {Suspend("unfocused");return;}
+    // A live native timestep over 0.25 s is a hitch, held below like an input clock hitch.
+    // Zero (a pause), negative or non-finite live steps and every replay outlier still refuse.
+    const bool nativeHitch=!replay && std::isfinite(nativeDt) && nativeDt>.25f;
+    if(!nativeHitch && (!std::isfinite(nativeDt) || std::abs(nativeDt)>.25f || (!replay && nativeDt<=0))) {Suspend("focus_or_inactive_timestep");return;}
     ChaseVector pivot{};
     if(!VehicleOrbitPivot(snapshot,pivot)) {Suspend("invalid_native_pivot");return;}
     Pose source{};std::memcpy(source.data(),snapshot.recordWords.data(),sizeof(source));
@@ -380,8 +384,8 @@ void Apply(void* provider,void* output,uintptr_t returned,uintptr_t caller) {
     // their own clock check below.
     const auto clock=ClassifyChaseClock(replay,dt);
     if(clock==ChaseClock::Refuse) {Suspend("input_clock_discontinuity");return;}
-    const bool hold=clock==ChaseClock::Hold;
-    if(hold) {CountReason("input_clock_hold",false);++clockHolds;havePosition=false;}
+    const bool hold=clock==ChaseClock::Hold || nativeHitch;
+    if(hold) {CountReason(nativeHitch?"native_clock_hold":"input_clock_hold",false);++clockHolds;havePosition=false;}
     ReplayClockResult playbackStep{};
     if(replay) {
         playbackStep=replayClock.Observe(playback.clock,inputFrame,dt);
@@ -395,10 +399,17 @@ void Apply(void* provider,void* output,uintptr_t returned,uintptr_t caller) {
         const float dx=position.x-lastPosition.x,dy=position.y-lastPosition.y,dz=position.z-lastPosition.z;
         // Fast playback multiplies wall-time displacement. Use recording time
         // for return-to-centre speed; ReplayClock handles replay discontinuities.
-        const double travelTime=replay?std::abs(playback.clock.time-lastReplayTime):dt;
-        speed=travelTime>1e-6?static_cast<float>(std::sqrt(dx*dx+dy*dy+dz*dz)/travelTime*3.6):0;
-        if(!std::isfinite(speed) || (!replay && speed>500)) {if(NoteSnap())++teleportSnaps;behavior.Reset();speed=0;}
-        else if(replay)speed=std::min(speed,500.f);
+        const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
+        if(replay) {
+            const double travelTime=std::abs(playback.clock.time-lastReplayTime);
+            speed=travelTime>1e-6?static_cast<float>(distance/travelTime*3.6):0;
+            if(!std::isfinite(speed)) {if(NoteSnap())++teleportSnaps;behavior.Reset();speed=0;}
+            else speed=std::min(speed,500.f);
+        } else {
+            const auto travel=LiveChaseTravel(distance,dt,nativeDt);
+            if(travel.teleport) {if(NoteSnap())++teleportSnaps;behavior.Reset();}
+            speed=travel.speedKmh;
+        }
     }
     if(!hold) {
         lastSpeedKmh=speed;

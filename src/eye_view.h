@@ -122,6 +122,7 @@ struct RenderedEyeHistory {
 using NativeCameraFn=void (__thiscall*)(void*,uintptr_t,uintptr_t,float,uint32_t);
 inline void BuildNativeCamera(NativeCameraFn function,void* main,uintptr_t context,
                               const SceneView& view,float farPlane) {
+    static_assert(alignof(SceneView)>=16,"camera builder 0x25bf00 loads the view with vmovaps");
     function(main,context,reinterpret_cast<uintptr_t>(view.data()),farPlane,3);
 }
 }

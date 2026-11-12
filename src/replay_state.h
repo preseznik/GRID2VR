@@ -5,7 +5,11 @@
 
 namespace grid2vr {
 using HistoryState=std::array<uint8_t,0x200>;
-using SceneView=std::array<uint8_t,0x90>;
+// main+0x680 view input. Camera builder 0x25bf00 reads it with vmovaps
+// ([view+0x20] at +0x37), so every copy handed to it must be 16-byte aligned:
+// an unaligned stack copy faulted there (#GP, reported as a read of ffffffff)
+// on the first native left-eye restore of the 2c4333e proxy.
+struct alignas(16) SceneView : std::array<uint8_t,0x90> {};
 struct HistoryRange { size_t offset,size; };
 // Writes in AVX history update 0x2e69c0 and index setter 0x5a52e0.
 // Preserve the manager identity: embedded shader-property nodes point into it.
