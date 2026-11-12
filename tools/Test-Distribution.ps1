@@ -105,8 +105,14 @@ $invalid=Join-Path $test 'not a game';New-Item -ItemType Directory -Force -Path 
 Run $launcher @('--check-install','--game',$invalid,'--error-log',(Join-Path $test 'invalid-game-refused.txt')) 'reject-invalid-game' -ExpectFailure
 # Upgrade the same candidate: compare immutable game files and personal data afterward.
 if($StageOnly){Write-Output 'Relocated setup and all launch preflights passed.';return}
+# A stray newer-Python package left in the bundled stdlib shadowed our pathlib.py on a
+# user PC (Lib\pathlib\ from Python 3.13: "cannot import name '_Globber'"). The upgrade
+# must replace payload\python as a whole.
+$stray=Join-Path $game 'GRID2VR\payload\python\Lib\pathlib'
+New-Item -ItemType Directory -Force $stray | Out-Null; [IO.File]::WriteAllText((Join-Path $stray '__init__.py'),'raise ImportError("stale bundled stdlib")')
 Run $installer @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',"/DIR=$game","/LOG=$(Join-Path $test 'upgrade.log')",'/TASKS=') 'upgrade'
 Run $launcher @('--verify-package','--game',$game) 'verify-upgrade'
+if(Test-Path -LiteralPath $stray){throw "Upgrade kept a stray bundled-Python package: $stray"}
 foreach($path in $original.Keys){if((Get-FileHash -LiteralPath $path).Hash -ne $original[$path]){throw "Game fixture changed: $path"}}
 foreach($path in $preserved.Keys){if((Get-FileHash -LiteralPath $path).Hash -ne $preserved[$path]){throw "User file changed: $path"}}
 if(!$KeepInstalled) {

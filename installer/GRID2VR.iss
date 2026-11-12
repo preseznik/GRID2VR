@@ -41,6 +41,12 @@ SelectDirBrowseLabel=Click Next to use this folder, or Browse to choose another 
 BrowseDialogTitle=Browse GRID 2 Installation
 BrowseDialogLabel=Select the GRID 2 folder containing grid2.exe and grid2_avx.exe.
 
+[InstallDelete]
+; The bundled Python is replaced as a whole. Nothing writes into it at runtime, and a
+; stray file left there can shadow its stdlib: a Python 3.13 Lib\pathlib\ package on a
+; user PC overrode our 3.12 pathlib.py ("cannot import name '_Globber' from 'glob'").
+Type: filesandordirs; Name: "{app}\GRID2VR\payload\python"
+
 [Files]
 Source: "{#Stage}\GRID2VR.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\GRID2VR\payload\dotnet\*"; DestDir: "{app}\GRID2VR\payload\dotnet"; Flags: ignoreversion recursesubdirs createallsubdirs

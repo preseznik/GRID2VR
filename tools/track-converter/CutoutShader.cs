@@ -20,6 +20,23 @@ internal static class CutoutShader
     internal const string FoliageShadowGroup = "g2vr_foliage_shadow", FoliageShadowProgram = "g2vr_foliage_shadow.vp";
     internal const string CasterGroup = "g2vr_cutout_caster";
     internal const string Relative = "shaderpack/dx11/shaderpack.pssg";
+    internal const string DecalGroup = "g2vr_decal_vc_flat";
+    // SHADERGROUPPASS polyOffsetEnable/Factor/Units (EGO schema; GL convention, negative
+    // toward the viewer for GRID 2's LEQUAL depth): factor scales with the surface slope,
+    // units are depth-buffer steps. Decals sit on their surface; cutouts (roadside grass and
+    // bush cards on the ground) get a smaller pull.
+    internal static readonly (float Factor, float Units) DecalOffset = (-2, -16), CutoutOffset = (-1, -4);
+    static void Offset(XElement pass, (float Factor, float Units) offset)
+    {
+        // Schema order: right after polyFillType, so the read-back compares attribute for attribute.
+        var anchor = pass.Attribute("polyFillType") ?? throw new InvalidDataException("Pass without polyFillType.");
+        if (pass.Attribute("polyOffsetEnable") is not null) throw new InvalidDataException("Stock pass already has a polygon offset.");
+        var attributes = pass.Attributes().ToList(); int at = attributes.IndexOf(anchor) + 1;
+        attributes.InsertRange(at, [new XAttribute("polyOffsetEnable", 1),
+            new XAttribute("polyOffsetFactor", offset.Factor.ToString("0.000000000e+000", System.Globalization.CultureInfo.InvariantCulture)),
+            new XAttribute("polyOffsetUnits", offset.Units.ToString("0.000000000e+000", System.Globalization.CultureInfo.InvariantCulture))]);
+        pass.ReplaceAttributes(attributes);
+    }
 
     internal static object Write(string gameRoot, string overlay, IDictionary<string, string> inputs)
     {
@@ -47,8 +64,17 @@ internal static class CutoutShader
             pass.SetAttributeValue("alphaToCoverageEnable", main ? 1 : 0); pass.SetAttributeValue("alphaToCoverageLevel", main ? 2 : 0);
             pass.SetAttributeValue("depthMaskEnable", 1);
             if ((string?)pass.Attribute("cullFaceType") != "CW") throw new InvalidDataException("Unexpected decal culling.");
+            Offset(pass, CutoutOffset);
         }
         decal.AddAfterSelf(cutout);
+        // Blended decals (road paint, graffiti) with a depth offset toward the viewer. The VR
+        // cockpit camera's near plane is 2 cm (far 3572 m, D24): depth steps reach ~0.75 cm at
+        // 50 m and ~3 cm at 100 m, so AC's decals 1-2 cm above the road z-fought in VR on
+        // PC4090 (session 20261112-161850-400, near 0x3ca3d70a) and not in the 0.2 m chase
+        // view. Stock decal_ao_vc_flat carries no offset and stays unchanged.
+        var offsetDecal = new XElement(decal); offsetDecal.SetAttributeValue("id", DecalGroup);
+        foreach (var pass in offsetDecal.Elements("SHADERGROUPPASS")) Offset(pass, DecalOffset);
+        cutout.AddAfterSelf(offsetDecal);
 
         // Vertex-colour lit terrain for multilayer ground: terrain_simple with its day colour
         // passes' TAmbientOcclusion sample replaced by COLOR0, which terrain_simple's vertex
@@ -128,6 +154,9 @@ internal static class CutoutShader
         var saved = Files.Document(Files.Pssg(path));
         var savedCutout = GroupIn(saved, Group);
         if (!XNode.DeepEquals(cutout, savedCutout)) throw new InvalidDataException("Cutout shader state changed in serialization.");
+        var savedDecal = GroupIn(saved, DecalGroup);
+        if (!XNode.DeepEquals(offsetDecal, savedDecal)) throw new InvalidDataException("Offset decal state changed in serialization.");
+        savedDecal.Remove();
         var savedVc = GroupIn(saved, TerrainGroup);
         if (!XNode.DeepEquals(vc, savedVc)) throw new InvalidDataException("Vertex-colour terrain group changed in serialization.");
         var savedFoliage = GroupIn(saved, FoliageShadowGroup);
@@ -148,6 +177,7 @@ internal static class CutoutShader
         if (!XNode.DeepEquals(original, saved)) throw new InvalidDataException("Stock shader programs or states changed.");
         if (Files.Hash(source) != inputs[source]) throw new InvalidDataException("Shaderpack changed while converting.");
         return new { Group, Base = "decal_ao_vc_flat", States = "object_2sidedcov cutout (alpha test, coverage, depth write), decal back-face culling",
+            DecalGroup, DecalOffset = new { DecalOffset.Factor, DecalOffset.Units }, CutoutOffset = new { CutoutOffset.Factor, CutoutOffset.Units },
             TerrainGroup, TerrainPasses = patched, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, StockUnchanged = true, OriginalHash = inputs[source] };
     }
 }

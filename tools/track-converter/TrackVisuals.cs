@@ -31,6 +31,9 @@ internal static class TrackVisuals
     // Translucent (blended) materials: GRID 2's decal shader takes alpha from
     // TDiffuseAlphaMap.a x vertex alpha, discards below 0.01, blends without depth write.
     internal const string Decal = "decal_ao_vc_flat.fx";
+    // What converted translucent meshes draw with: that decal under the overlay shaderpack's
+    // depth-offset copy (CutoutShader.DecalGroup), against cockpit-view z-fighting.
+    internal const string OffsetDecal = CutoutShader.DecalGroup + ".fx";
     // Baked lighting. terrain_simple and the decal/cutout shaders take ambient light from
     // the AO texture's RGB and baked sun visibility from its alpha (disassembled offline);
     // white gave every surface full, untinted ambient. Stock lightmaps hold a sky-blue open
@@ -86,7 +89,7 @@ internal static class TrackVisuals
     {
         if (material.StockGroup is not null) return material.StockGroup;
         if (!Supported.Contains(material.Shader)) throw new InvalidDataException("Unmapped AC shader: " + material.Shader);
-        return IsOpaque(material) ? (MultilayerMaterial.Read(material) is not null ? TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : Decal;
+        return IsOpaque(material) ? (MultilayerMaterial.Read(material) is not null ? TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : OffsetDecal;
     }
     internal static bool IsAlphaTested(Material material) => material.Blend == 0 && material.Shader != "ksPerPixelAlpha" &&
         (material.AlphaTest || material.Shader is "ksTree" or "ksPerPixelAT" || material.Shader.Contains("_AT", StringComparison.Ordinal));
@@ -123,6 +126,9 @@ internal static class TrackVisuals
             var cutoutGroup = new XElement(group); cutoutGroup.SetAttributeValue("id", Cutout);
             var cutoutInstance = new XElement(instance); cutoutInstance.SetAttributeValue("shaderGroup", "#" + Cutout);
             templates[Cutout] = (cutoutGroup, cutoutInstance); layouts[Cutout] = layouts[Decal];
+            var decalGroup = new XElement(group); decalGroup.SetAttributeValue("id", OffsetDecal);
+            var decalInstance = new XElement(instance); decalInstance.SetAttributeValue("shaderGroup", "#" + OffsetDecal);
+            templates[OffsetDecal] = (decalGroup, decalInstance); layouts[OffsetDecal] = layouts[Decal];
             var (terrainGroup, terrainInstance) = templates[Opaque];
             var vcGroup = new XElement(terrainGroup); vcGroup.SetAttributeValue("id", TerrainVc);
             var vcInstance = new XElement(terrainInstance); vcInstance.SetAttributeValue("shaderGroup", "#" + TerrainVc);
@@ -283,7 +289,7 @@ internal static class TrackVisuals
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
                 ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Specular = IsOpaque(material) ? Specular(material) : (byte)255, Lighting = target == TerrainVc ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
                 Approximation = layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
-                    : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat (no depth write); no depth batch, no distant LOD."
+                    : target == OffsetDecal ? "Blend: diffuse alpha through decal_ao_vc_flat with a depth offset (no depth write); no depth batch, no distant LOD."
                     : target == Cutout ? "Cutout: decal_ao_vc_flat programs with object_2sidedcov states (alpha test + coverage, depth written, two-sided); no depth batch, no distant LOD."
                     : "Source diffuse and UVs; specular black, baked ambient per vertex. Normal maps and reflections are not reproduced." });
             // Foliage (alpha-tested, not grass tufts) also casts dynamic shadow.
@@ -449,7 +455,7 @@ internal static class TrackVisuals
                 }
                 writer.Indices.AddRange(mesh.Indices.Select(i => (uint)i));
                 // Blended materials draw as decals; opaque and alpha-tested ones in HIGH (depth written).
-                var drawNode = cutout && Target(mesh.Material) == Decal ? decal : high;
+                var drawNode = cutout && Target(mesh.Material) == OffsetDecal ? decal : high;
                 writer.Write(layouts[Target(mesh.Material)], SetFor(drawNode), dataLib, state);
                 Draw(drawNode, id, ids[mesh.Material.Id]); Grow(drawNode, mesh.Positions);
                 // LOW: the same triangles through terrain_lod.fx (position + UV).
