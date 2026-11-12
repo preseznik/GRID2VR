@@ -31,9 +31,16 @@ internal static class TrackVisuals
     // Translucent (blended) materials: GRID 2's decal shader takes alpha from
     // TDiffuseAlphaMap.a x vertex alpha, discards below 0.01, blends without depth write.
     internal const string Decal = "decal_ao_vc_flat.fx";
-    // What converted translucent meshes draw with: that decal under the overlay shaderpack's
-    // depth-offset copy (CutoutShader.DecalGroup), against cockpit-view z-fighting.
+    // Ground-lying triangles of decal and cutout materials (face normal |y| >= GroundNormalY):
+    // depth-offset copies of those groups (CutoutShader), against cockpit-view z-fighting. The
+    // VR cockpit's 2 cm near plane left AC decals 1-2 cm above the road shimmering (PC4090).
+    // Upright triangles keep the plain groups: offset hedge and fence cards showed through
+    // opaque armco (first offset build, 0.2.23 174852).
     internal const string OffsetDecal = CutoutShader.DecalGroup + ".fx";
+    internal const string GroundCutout = CutoutShader.GroundCutoutGroup + ".fx";
+    const string GroundSuffix = "|ground";
+    const float GroundNormalY = .7f;
+    static string? GroundOf(string target) => target == Decal ? OffsetDecal : target == Cutout ? GroundCutout : null;
     // Baked lighting. terrain_simple and the decal/cutout shaders take ambient light from
     // the AO texture's RGB and baked sun visibility from its alpha (disassembled offline);
     // white gave every surface full, untinted ambient. Stock lightmaps hold a sky-blue open
@@ -89,7 +96,7 @@ internal static class TrackVisuals
     {
         if (material.StockGroup is not null) return material.StockGroup;
         if (!Supported.Contains(material.Shader)) throw new InvalidDataException("Unmapped AC shader: " + material.Shader);
-        return IsOpaque(material) ? (MultilayerMaterial.Read(material) is not null ? TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : OffsetDecal;
+        return IsOpaque(material) ? (MultilayerMaterial.Read(material) is not null ? TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : Decal;
     }
     internal static bool IsAlphaTested(Material material) => material.Blend == 0 && material.Shader != "ksPerPixelAlpha" &&
         (material.AlphaTest || material.Shader is "ksTree" or "ksPerPixelAT" || material.Shader.Contains("_AT", StringComparison.Ordinal));
@@ -126,9 +133,12 @@ internal static class TrackVisuals
             var cutoutGroup = new XElement(group); cutoutGroup.SetAttributeValue("id", Cutout);
             var cutoutInstance = new XElement(instance); cutoutInstance.SetAttributeValue("shaderGroup", "#" + Cutout);
             templates[Cutout] = (cutoutGroup, cutoutInstance); layouts[Cutout] = layouts[Decal];
-            var decalGroup = new XElement(group); decalGroup.SetAttributeValue("id", OffsetDecal);
-            var decalInstance = new XElement(instance); decalInstance.SetAttributeValue("shaderGroup", "#" + OffsetDecal);
-            templates[OffsetDecal] = (decalGroup, decalInstance); layouts[OffsetDecal] = layouts[Decal];
+            foreach (var (ground, plain) in new[] { (OffsetDecal, Decal), (GroundCutout, Cutout) })
+            {
+                var g = new XElement(templates[plain].Group); g.SetAttributeValue("id", ground);
+                var gi = new XElement(templates[plain].Instance); gi.SetAttributeValue("shaderGroup", "#" + ground);
+                templates[ground] = (g, gi); layouts[ground] = layouts[Decal];
+            }
             var (terrainGroup, terrainInstance) = templates[Opaque];
             var vcGroup = new XElement(terrainGroup); vcGroup.SetAttributeValue("id", TerrainVc);
             var vcInstance = new XElement(terrainInstance); vcInstance.SetAttributeValue("shaderGroup", "#" + TerrainVc);
@@ -225,7 +235,7 @@ internal static class TrackVisuals
         int lodDiffuse = Array.FindIndex(doc.Descendants("SHADERGROUP").Single(g => (string?)g.Attribute("id") == Lod).Elements("SHADERINPUTDEFINITION").ToArray(),
             d => (string?)d.Attribute("name") == "TDiffuseAlphaMap");
         if (lodDiffuse < 0 || !lodTemplate.Elements("SHADERINPUT").Any(x => (int?)x.Attribute("parameterID") == lodDiffuse)) throw new InvalidDataException("Unexpected terrain_lod.fx template.");
-        foreach (var target in materials.Where(m => m.StockGroup is null).Select(Target).Distinct())
+        foreach (var target in materials.Where(m => m.StockGroup is null).Select(Target).SelectMany(t => GroundOf(t) is { } g ? new[] { t, g } : [t]).Distinct())
             if (!Library("SHADERGROUP").Elements().Any(g => (string?)g.Attribute("id") == target)) Library("SHADERGROUP").Add(new XElement(templates[target].Group));
         // Opaque ids carry the specular mask written into alpha ("_opaque" = 255, "_opaque_sN" = N).
         string TextureId(string name, bool opaque, byte spec = 255)
@@ -286,10 +296,16 @@ internal static class TrackVisuals
             }
             instance.SetAttributeValue("parameterSavedCount", instance.Elements("SHADERINPUT").Count());
             Library("SHADERINSTANCE").Add(instance);
+            // Ground-lying triangles of this material: the same inputs under the offset group.
+            if (GroundOf(target) is { } groundGroup)
+            {
+                var ground = new XElement(instance); ground.SetAttributeValue("id", id + "_ground"); ground.SetAttributeValue("shaderGroup", "#" + groundGroup);
+                Library("SHADERINSTANCE").Add(ground); ids[material.Id + GroundSuffix] = id + "_ground";
+            }
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
                 ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Specular = IsOpaque(material) ? Specular(material) : (byte)255, Lighting = target == TerrainVc ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
                 Approximation = layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
-                    : target == OffsetDecal ? "Blend: diffuse alpha through decal_ao_vc_flat with a depth offset (no depth write); no depth batch, no distant LOD."
+                    : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat (no depth write; ground-facing triangles with a depth offset); no depth batch, no distant LOD."
                     : target == Cutout ? "Cutout: decal_ao_vc_flat programs with object_2sidedcov states (alpha test + coverage, depth written, two-sided); no depth batch, no distant LOD."
                     : "Source diffuse and UVs; specular black, baked ambient per vertex. Normal maps and reflections are not reproduced." });
             // Foliage (alpha-tested, not grass tufts) also casts dynamic shadow.
@@ -375,7 +391,7 @@ internal static class TrackVisuals
         var dataLib = tracksplit.Elements<PssgLibrary>().Single(l => l.Type == "RENDERINTERFACEBOUND");
         var tiles = Visibility.TerrainTiles(tracksplit);
         if (tiles.Length != parts.Count + keptLand.Count) throw new InvalidDataException("Tile inventory changed while writing.");
-        var state = new State(); int meshId = 0, triangles = 0, depthTriangles = 0, casterTriangles = 0; var bounds = new Box[parts.Count];
+        var state = new State(); int meshId = 0, triangles = 0, depthTriangles = 0, casterTriangles = 0, groundTriangles = 0; var bounds = new Box[parts.Count];
         for (int t = 0; t < parts.Count; t++)
         {
             var root = tiles[t];
@@ -425,7 +441,24 @@ internal static class TrackVisuals
                 if (keep.Count > 0) yield return AcSource.Compact(mesh, keep);
                 yield return AcSource.Compact(mesh, cast) with { Material = mesh.Material with { Id = mesh.Material.Id + CasterSuffix } };
             }
-            var tileMeshes = parts[t].SelectMany(Split).Select(RecentreUV);
+            // Decal and cutout triangles facing up (road paint, graffiti, ground grass) take the
+            // depth-offset variant; upright ones (fences, hedges, tree cards) stay plain.
+            IEnumerable<Mesh> SplitGround(Mesh mesh)
+            {
+                if (!ids.ContainsKey(mesh.Material.Id + GroundSuffix)) { yield return mesh; yield break; }
+                var upright = new List<ushort>(); var ground = new List<ushort>();
+                for (int i = 0; i + 2 < mesh.Indices.Length; i += 3)
+                {
+                    Vector3 a = mesh.Positions[mesh.Indices[i]], b = mesh.Positions[mesh.Indices[i + 1]], c = mesh.Positions[mesh.Indices[i + 2]];
+                    var n = Vector3.Cross(b - a, c - a); float length = n.Length();
+                    var list = length > 1e-12f && MathF.Abs(n.Y) / length >= GroundNormalY ? ground : upright;
+                    list.Add(mesh.Indices[i]); list.Add(mesh.Indices[i + 1]); list.Add(mesh.Indices[i + 2]);
+                }
+                if (ground.Count == 0) { yield return mesh; yield break; }
+                if (upright.Count > 0) yield return AcSource.Compact(mesh, upright);
+                yield return AcSource.Compact(mesh, ground) with { Material = mesh.Material with { Id = mesh.Material.Id + GroundSuffix } };
+            }
+            var tileMeshes = parts[t].SelectMany(Split).SelectMany(SplitGround).Select(RecentreUV);
             foreach (var mesh in mergeDraws ? VisualBatches.Combine(tileMeshes) : tileMeshes)
             {
                 string id = "g2vr_RDS_" + meshId++; var writer = new RenderDataSourceWriter(id);
@@ -455,7 +488,7 @@ internal static class TrackVisuals
                 }
                 writer.Indices.AddRange(mesh.Indices.Select(i => (uint)i));
                 // Blended materials draw as decals; opaque and alpha-tested ones in HIGH (depth written).
-                var drawNode = cutout && Target(mesh.Material) == OffsetDecal ? decal : high;
+                var drawNode = cutout && Target(mesh.Material) == Decal ? decal : high;
                 writer.Write(layouts[Target(mesh.Material)], SetFor(drawNode), dataLib, state);
                 Draw(drawNode, id, ids[mesh.Material.Id]); Grow(drawNode, mesh.Positions);
                 // LOW: the same triangles through terrain_lod.fx (position + UV).
@@ -469,6 +502,7 @@ internal static class TrackVisuals
                 triangles += mesh.Indices.Length / 3;
                 if (IsOpaque(mesh.Material)) { opaque.Add(mesh); depthTriangles += mesh.Indices.Length / 3; }
                 else if (mesh.Material.Id.EndsWith(CasterSuffix, StringComparison.Ordinal)) casterTriangles += mesh.Indices.Length / 3;
+                if (mesh.Material.Id.EndsWith(GroundSuffix, StringComparison.Ordinal)) groundTriangles += mesh.Indices.Length / 3;
             }
             // Depth-only batch lists: stock tiles merge the whole level into ONE draw
             // (Brands HIGHBATCH_5_2 = all 26 HIGH_5_2 draws, 33,585 indices). Merge the
@@ -532,7 +566,7 @@ internal static class TrackVisuals
         object lod = lodOverrides ? WriteLodOverrides(donorVenue, venueOut, tileSize, Math.Max(tileSize, farSize), highToCull: !lowCopies) : "stock";
         // VIS identities cover every terrain tile, kept LAND tiles included (after ours).
         bounds = [.. bounds, .. savedTiles.Skip(parts.Count).Select(Visibility.Bounds)];
-        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
+        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetGround = new { Triangles = groundTriangles, MinimumNormalY = GroundNormalY, Groups = new[] { OffsetDecal, GroundCutout } }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
             Materials = materials.Length, UniqueTextures = textureBytes.Count, TextureBytes = textureBytes.Values.Sum(b => (long)b.Length), TextureBytesTrimmed = textureBytesTrimmed, MaxTextureSize, LowCopies = lowCopies, ReverseTileIds = reverseTileIds, DonorTerrainRemoved = donorTiles.Length, OmittedCoverageTriangles = omittedCoverage });
     }
 

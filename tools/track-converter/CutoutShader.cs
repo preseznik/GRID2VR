@@ -20,11 +20,15 @@ internal static class CutoutShader
     internal const string FoliageShadowGroup = "g2vr_foliage_shadow", FoliageShadowProgram = "g2vr_foliage_shadow.vp";
     internal const string CasterGroup = "g2vr_cutout_caster";
     internal const string Relative = "shaderpack/dx11/shaderpack.pssg";
-    internal const string DecalGroup = "g2vr_decal_vc_flat";
-    // SHADERGROUPPASS polyOffsetEnable/Factor/Units (EGO schema; GL convention, negative
-    // toward the viewer for GRID 2's LEQUAL depth): factor scales with the surface slope,
-    // units are depth-buffer steps. Decals sit on their surface; cutouts (roadside grass and
-    // bush cards on the ground) get a smaller pull.
+    // Ground-lying variants with a depth offset: the blended decal and the cutout. Only
+    // triangles facing up (TrackVisuals splits by face normal) use them: on upright cards the
+    // slope term pulled hedges and fences metres forward through opaque armco in the first
+    // offset build (iztok4090, 0.2.23 174852: "trackside barriers are translucent").
+    internal const string DecalGroup = "g2vr_decal_vc_flat", GroundCutoutGroup = "g2vr_cutout_ground";
+    // SHADERGROUPPASS polyOffsetEnable/Factor/Units (EGO schema; GL convention: negative is
+    // toward the viewer for GRID 2's LEQUAL depth, confirmed by an exaggerated test offset
+    // drawing the track-edge line over the car, run 20261112-172915-021): factor scales with
+    // the surface's depth slope, units are depth-buffer steps.
     internal static readonly (float Factor, float Units) DecalOffset = (-2, -16), CutoutOffset = (-1, -4);
     static void Offset(XElement pass, (float Factor, float Units) offset)
     {
@@ -64,9 +68,11 @@ internal static class CutoutShader
             pass.SetAttributeValue("alphaToCoverageEnable", main ? 1 : 0); pass.SetAttributeValue("alphaToCoverageLevel", main ? 2 : 0);
             pass.SetAttributeValue("depthMaskEnable", 1);
             if ((string?)pass.Attribute("cullFaceType") != "CW") throw new InvalidDataException("Unexpected decal culling.");
-            Offset(pass, CutoutOffset);
         }
         decal.AddAfterSelf(cutout);
+        var groundCutout = new XElement(cutout); groundCutout.SetAttributeValue("id", GroundCutoutGroup);
+        foreach (var pass in groundCutout.Elements("SHADERGROUPPASS")) Offset(pass, CutoutOffset);
+        cutout.AddAfterSelf(groundCutout);
         // Blended decals (road paint, graffiti) with a depth offset toward the viewer. The VR
         // cockpit camera's near plane is 2 cm (far 3572 m, D24): depth steps reach ~0.75 cm at
         // 50 m and ~3 cm at 100 m, so AC's decals 1-2 cm above the road z-fought in VR on
@@ -157,6 +163,9 @@ internal static class CutoutShader
         var savedDecal = GroupIn(saved, DecalGroup);
         if (!XNode.DeepEquals(offsetDecal, savedDecal)) throw new InvalidDataException("Offset decal state changed in serialization.");
         savedDecal.Remove();
+        var savedGround = GroupIn(saved, GroundCutoutGroup);
+        if (!XNode.DeepEquals(groundCutout, savedGround)) throw new InvalidDataException("Ground cutout state changed in serialization.");
+        savedGround.Remove();
         var savedVc = GroupIn(saved, TerrainGroup);
         if (!XNode.DeepEquals(vc, savedVc)) throw new InvalidDataException("Vertex-colour terrain group changed in serialization.");
         var savedFoliage = GroupIn(saved, FoliageShadowGroup);
@@ -177,7 +186,7 @@ internal static class CutoutShader
         if (!XNode.DeepEquals(original, saved)) throw new InvalidDataException("Stock shader programs or states changed.");
         if (Files.Hash(source) != inputs[source]) throw new InvalidDataException("Shaderpack changed while converting.");
         return new { Group, Base = "decal_ao_vc_flat", States = "object_2sidedcov cutout (alpha test, coverage, depth write), decal back-face culling",
-            DecalGroup, DecalOffset = new { DecalOffset.Factor, DecalOffset.Units }, CutoutOffset = new { CutoutOffset.Factor, CutoutOffset.Units },
+            DecalGroup, GroundCutoutGroup, DecalOffset = new { DecalOffset.Factor, DecalOffset.Units }, CutoutOffset = new { CutoutOffset.Factor, CutoutOffset.Units },
             TerrainGroup, TerrainPasses = patched, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, StockUnchanged = true, OriginalHash = inputs[source] };
     }
 }
