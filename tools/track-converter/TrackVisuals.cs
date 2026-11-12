@@ -31,16 +31,17 @@ internal static class TrackVisuals
     // Translucent (blended) materials: GRID 2's decal shader takes alpha from
     // TDiffuseAlphaMap.a x vertex alpha, discards below 0.01, blends without depth write.
     internal const string Decal = "decal_ao_vc_flat.fx";
-    // Ground-lying triangles of decal and cutout materials (face normal |y| >= GroundNormalY):
-    // depth-offset copies of those groups (CutoutShader), against cockpit-view z-fighting. The
-    // VR cockpit's 2 cm near plane left AC decals 1-2 cm above the road shimmering (PC4090).
-    // Upright triangles keep the plain groups: offset hedge and fence cards showed through
-    // opaque armco (first offset build, 0.2.23 174852).
+    // Layered triangles of decal and cutout materials (an opaque surface within LayerGap along
+    // the face normal: road paint, wall graffiti, grass laid on a bank): depth-offset copies of
+    // those groups (CutoutShader), against cockpit-view z-fighting. The VR cockpit's 2 cm near
+    // plane left AC decals 1-2 cm off their surface shimmering (PC4090). Free-standing cards
+    // keep the plain groups: offset hedge and fence cards showed through opaque armco (0.2.23
+    // 174852), and an up-facing-only split (194035) left wall graffiti and bank grass flickering.
     internal const string OffsetDecal = CutoutShader.DecalGroup + ".fx";
-    internal const string GroundCutout = CutoutShader.GroundCutoutGroup + ".fx";
-    const string GroundSuffix = "|ground";
-    const float GroundNormalY = .7f;
-    static string? GroundOf(string target) => target == Decal ? OffsetDecal : target == Cutout ? GroundCutout : null;
+    internal const string LayerCutout = CutoutShader.LayerCutoutGroup + ".fx";
+    const string LayerSuffix = "|layer";
+    const float LayerGap = .1f;
+    static string? LayerOf(string target) => target == Decal ? OffsetDecal : target == Cutout ? LayerCutout : null;
     // Baked lighting. terrain_simple and the decal/cutout shaders take ambient light from
     // the AO texture's RGB and baked sun visibility from its alpha (disassembled offline);
     // white gave every surface full, untinted ambient. Stock lightmaps hold a sky-blue open
@@ -133,7 +134,7 @@ internal static class TrackVisuals
             var cutoutGroup = new XElement(group); cutoutGroup.SetAttributeValue("id", Cutout);
             var cutoutInstance = new XElement(instance); cutoutInstance.SetAttributeValue("shaderGroup", "#" + Cutout);
             templates[Cutout] = (cutoutGroup, cutoutInstance); layouts[Cutout] = layouts[Decal];
-            foreach (var (ground, plain) in new[] { (OffsetDecal, Decal), (GroundCutout, Cutout) })
+            foreach (var (ground, plain) in new[] { (OffsetDecal, Decal), (LayerCutout, Cutout) })
             {
                 var g = new XElement(templates[plain].Group); g.SetAttributeValue("id", ground);
                 var gi = new XElement(templates[plain].Instance); gi.SetAttributeValue("shaderGroup", "#" + ground);
@@ -235,7 +236,7 @@ internal static class TrackVisuals
         int lodDiffuse = Array.FindIndex(doc.Descendants("SHADERGROUP").Single(g => (string?)g.Attribute("id") == Lod).Elements("SHADERINPUTDEFINITION").ToArray(),
             d => (string?)d.Attribute("name") == "TDiffuseAlphaMap");
         if (lodDiffuse < 0 || !lodTemplate.Elements("SHADERINPUT").Any(x => (int?)x.Attribute("parameterID") == lodDiffuse)) throw new InvalidDataException("Unexpected terrain_lod.fx template.");
-        foreach (var target in materials.Where(m => m.StockGroup is null).Select(Target).SelectMany(t => GroundOf(t) is { } g ? new[] { t, g } : [t]).Distinct())
+        foreach (var target in materials.Where(m => m.StockGroup is null).Select(Target).SelectMany(t => LayerOf(t) is { } g ? new[] { t, g } : [t]).Distinct())
             if (!Library("SHADERGROUP").Elements().Any(g => (string?)g.Attribute("id") == target)) Library("SHADERGROUP").Add(new XElement(templates[target].Group));
         // Opaque ids carry the specular mask written into alpha ("_opaque" = 255, "_opaque_sN" = N).
         string TextureId(string name, bool opaque, byte spec = 255)
@@ -296,11 +297,11 @@ internal static class TrackVisuals
             }
             instance.SetAttributeValue("parameterSavedCount", instance.Elements("SHADERINPUT").Count());
             Library("SHADERINSTANCE").Add(instance);
-            // Ground-lying triangles of this material: the same inputs under the offset group.
-            if (GroundOf(target) is { } groundGroup)
+            // Layered triangles of this material: the same inputs under the offset group.
+            if (LayerOf(target) is { } groundGroup)
             {
-                var ground = new XElement(instance); ground.SetAttributeValue("id", id + "_ground"); ground.SetAttributeValue("shaderGroup", "#" + groundGroup);
-                Library("SHADERINSTANCE").Add(ground); ids[material.Id + GroundSuffix] = id + "_ground";
+                var ground = new XElement(instance); ground.SetAttributeValue("id", id + "_layer"); ground.SetAttributeValue("shaderGroup", "#" + groundGroup);
+                Library("SHADERINSTANCE").Add(ground); ids[material.Id + LayerSuffix] = id + "_layer";
             }
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
                 ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Specular = IsOpaque(material) ? Specular(material) : (byte)255, Lighting = target == TerrainVc ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
@@ -391,7 +392,23 @@ internal static class TrackVisuals
         var dataLib = tracksplit.Elements<PssgLibrary>().Single(l => l.Type == "RENDERINTERFACEBOUND");
         var tiles = Visibility.TerrainTiles(tracksplit);
         if (tiles.Length != parts.Count + keptLand.Count) throw new InvalidDataException("Tile inventory changed while writing.");
-        var state = new State(); int meshId = 0, triangles = 0, depthTriangles = 0, casterTriangles = 0, groundTriangles = 0; var bounds = new Box[parts.Count];
+        // Opaque surfaces for the layer test: a short ray from the triangle's centroid along
+        // both sides of its normal, LayerGap each way (the centroid and a point between it and
+        // each corner, so a small decal edge over open air does not decide alone).
+        var surfaces = new SunShadow.Bvh(visuals, m => IsOpaque(m.Material) ? 1 : 0);
+        var layerCounts = new SortedDictionary<string, (int Layered, int Free)>(StringComparer.Ordinal);
+        bool Layered(Vector3 a, Vector3 b, Vector3 c)
+        {
+            var n = Vector3.Cross(b - a, c - a); float length = n.Length();
+            if (length < 1e-12f) return false;
+            n /= length; var centre = (a + b + c) / 3;
+            // The slab test divides by each direction component: no exact zeros (flat decals).
+            var down = Vector3.Normalize(-n + new Vector3(1e-5f, 1e-5f, 1e-5f));
+            foreach (var p in new[] { centre, (centre + a) / 2, (centre + b) / 2, (centre + c) / 2 })
+                if (surfaces.Transmission(p + n * LayerGap, down, 2 * LayerGap) == 0) return true;
+            return false;
+        }
+        var state = new State(); int meshId = 0, triangles = 0, depthTriangles = 0, casterTriangles = 0, layerTriangles = 0; var bounds = new Box[parts.Count];
         for (int t = 0; t < parts.Count; t++)
         {
             var root = tiles[t];
@@ -441,24 +458,26 @@ internal static class TrackVisuals
                 if (keep.Count > 0) yield return AcSource.Compact(mesh, keep);
                 yield return AcSource.Compact(mesh, cast) with { Material = mesh.Material with { Id = mesh.Material.Id + CasterSuffix } };
             }
-            // Decal and cutout triangles facing up (road paint, graffiti, ground grass) take the
-            // depth-offset variant; upright ones (fences, hedges, tree cards) stay plain.
-            IEnumerable<Mesh> SplitGround(Mesh mesh)
+            // Decal and cutout triangles lying on an opaque surface take the depth-offset variant;
+            // free-standing ones (fences, hedges, tree cards) stay plain.
+            IEnumerable<Mesh> SplitLayers(Mesh mesh)
             {
-                if (!ids.ContainsKey(mesh.Material.Id + GroundSuffix)) { yield return mesh; yield break; }
-                var upright = new List<ushort>(); var ground = new List<ushort>();
+                if (!ids.ContainsKey(mesh.Material.Id + LayerSuffix)) { yield return mesh; yield break; }
+                var free = new List<ushort>(); var layered = new List<ushort>();
                 for (int i = 0; i + 2 < mesh.Indices.Length; i += 3)
                 {
                     Vector3 a = mesh.Positions[mesh.Indices[i]], b = mesh.Positions[mesh.Indices[i + 1]], c = mesh.Positions[mesh.Indices[i + 2]];
-                    var n = Vector3.Cross(b - a, c - a); float length = n.Length();
-                    var list = length > 1e-12f && MathF.Abs(n.Y) / length >= GroundNormalY ? ground : upright;
+                    var list = Layered(a, b, c) ? layered : free;
                     list.Add(mesh.Indices[i]); list.Add(mesh.Indices[i + 1]); list.Add(mesh.Indices[i + 2]);
                 }
-                if (ground.Count == 0) { yield return mesh; yield break; }
-                if (upright.Count > 0) yield return AcSource.Compact(mesh, upright);
-                yield return AcSource.Compact(mesh, ground) with { Material = mesh.Material with { Id = mesh.Material.Id + GroundSuffix } };
+                var name = mesh.Material.Name;
+                var counts = layerCounts.TryGetValue(name, out var had) ? had : (0, 0);
+                layerCounts[name] = (counts.Item1 + layered.Count / 3, counts.Item2 + free.Count / 3);
+                if (layered.Count == 0) { yield return mesh; yield break; }
+                if (free.Count > 0) yield return AcSource.Compact(mesh, free);
+                yield return AcSource.Compact(mesh, layered) with { Material = mesh.Material with { Id = mesh.Material.Id + LayerSuffix } };
             }
-            var tileMeshes = parts[t].SelectMany(Split).SelectMany(SplitGround).Select(RecentreUV);
+            var tileMeshes = parts[t].SelectMany(Split).SelectMany(SplitLayers).Select(RecentreUV);
             foreach (var mesh in mergeDraws ? VisualBatches.Combine(tileMeshes) : tileMeshes)
             {
                 string id = "g2vr_RDS_" + meshId++; var writer = new RenderDataSourceWriter(id);
@@ -502,7 +521,7 @@ internal static class TrackVisuals
                 triangles += mesh.Indices.Length / 3;
                 if (IsOpaque(mesh.Material)) { opaque.Add(mesh); depthTriangles += mesh.Indices.Length / 3; }
                 else if (mesh.Material.Id.EndsWith(CasterSuffix, StringComparison.Ordinal)) casterTriangles += mesh.Indices.Length / 3;
-                if (mesh.Material.Id.EndsWith(GroundSuffix, StringComparison.Ordinal)) groundTriangles += mesh.Indices.Length / 3;
+                if (mesh.Material.Id.EndsWith(LayerSuffix, StringComparison.Ordinal)) layerTriangles += mesh.Indices.Length / 3;
             }
             // Depth-only batch lists: stock tiles merge the whole level into ONE draw
             // (Brands HIGHBATCH_5_2 = all 26 HIGH_5_2 draws, 33,585 indices). Merge the
@@ -566,7 +585,7 @@ internal static class TrackVisuals
         object lod = lodOverrides ? WriteLodOverrides(donorVenue, venueOut, tileSize, Math.Max(tileSize, farSize), highToCull: !lowCopies) : "stock";
         // VIS identities cover every terrain tile, kept LAND tiles included (after ours).
         bounds = [.. bounds, .. savedTiles.Skip(parts.Count).Select(Visibility.Bounds)];
-        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetGround = new { Triangles = groundTriangles, MinimumNormalY = GroundNormalY, Groups = new[] { OffsetDecal, GroundCutout } }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
+        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
             Materials = materials.Length, UniqueTextures = textureBytes.Count, TextureBytes = textureBytes.Values.Sum(b => (long)b.Length), TextureBytesTrimmed = textureBytesTrimmed, MaxTextureSize, LowCopies = lowCopies, ReverseTileIds = reverseTileIds, DonorTerrainRemoved = donorTiles.Length, OmittedCoverageTriangles = omittedCoverage });
     }
 

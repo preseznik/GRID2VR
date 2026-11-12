@@ -64,7 +64,7 @@ internal static class SunShadow
     }
 
     // Occluder kinds: 0 none, 1 opaque, 2 foliage (partial).
-    sealed class Bvh
+    internal sealed class Bvh
     {
         readonly Vector3[] a, e1, e2; readonly byte[] kind;
         readonly int[] order;
