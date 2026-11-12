@@ -378,14 +378,28 @@ internal static class Program
                             else Console.WriteLine("missing " + name);
                         return 0;
                     }
-                case "ac-overlaps" or "ac-overlaps-raw" when args.Length == 3:
+                case "ac-overlaps" or "ac-overlaps-raw" when args.Length is 3 or 4:
                     {
                         // Near-coplanar layers that z-fight under a coarse depth buffer: for every visual
                         // triangle, other parallel surfaces within 3 cm along its normal through the
                         // centroid. Same-facing pairs by material and gap; opposite-facing (back-to-back
                         // duplicates, culled) counted apart.
-                        var source = AcSource.Read(args[1], args[2], (min, max) => min, visuals: true);
+                        // Optional G2VR_REGION="gx,gy,gz,radius,tx,ty,tz": only triangles within radius of a
+                        // game-space point (tx,ty,tz = build.json Translation; positions read uncentred).
+                        var region = Environment.GetEnvironmentVariable("G2VR_REGION")?.Split(',').Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+                        var source = AcSource.Read(args[1], args[2], (min, max) => region is null ? min : System.Numerics.Vector3.Zero, visuals: true);
                         var meshes = source.Visuals.Where(m => m.Material.StockGroup is null).ToList();
+                        if (region is { Length: 7 })
+                        {
+                            var centre = new System.Numerics.Vector3(region[0] - region[4], region[1] - region[5], region[2] - region[6]); float r2 = region[3] * region[3];
+                            meshes = meshes.Select(m =>
+                            {
+                                var keep = new List<ushort>();
+                                for (int i = 0; i + 2 < m.Indices.Length; i += 3)
+                                    if (System.Numerics.Vector3.DistanceSquared((m.Positions[m.Indices[i]] + m.Positions[m.Indices[i + 1]] + m.Positions[m.Indices[i + 2]]) / 3, centre) <= r2) { keep.Add(m.Indices[i]); keep.Add(m.Indices[i + 1]); keep.Add(m.Indices[i + 2]); }
+                                return keep.Count == 0 ? null : AcSource.Compact(m, keep);
+                            }).Where(m => m is not null).Select(m => m!).ToList();
+                        }
                         // As converted: far-LOD copies are already left out by AcSource; ac-overlaps-raw skips the dedupe.
                         if (args[0] == "ac-overlaps") meshes = TrackVisuals.DropCoincident(meshes).Meshes;
                         Console.WriteLine($"far-LOD copies left out: {source.FarLodMeshes} meshes, {source.FarLodTriangles:N0} triangles; analysed {meshes.Sum(m => m.Indices.Length / 3):N0} triangles");
@@ -394,7 +408,8 @@ internal static class Program
                         var opposite = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
                         var totals = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
                         var meshPairs = new System.Collections.Concurrent.ConcurrentDictionary<(int, int), int>();
-                        const float Gap = .03f;
+                        var frontOf = new System.Collections.Concurrent.ConcurrentDictionary<(string, string), int>();
+                        float Gap = args.Length == 4 ? float.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture) : .03f;
                         var firstTri = new int[meshes.Count]; for (int k = 1; k < meshes.Count; k++) firstTri[k] = firstTri[k - 1] + meshes[k - 1].Indices.Length / 3;
                         System.Threading.Tasks.Parallel.For(0, meshes.Count, () => new List<(int Mesh, int Triangle, float T, System.Numerics.Vector3 Normal)>(), (mi, _, hits) =>
                         {
@@ -406,30 +421,31 @@ internal static class Program
                                 totals.AddOrUpdate(name, 1, (_, v) => v + 1);
                                 var centre = (a + b + c) / 3; var dir = System.Numerics.Vector3.Normalize(-n + new System.Numerics.Vector3(1e-5f));
                                 bvh.Hits(centre + n * Gap, dir, 2 * Gap, hits);
-                                int self = firstTri[mi] + i / 3; int best = -1; float bestGap = float.MaxValue; bool bestOpposite = false;
+                                int self = firstTri[mi] + i / 3; int best = -1; float bestGap = float.MaxValue; bool bestOpposite = false, bestFront = false;
                                 foreach (var h in hits)
                                 {
                                     float gap = MathF.Abs(h.T - Gap); float d = System.Numerics.Vector3.Dot(h.Normal, n);
                                     if (MathF.Abs(d) < .95f) continue;
                                     if (h.Triangle == self) continue;
-                                    if (gap < bestGap) { bestGap = gap; best = h.Mesh; bestOpposite = d < 0; }
+                                    if (gap < bestGap) { bestGap = gap; best = h.Mesh; bestOpposite = d < 0; bestFront = h.T < Gap; }
                                 }
                                 if (best < 0) continue;
                                 if (bestOpposite) { opposite.AddOrUpdate(name, 1, (_, v) => v + 1); continue; }
-                                int bucket = bestGap < .002f ? 0 : bestGap < .005f ? 1 : bestGap < .01f ? 2 : bestGap < .02f ? 3 : 4;
+                                int bucket = bestGap < .002f ? 0 : bestGap < .01f ? 1 : bestGap < .03f ? 2 : bestGap < .08f ? 3 : 4;
                                 pairs.AddOrUpdate((name, meshes[best].Material.Name, bucket), 1, (_, v) => v + 1);
+                                if (bestFront) frontOf.AddOrUpdate((name, meshes[best].Material.Name), 1, (_, v) => v + 1);
                                 if (bucket == 0) meshPairs.AddOrUpdate((mi, best), 1, (_, v) => v + 1);
                             }
                             return hits;
                         }, _ => { });
-                        string[] buckets = ["<2mm", "2-5mm", "5-10mm", "1-2cm", "2-3cm"];
-                        Console.WriteLine("same-facing layers within 3 cm (triangle material over/under other material), top pairs:");
-                        foreach (var g in pairs.GroupBy(p => (p.Key.Item1, p.Key.Item2)).OrderByDescending(g => g.Sum(p => p.Value)).Take(70))
+                        string[] buckets = ["<2mm", "2-10mm", "1-3cm", "3-8cm", ">8cm"];
+                        Console.WriteLine($"same-facing layers within {Gap * 100:0.#} cm (triangle material over/under other material), top pairs:");
+                        foreach (var g in pairs.GroupBy(p => (p.Key.Item1, p.Key.Item2)).OrderByDescending(g => g.Sum(p => p.Value)).Take(120))
                         {
                             var opaqueA = TrackVisuals.IsOpaque(meshes.First(m => m.Material.Name == g.Key.Item1).Material);
                             var opaqueB = TrackVisuals.IsOpaque(meshes.First(m => m.Material.Name == g.Key.Item2).Material);
                             Console.WriteLine($"{g.Key.Item1,-22}{(opaqueA ? "(o)" : "(t)")} ~ {g.Key.Item2,-22}{(opaqueB ? "(o)" : "(t)")} {g.Sum(p => p.Value),8:N0} of {totals[g.Key.Item1],9:N0}  " +
-                                string.Join(" ", Enumerable.Range(0, 5).Select(k => $"{buckets[k]}:{g.Where(p => p.Key.Item3 == k).Sum(p => p.Value)}")));
+                                string.Join(" ", Enumerable.Range(0, 5).Select(k => $"{buckets[k]}:{g.Where(p => p.Key.Item3 == k).Sum(p => p.Value)}")) + $"  other-in-front:{frontOf.GetValueOrDefault(g.Key)}");
                         }
                         Console.WriteLine("top mesh pairs under 2 mm (mesh [lod] tris ~ mesh [lod] tris: coincident triangles; same mesh = self-overlap):");
                         string M(int i) => $"{meshes[i].Name}/{meshes[i].Material.Name} [{meshes[i].LodIn:0}-{meshes[i].LodOut:0}] node{meshes[i].SourceNode} {meshes[i].Indices.Length / 3}";
@@ -437,6 +453,27 @@ internal static class Program
                         int selfPairs = meshPairs.Where(p => p.Key.Item1 == p.Key.Item2).Sum(p => p.Value), crossPairs = meshPairs.Where(p => p.Key.Item1 != p.Key.Item2).Sum(p => p.Value);
                         Console.WriteLine($"coincident triangles: within one mesh {selfPairs:N0}, across meshes {crossPairs:N0}");
                         Console.WriteLine("back-to-back (opposite-facing) duplicates: " + string.Join(", ", opposite.OrderByDescending(p => p.Value).Take(15).Select(p => $"{p.Key}:{p.Value}")));
+                        return 0;
+                    }
+                case "ac-where" when args.Length == 7:
+                    {
+                        // Where a material sits in game coordinates: 20 m cells of its triangle centroids,
+                        // nearest first to a game-space point. args: track layout material tx ty tz
+                        // (tx,ty,tz = build.json Translation + the point is passed as the 3 values below).
+                        var source = AcSource.Read(args[1], args[2], (min, max) => System.Numerics.Vector3.Zero, visuals: true);
+                        var t = new System.Numerics.Vector3(float.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture), float.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture), float.Parse(args[6], System.Globalization.CultureInfo.InvariantCulture));
+                        var cells = new Dictionary<(int, int), (System.Numerics.Vector3 Sum, int Count)>();
+                        foreach (var m in source.Visuals.Where(m => m.Material.Name == args[3]))
+                            for (int i = 0; i + 2 < m.Indices.Length; i += 3)
+                            {
+                                var c = (m.Positions[m.Indices[i]] + m.Positions[m.Indices[i + 1]] + m.Positions[m.Indices[i + 2]]) / 3 + t;
+                                var k = ((int)MathF.Floor(c.X / 20), (int)MathF.Floor(c.Z / 20));
+                                var v = cells.GetValueOrDefault(k); cells[k] = (v.Sum + c, v.Count + 1);
+                            }
+                        foreach (var (k, v) in cells.Select(p => (p.Key, p.Value)).OrderByDescending(p => p.Value.Count).Take(25))
+                        {
+                            var c = v.Sum / v.Count; Console.WriteLine($"{v.Count,5} tris around game ({c.X:0.0}, {c.Y:0.0}, {c.Z:0.0})");
+                        }
                         return 0;
                     }
                 case "ac-lods" when args.Length == 3:

@@ -29,13 +29,22 @@ internal static class CutoutShader
     // toward the viewer for GRID 2's LEQUAL depth, confirmed by an exaggerated test offset
     // drawing the track-edge line over the car, run 20261112-172915-021): factor scales with
     // the surface's depth slope, units are depth-buffer steps.
-    internal static readonly (float Factor, float Units) DecalOffset = (-2, -16), CutoutOffset = (-1, -4);
+    // Strength: the VR cockpit camera keeps a 2 cm near plane (roof clearance; stock 0.2 m), so
+    // D24 steps are 10x coarser than on Desktop. At iztok's graffiti wall (graffiti_clean 3-8 cm
+    // in front of barriers, ~40-80 m away) the layer still lost with (-1, -4) and held with a
+    // 5x finer near plane (xr-sim runs 20261112-222352-318 / 223129-906): the fight spans ~10-20
+    // steps there. Both layer groups therefore pull 32 steps plus twice the slope.
+    internal static readonly (float Factor, float Units) DecalOffset = (-2, -32), CutoutOffset = (-2, -32);
     static void Offset(XElement pass, (float Factor, float Units) offset)
     {
-        // Schema order: right after polyFillType, so the read-back compares attribute for attribute.
-        var anchor = pass.Attribute("polyFillType") ?? throw new InvalidDataException("Pass without polyFillType.");
+        // Schema order (EGO SHADERGROUPPASS: ... polyFillType, polyOffset*, colorMask*, stencil*,
+        // ... passConfigMask*, coupleVertexAndPixelProgram), so the read-back compares attribute
+        // for attribute: before the first attribute that follows them (not every pass has polyFillType).
         if (pass.Attribute("polyOffsetEnable") is not null) throw new InvalidDataException("Stock pass already has a polygon offset.");
-        var attributes = pass.Attributes().ToList(); int at = attributes.IndexOf(anchor) + 1;
+        var attributes = pass.Attributes().ToList();
+        static bool After(string name) => name.StartsWith("colorMask", StringComparison.Ordinal) || name.StartsWith("stencil", StringComparison.Ordinal) ||
+            name.StartsWith("2Sided", StringComparison.Ordinal) || name.StartsWith("passConfigMask", StringComparison.Ordinal) || name == "coupleVertexAndPixelProgram";
+        int at = attributes.FindIndex(x => After(x.Name.LocalName)); if (at < 0) at = attributes.Count;
         attributes.InsertRange(at, [new XAttribute("polyOffsetEnable", 1),
             new XAttribute("polyOffsetFactor", offset.Factor.ToString("0.000000000e+000", System.Globalization.CultureInfo.InvariantCulture)),
             new XAttribute("polyOffsetUnits", offset.Units.ToString("0.000000000e+000", System.Globalization.CultureInfo.InvariantCulture))]);

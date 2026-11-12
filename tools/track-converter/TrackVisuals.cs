@@ -39,6 +39,7 @@ internal static class TrackVisuals
     // 174852), and an up-facing-only split (194035) left wall graffiti and bank grass flickering.
     internal const string OffsetDecal = CutoutShader.DecalGroup + ".fx";
     internal const string LayerCutout = CutoutShader.LayerCutoutGroup + ".fx";
+    const float HiddenLayerGap = .3f;
     const string LayerSuffix = "|layer";
     const float LayerGap = .1f;
     static string? LayerOf(string target) => target == Decal ? OffsetDecal : target == Cutout ? LayerCutout : null;
@@ -109,6 +110,76 @@ internal static class TrackVisuals
     // ~9,500 such cards, `ac-overlaps`). Both drew at one depth and fought in the VR cockpit
     // (2 cm near plane); the copy with the higher build index is dropped, so one stays.
     const float CoincidentGap = .002f;
+
+    // Hidden back layers: an opaque triangle covered at its centroid and three centroid-corner
+    // midpoints by a same-facing opaque surface up to HiddenLayerGap in front of it is never
+    // seen (from behind it faces away and is culled), but it fought the front surface under
+    // the VR cockpit's coarse depth: AC double barrier panels 8-30 cm apart showed the back
+    // panel through the front at iztok's graffiti wall (run 20261112-224418-782). Within 2 mm
+    // only the higher build index of the pair goes, so one surface always stays.
+    // Foliage lit from one side: AC makes cards two-sided with back-to-back duplicate triangles
+    // whose normals point opposite ways, so the baked sun (turned-away faces keep full sun) and
+    // the shader's N.L lit one copy and shaded the other. Head motion near edge-on flipped which
+    // copy faced the eye: trees "flickering shadows" behind iztok's graffiti wall (run
+    // 20261112-230035-357). Every cutout vertex normal is turned to the sun's side, so both
+    // copies bake and light the same.
+    static (List<Mesh> Meshes, object Report) FacingFoliage(List<Mesh> meshes, Vector3 sun)
+    {
+        long flipped = 0, vertices = 0;
+        var result = meshes.Select(m =>
+        {
+            if (m.Material.StockGroup is not null || Target(m.Material) != Cutout) return m;
+            var normals = (Vector3[])m.Normals.Clone(); long f = 0;
+            for (int i = 0; i < normals.Length; i++) if (Vector3.Dot(normals[i], sun) < 0) { normals[i] = -normals[i]; f++; }
+            flipped += f; vertices += normals.Length;
+            return f == 0 ? m : m with { Normals = normals };
+        }).ToList();
+        return (result, new { CutoutVertices = vertices, TurnedToSun = flipped });
+    }
+
+    internal static (List<Mesh> Meshes, object Report) DropHiddenLayers(List<Mesh> meshes)
+    {
+        bool Candidate(Mesh m) => m.Material.StockGroup is null && IsOpaque(m.Material);
+        var bvh = new SunShadow.Bvh(meshes, m => Candidate(m) ? 1 : 0);
+        var first = new int[meshes.Count]; int next = 0;
+        for (int m = 0; m < meshes.Count; m++) { first[m] = next; if (Candidate(meshes[m])) next += meshes[m].Indices.Length / 3; }
+        var drop = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
+        var result = new Mesh[meshes.Count];
+        Parallel.For(0, meshes.Count, () => new List<(int Mesh, int Triangle, float T, Vector3 Normal)>(), (mi, _, hits) =>
+        {
+            var mesh = meshes[mi]; result[mi] = mesh;
+            if (!Candidate(mesh)) return hits;
+            var keep = new List<ushort>(mesh.Indices.Length); int dropped = 0;
+            for (int i = 0; i + 2 < mesh.Indices.Length; i += 3)
+            {
+                Vector3 a = mesh.Positions[mesh.Indices[i]], b = mesh.Positions[mesh.Indices[i + 1]], c = mesh.Positions[mesh.Indices[i + 2]];
+                var n = Vector3.Cross(b - a, c - a); float length = n.Length(); bool hidden = false;
+                if (length > 1e-10f)
+                {
+                    n /= length; int self = first[mi] + i / 3; const float lead = .005f;
+                    var up = Vector3.Normalize(n + new Vector3(1e-5f)); var centre = (a + b + c) / 3;
+                    hidden = true;
+                    foreach (var p in new[] { centre, (centre + a) / 2, (centre + b) / 2, (centre + c) / 2 })
+                    {
+                        bool covered = false;
+                        bvh.Hits(p - n * lead, up, lead + HiddenLayerGap, hits);
+                        foreach (var h in hits)
+                        {
+                            if (h.Triangle == self || Vector3.Dot(h.Normal, n) < .95f) continue;
+                            float gap = h.T - lead;
+                            if (gap > CoincidentGap || (gap > -CoincidentGap && h.Triangle < self)) { covered = true; break; }
+                        }
+                        if (!covered) { hidden = false; break; }
+                    }
+                }
+                if (hidden) { dropped++; continue; }
+                keep.Add(mesh.Indices[i]); keep.Add(mesh.Indices[i + 1]); keep.Add(mesh.Indices[i + 2]);
+            }
+            if (dropped > 0) { drop.AddOrUpdate(mesh.Material.Name, dropped, (_, v) => v + dropped); result[mi] = keep.Count > 0 ? AcSource.Compact(mesh, keep) : mesh with { Indices = [] }; }
+            return hits;
+        }, _ => { });
+        return (result.Where(m => m.Indices.Length > 0).ToList(), new { GapMetres = HiddenLayerGap, Dropped = drop.Values.Sum(), ByMaterial = drop.OrderByDescending(p => p.Value).ToDictionary(p => p.Key, p => p.Value) });
+    }
     internal static (List<Mesh> Meshes, object Report) DropCoincident(List<Mesh> meshes)
     {
         var bvh = new SunShadow.Bvh(meshes, m => m.Material.StockGroup is null ? 1 : 0);
@@ -177,7 +248,7 @@ internal static class TrackVisuals
             {
                 var g = new XElement(templates[plain].Group); g.SetAttributeValue("id", ground);
                 var gi = new XElement(templates[plain].Instance); gi.SetAttributeValue("shaderGroup", "#" + ground);
-                templates[ground] = (g, gi); layouts[ground] = layouts[Decal];
+                templates[ground] = (g, gi); layouts[ground] = layouts[plain];
             }
             var (terrainGroup, terrainInstance) = templates[Opaque];
             var vcGroup = new XElement(terrainGroup); vcGroup.SetAttributeValue("id", TerrainVc);
@@ -228,12 +299,14 @@ internal static class TrackVisuals
             .Select(m => MultilayerMaterial.Read(m.Material) is { } layer ? layer.Apply(m, source.Origin) : m).ToList();
         int omittedCoverage = source.Visuals.Sum(m => m.Indices.Length / 3) - visuals.Sum(m => m.Indices.Length / 3);
         (visuals, var coincident) = DropCoincident(visuals);
+        (visuals, var hiddenLayers) = DropHiddenLayers(visuals);
+        var (sun, rotation, height) = SunShadow.FromLighting(Path.Combine(donorVenue, "lighting_day.xml"));
+        (visuals, var facedFoliage) = FacingFoliage(visuals, sun);
         // Baked sun shadows toward the location's own sun (the donor's lighting_day.xml,
         // which the venue copy keeps). Grass tufts and blended decals do not occlude.
         object? sunReport = null;
         if (bakeSun)
         {
-            var (sun, rotation, height) = SunShadow.FromLighting(Path.Combine(donorVenue, "lighting_day.xml"));
             Console.WriteLine($"Baking sun shadows (sun {rotation} deg / {height} deg)...");
             (visuals, var bake) = SunShadow.Bake(visuals, m => m.Material.StockGroup is not null || m.Material.Shader == "ksGrass" ? 0 : IsOpaque(m.Material) ? 1 : IsAlphaTested(m.Material) ? 2 : 0, sun);
             sunReport = new { Rotation = rotation, Height = height, Bake = bake };
@@ -625,7 +698,7 @@ internal static class TrackVisuals
         object lod = lodOverrides ? WriteLodOverrides(donorVenue, venueOut, tileSize, Math.Max(tileSize, farSize), highToCull: !lowCopies) : "stock";
         // VIS identities cover every terrain tile, kept LAND tiles included (after ours).
         bounds = [.. bounds, .. savedTiles.Skip(parts.Count).Select(Visibility.Bounds)];
-        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, CoincidentDuplicates = coincident, FarLodCopiesDropped = new { Meshes = source.FarLodMeshes, Triangles = source.FarLodTriangles }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
+        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, CoincidentDuplicates = coincident, HiddenLayersDropped = hiddenLayers, FoliageFacing = facedFoliage, FarLodCopiesDropped = new { Meshes = source.FarLodMeshes, Triangles = source.FarLodTriangles }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
             Materials = materials.Length, UniqueTextures = textureBytes.Count, TextureBytes = textureBytes.Values.Sum(b => (long)b.Length), TextureBytesTrimmed = textureBytesTrimmed, MaxTextureSize, LowCopies = lowCopies, ReverseTileIds = reverseTileIds, DonorTerrainRemoved = donorTiles.Length, OmittedCoverageTriangles = omittedCoverage });
     }
 
