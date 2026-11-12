@@ -113,7 +113,8 @@ internal sealed class AcSource
             Colors = mesh.Colors is null ? null : used.Select(i => mesh.Colors[i]).ToArray(),
             TexCoords = mesh.TexCoords?.Select(set => used.Select(i => set[i]).ToArray()).ToArray(),
             Binormals = mesh.Binormals is null ? null : used.Select(i => mesh.Binormals[i]).ToArray(),
-            Ambient = mesh.Ambient is null ? null : used.Select(i => mesh.Ambient[i]).ToArray()
+            Ambient = mesh.Ambient is null ? null : used.Select(i => mesh.Ambient[i]).ToArray(),
+            Sun = mesh.Sun is null ? null : used.Select(i => mesh.Sun[i]).ToArray()
         };
     }
 

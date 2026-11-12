@@ -129,9 +129,11 @@ internal static class Program
                 case "vertices" when args.Length == 4:
                     {
                         // Raw vertex streams of a render node's first draw (big-endian PSSG data).
+                        // args[2]: a render node id, or "group:<shader group id>" for the first draw using that group.
                         var pssg = Files.Pssg(args[1]);
-                        var node = pssg.Elements<EgoEngineLibrary.Graphics.Pssg.Elements.PssgRenderNode>().First(n => n.Id == args[2]);
-                        var draw = node.ChildElements.OfType<EgoEngineLibrary.Graphics.Pssg.Elements.PssgRenderStreamInstance>().First();
+                        var draw = args[2].StartsWith("group:", StringComparison.Ordinal)
+                            ? pssg.Elements<EgoEngineLibrary.Graphics.Pssg.Elements.PssgRenderStreamInstance>().First(d => d.GetShaderInstance().ShaderGroup == "#" + args[2][6..])
+                            : pssg.Elements<EgoEngineLibrary.Graphics.Pssg.Elements.PssgRenderNode>().First(n => n.Id == args[2]).ChildElements.OfType<EgoEngineLibrary.Graphics.Pssg.Elements.PssgRenderStreamInstance>().First();
                         var doc = Files.Document(pssg);
                         string rds = draw.Indices.TrimStart('#');
                         var source = doc.Descendants().First(e => e.Name.LocalName == "RENDERDATASOURCE" && (string?)e.Attribute("id") == rds);
@@ -262,6 +264,80 @@ internal static class Program
                                 string.Join(" ", m.Textures.Select(t => $"{t.Key}={t.Value}")) + "\n            " +
                                 string.Join(" ", m.Properties.Where(p => p.Key is not ("ksSpecular" or "ksSpecularEXP" or "ksAlphaRef"))
                                     .Select(p => $"{p.Key}={string.Join(",", p.Value.Take(p.Key.StartsWith("mult") || p.Key.Contains("Mult") ? 1 : 4).Select(v => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}")));
+                        return 0;
+                    }
+                case "element-xml" when args.Length == 4:
+                    {
+                        // Any element by name and id, with attributes and child elements (values shortened).
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var element = doc.Descendants(args[2]).First(e => (string?)e.Attribute("id") == args[3]);
+                        foreach (var e in element.DescendantsAndSelf())
+                            Console.WriteLine(new string(' ', e.Ancestors().TakeWhile(x => x != element.Parent).Count() * 2) + e.Name.LocalName + " " +
+                                string.Join(" ", e.Attributes().Select(a => $"{a.Name}={a.Value}")) + (e.HasElements ? "" : $" [{(e.Value.Length > 60 ? e.Value[..60] + "…" : e.Value)}]"));
+                        return 0;
+                    }
+                case "foliage-shadow-vs" when args.Length == 1:
+                    {
+                        var code = ShaderCompile.Compile(ShaderCompile.FoliageShadowVertex, "main", "vs_5_0");
+                        DxbcPatch.Validate(code, vertex: true);
+                        Console.WriteLine($"{code.Length} bytes, WARP ok\n" + Disassemble.Run(code));
+                        return 0;
+                    }
+                case "patch-ao" when args.Length == 3:
+                    {
+                        // Offline check of DxbcPatch on one shaderpack program: AO sample -> COLOR0.
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var code = doc.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == args[2]).Descendants("SHADERPROGRAMCODEBLOCK").Single();
+                        var bytes = Convert.FromHexString(string.Concat(code.Value.Where(char.IsAsciiHexDigit)));
+                        var result = DxbcPatch.SampleToInput(bytes, "TAmbientOcclusion", "COLOR", 0);
+                        Console.WriteLine($"{args[2]}: {bytes.Length} -> {result.Code.Length} bytes, input v{result.InputRegister}, WARP ok");
+                        foreach (var line in result.Disassembly.Split('\n').Where(l => l.Contains($"v{result.InputRegister}") || l.Contains("TAmbientOcclusion"))) Console.WriteLine("  " + line.Trim());
+                        return 0;
+                    }
+                case "program-xml" when args.Length == 3:
+                    {
+                        // A SHADERPROGRAM element's structure (attributes, children; code blocks summarised).
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var program = doc.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == args[2]);
+                        foreach (var e in program.DescendantsAndSelf())
+                            Console.WriteLine(new string(' ', e.Ancestors().TakeWhile(x => x != program.Parent).Count() * 2) + e.Name.LocalName + " " +
+                                string.Join(" ", e.Attributes().Select(a => $"{a.Name}={a.Value}")) + (e.HasElements ? "" : $" [{e.Value.Length} chars]"));
+                        return 0;
+                    }
+                case "ml-uv" when args.Length == 3:
+                    {
+                        // Multilayer materials: does the shading-map UV layout (source UVs) cover
+                        // each texel once? Rasterised at 512x512 over UV [0,1) (wrapped).
+                        var source = AcSource.Read(args[1], args[2], (min, max) => min, visuals: true);
+                        foreach (var g in source.Visuals.Where(m => MultilayerMaterial.Read(m.Material) is not null).GroupBy(m => m.Material.Id))
+                        {
+                            const int N = 512; var hits = new int[N * N]; long covered = 0, overlapped = 0, tris = 0;
+                            var uvMin = new System.Numerics.Vector2(float.MaxValue); var uvMax = new System.Numerics.Vector2(float.MinValue);
+                            foreach (var m in g)
+                            {
+                                var stamp = new HashSet<int>();
+                                for (int i = 0; i + 2 < m.Indices.Length; i += 3)
+                                {
+                                    tris++; var a = m.UV[m.Indices[i]] * N; var b = m.UV[m.Indices[i + 1]] * N; var c = m.UV[m.Indices[i + 2]] * N;
+                                    foreach (var p in new[] { a, b, c }) { uvMin = System.Numerics.Vector2.Min(uvMin, p / N); uvMax = System.Numerics.Vector2.Max(uvMax, p / N); }
+                                    int x0 = (int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X))), x1 = (int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X)));
+                                    int y0 = (int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y))), y1 = (int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y)));
+                                    if ((long)(x1 - x0) * (y1 - y0) > 4 * N * N) continue;
+                                    float Edge(System.Numerics.Vector2 p, System.Numerics.Vector2 q, System.Numerics.Vector2 r) => (q.X - p.X) * (r.Y - p.Y) - (q.Y - p.Y) * (r.X - p.X);
+                                    float area = Edge(a, b, c); if (MathF.Abs(area) < 1e-9f) continue;
+                                    for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++)
+                                    {
+                                        var p = new System.Numerics.Vector2(x + .5f, y + .5f);
+                                        float w0 = Edge(b, c, p) / area, w1 = Edge(c, a, p) / area, w2 = Edge(a, b, p) / area;
+                                        if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+                                        int k = ((y % N + N) % N) * N + (x % N + N) % N;
+                                        if (stamp.Add(k)) { if (hits[k]++ == 0) covered++; else overlapped++; }
+                                    }
+                                }
+                            }
+                            var first = g.First().Material; var layer = MultilayerMaterial.Read(first)!;
+                            Console.WriteLine($"{first.Name,-24} {first.Shader,-26} meshes={g.Count(),4} tris={tris,9:N0} uv=[{uvMin.X:0.##},{uvMin.Y:0.##}]-[{uvMax.X:0.##},{uvMax.Y:0.##}] covered={covered * 100.0 / (N * N),5:0.0}% overlap={overlapped * 100.0 / Math.Max(1, covered),6:0.0}% shading={layer.Shading}");
+                        }
                         return 0;
                     }
                 case "pssg-textures" when args.Length == 4:

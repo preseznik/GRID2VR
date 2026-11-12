@@ -378,6 +378,38 @@ uint64_t ShaderHash(ID3D11DeviceChild* shader) {
     uint64_t hash{}; UINT bytes=sizeof(hash);
     return shader && SUCCEEDED(shader->GetPrivateData(shaderId,&bytes,&hash)) ? hash:0;
 }
+// One read-only copy of the stock terrain_simple pixel shader's lighting constant
+// buffer (slot 1) per session, for converted-track baking: the terrain shader takes
+// N.L against cb1[4].xyz (sun direction) and the sun colour from cb1[5]. 384 bytes
+// at most, written once to sun-light.json; nothing is bound or changed.
+bool sunLightRecorded=false;
+void RecordSunLight(ID3D11DeviceContext* context) {
+    constexpr uint64_t terrainSimple[]{0xd34e629d458fa858ull,0xeee95b8601dc79dcull,0x8525b9c8be46238cull,0x47bdef20230cbb60ull};
+    ComPtr<ID3D11PixelShader> ps;context->PSGetShader(&ps,nullptr,nullptr);
+    const auto hash=ShaderHash(ps.Get());
+    if (std::find(std::begin(terrainSimple),std::end(terrainSimple),hash)==std::end(terrainSimple)) return;
+    sunLightRecorded=true;
+    ComPtr<ID3D11Buffer> constants;context->PSGetConstantBuffers(1,1,&constants);
+    D3D11_BUFFER_DESC desc{};if (constants) constants->GetDesc(&desc);
+    std::ofstream out(output/L"sun-light.json");
+    out << "{\"shader\":\"" << Hex(hash) << "\",\"bytes\":" << desc.ByteWidth;
+    if (constants && desc.ByteWidth>=16*12) {
+        ComPtr<ID3D11Device> device;context->GetDevice(&device);
+        D3D11_BUFFER_DESC copy{};copy.ByteWidth=(std::min)(desc.ByteWidth,384u);copy.Usage=D3D11_USAGE_STAGING;copy.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Buffer> staging;D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (device && SUCCEEDED(device->CreateBuffer(&copy,nullptr,&staging))) {
+            const D3D11_BOX box{0,0,0,copy.ByteWidth,1,1};
+            context->CopySubresourceRegion(staging.Get(),0,0,0,0,constants.Get(),0,&box);
+            if (SUCCEEDED(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped))) {
+                const auto* f=static_cast<const float*>(mapped.pData);
+                out << ",\"cb1\":[";
+                for (UINT i=0;i<copy.ByteWidth/16;++i) out << (i?",":"") << '[' << f[i*4] << ',' << f[i*4+1] << ',' << f[i*4+2] << ',' << f[i*4+3] << ']';
+                out << ']';context->Unmap(staging.Get(),0);
+            }
+        }
+    }
+    out << ",\"note\":\"terrain_simple: N.L uses cb1[4].xyz; sun colour cb1[5]\"}\n";
+}
 void IsolateShadowSampler(ID3D11DeviceContext* context,const char* kind,std::span<const UINT> args,unsigned ordinal) {
     if (!isolateShadowSampler || kind[0]=='C' || engine::CurrentStage().slot!=0) return;
     ComPtr<ID3D11PixelShader> ps; context->PSGetShader(&ps,nullptr,nullptr);
@@ -989,6 +1021,7 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
         D3D11_BUFFER_DESC desc{};if (constants) constants->GetDesc(&desc);
         centerDraws.Add({ShaderHash(shader.Get()),index,stage.slot,desc.ByteWidth,kind});
     }
+    if (!sunLightRecorded && kind[0]!='C') RecordSunLight(context);
     if (limitCockpitExposure && kind[0]!='C' && engine::CurrentCockpitCamera()) {
         ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
         const auto hash=ShaderHash(shader.Get());

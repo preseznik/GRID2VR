@@ -12,6 +12,13 @@ namespace GRID2VR.Tracks;
 internal static class CutoutShader
 {
     internal const string Group = "g2vr_cutout_vc_flat";
+    // Must start with "terrain_": GRID 2 gives terrain treatment (the per-tile terrainXFade
+    // that is the colour pass's output alpha) by that name prefix (the only such literal in
+    // grid2_avx.exe). As "g2vr_terrain_vc" the colour pass drew at alpha 0: black ground over
+    // the depth pre-pass and stale-frame ghosts (xr-sim run 20261112-084821-485).
+    internal const string TerrainGroup = "terrain_g2vr_vc";
+    internal const string FoliageShadowGroup = "g2vr_foliage_shadow", FoliageShadowProgram = "g2vr_foliage_shadow.vp";
+    internal const string CasterGroup = "g2vr_cutout_caster";
     internal const string Relative = "shaderpack/dx11/shaderpack.pssg";
 
     internal static object Write(string gameRoot, string overlay, IDictionary<string, string> inputs)
@@ -42,15 +49,105 @@ internal static class CutoutShader
             if ((string?)pass.Attribute("cullFaceType") != "CW") throw new InvalidDataException("Unexpected decal culling.");
         }
         decal.AddAfterSelf(cutout);
+
+        // Vertex-colour lit terrain for multilayer ground: terrain_simple with its day colour
+        // passes' TAmbientOcclusion sample replaced by COLOR0, which terrain_simple's vertex
+        // shader already passes through and those pixel shaders ignored. Multilayer meshes
+        // keep their AC shading map on the AO/colour-map UV set (all stock terrain shaders
+        // share one UV for both) and carry baked ambient + sun visibility per vertex.
+        var terrain = GroupIn(candidate, "terrain_simple");
+        var vc = new XElement(terrain); vc.SetAttributeValue("id", TerrainGroup);
+        var patched = new List<object>(); var newPrograms = new List<XElement>();
+        foreach (var pass in vc.Elements("SHADERGROUPPASS"))
+        {
+            string programId = ((string)pass.Attribute("fragmentProgram")!).TrimStart('#');
+            var program = candidate.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == programId);
+            var code = program.Descendants("SHADERPROGRAMCODEBLOCK").SingleOrDefault();
+            if (code is null) continue;
+            if (!program.Descendants("SHADERINPUTDEFINITION").Any(d => (string?)d.Attribute("name") == "TAmbientOcclusion")) continue;
+            var bytes = Convert.FromHexString(string.Concat(code.Value.Where(char.IsAsciiHexDigit)));
+            DxbcPatch.Result result;
+            // Variants that cannot take it (already read COLOR0, no COLOR0 input, no AO
+            // sample: night/light, cheap and depth passes) keep the stock program.
+            try { result = DxbcPatch.SampleToInput(bytes, "TAmbientOcclusion", "COLOR", 0); }
+            catch (InvalidDataException e) when (!e.Message.Contains("checksum") && !e.Message.Contains("rejected")) { patched.Add(new { Pass = (string?)pass.Attribute("passConfigMaskLow"), Program = programId, Patched = false, Reason = e.Message }); continue; }
+            var copy = new XElement(program); copy.SetAttributeValue("id", "g2vr_vc." + programId);
+            var copyCode = copy.Descendants("SHADERPROGRAMCODE").Single(); copyCode.SetAttributeValue("codeSize", result.Code.Length);
+            copy.Descendants("SHADERPROGRAMCODEBLOCK").Single().Value = string.Join(" ", result.Code.Select(b => b.ToString("X2")));
+            newPrograms.Add(copy); pass.SetAttributeValue("fragmentProgram", "#g2vr_vc." + programId);
+            patched.Add(new { Pass = (string?)pass.Attribute("passConfigMaskLow"), Program = programId, Patched = true, Bytes = result.Code.Length, Input = "v" + result.InputRegister });
+        }
+        // The day colour pass the game uses (4359E7BF, read live in run 20261112-082338-345) must be patched.
+        if (!newPrograms.Any(p => ((string)p.Attribute("id")!).EndsWith("terrain_simple.cg.fp.4359E7BF", StringComparison.Ordinal)))
+            throw new InvalidDataException("The terrain_simple day colour pass could not read vertex colour.");
+        terrain.AddAfterSelf(vc);
+
+        // Foliage as dynamic shadow casters. GRID 2 renders its cascaded shadow map from the
+        // tiles' HIGHBATCH lists (batched_track: position-only, mask 8). Near the camera the
+        // terrain uses only that dynamic shadow (shadowBlend), so baked foliage shadow never
+        // shows there. This group is batched_track's shadow pass made alpha-tested: the stock
+        // object_2sidedcov mask-8 pass state and its pixel shader (csm_depth_opaque.psh.
+        // mainAlphaTested: discard below 0.5 in TDiffuseAlphaMap.a) with a compiled
+        // world-space vertex shader identical to batched_track's shadow transform plus UV.
+        var batched = GroupIn(candidate, "batched_track"); var objectCov = GroupIn(candidate, "object_2sidedcov");
+        var stockShadowPass = objectCov.Elements("SHADERGROUPPASS").Single(p => (string?)p.Attribute("passConfigMaskLow") == "8" && (string?)p.Attribute("passConfigMaskHigh") == "0");
+        if ((string?)stockShadowPass.Attribute("fragmentProgram") != "#csm_depth_opaque.psh.mainAlphaTested.13E6F496") throw new InvalidDataException("Unexpected stock alpha-tested shadow pass.");
+        var foliage = new XElement(batched); foliage.SetAttributeValue("id", FoliageShadowGroup);
+        foliage.Elements("SHADERGROUPPASS").Remove();
+        foliage.Elements("SHADERINPUTDEFINITION").Last().AddAfterSelf(new XElement(objectCov.Elements("SHADERINPUTDEFINITION").First(d => (string?)d.Attribute("name") == "TDiffuseAlphaMap")));
+        foliage.Elements("SHADERSTREAMDEFINITION").Last().AddAfterSelf(new XElement(objectCov.Elements("SHADERSTREAMDEFINITION").First(s => (string?)s.Attribute("renderTypeName") == "ST" && (string?)s.Attribute("name") == "TEXCOORD")));
+        var foliagePass = new XElement(stockShadowPass); foliagePass.SetAttributeValue("vertexProgram", "#" + FoliageShadowProgram); foliage.Add(foliagePass);
+        foliage.SetAttributeValue("parameterCount", foliage.Elements("SHADERINPUTDEFINITION").Count());
+        foliage.SetAttributeValue("parameterStreamCount", foliage.Elements("SHADERSTREAMDEFINITION").Count()); foliage.SetAttributeValue("passCount", 1);
+        batched.AddAfterSelf(foliage);
+        // Caster variant of the cutout: the same passes plus that shadow pass. Foliage in
+        // HIGHBATCH lists rasterised (46 ms GPU per VR frame) but cast nothing, consistent
+        // with batch lists binding no material textures (alpha always 0, every texel
+        // discarded). Regular HIGH draws bind their textures.
+        var caster = new XElement(cutout); caster.SetAttributeValue("id", CasterGroup);
+        var casterPass = new XElement(foliagePass); caster.Elements("SHADERGROUPPASS").Last().AddAfterSelf(casterPass);
+        caster.SetAttributeValue("passCount", caster.Elements("SHADERGROUPPASS").Count());
+        cutout.AddAfterSelf(caster);
+        var vsCode = ShaderCompile.Compile(ShaderCompile.FoliageShadowVertex, "main", "vs_5_0"); DxbcPatch.Validate(vsCode, vertex: true);
+        var vs = new XElement(candidate.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == "batched_track.batched_track.cg.vp_shadow.13E6F496"));
+        vs.SetAttributeValue("id", FoliageShadowProgram);
+        var vsProgramCode = vs.Elements("SHADERPROGRAMCODE").Single();
+        vsProgramCode.SetAttributeValue("codeSize", vsCode.Length); vsProgramCode.SetAttributeValue("streamCount", 2);
+        vsProgramCode.Element("SHADERPROGRAMCODEBLOCK")!.Value = string.Join(" ", vsCode.Select(b => b.ToString("X2")));
+        var positionStream = vsProgramCode.Elements("CGSTREAM").Single();
+        var uvStream = new XElement(positionStream); uvStream.SetAttributeValue("cgStreamName", "TEXCOORD"); uvStream.SetAttributeValue("cgStreamRenderType", "ST");
+        positionStream.AddAfterSelf(uvStream);
+        newPrograms.Add(vs);
+
+        var programAnchor = candidate.Descendants("SHADERPROGRAM").Last();
+        foreach (var p in newPrograms) { programAnchor.AddAfterSelf(p); programAnchor = p; }
+
         string path = Path.Combine(overlay, Relative); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         Files.Save(Files.FromDocument(candidate, originalFile), path);
-        // Read back: the new group as written, and without it the stock pack unchanged.
+        // Read back: the new groups and programs as written, and without them the stock pack unchanged.
         var saved = Files.Document(Files.Pssg(path));
         var savedCutout = GroupIn(saved, Group);
         if (!XNode.DeepEquals(cutout, savedCutout)) throw new InvalidDataException("Cutout shader state changed in serialization.");
-        savedCutout.Remove();
+        var savedVc = GroupIn(saved, TerrainGroup);
+        if (!XNode.DeepEquals(vc, savedVc)) throw new InvalidDataException("Vertex-colour terrain group changed in serialization.");
+        var savedFoliage = GroupIn(saved, FoliageShadowGroup);
+        if (!XNode.DeepEquals(foliage, savedFoliage)) throw new InvalidDataException("Foliage shadow group changed in serialization.");
+        savedFoliage.Remove();
+        var savedCaster = GroupIn(saved, CasterGroup);
+        if (!XNode.DeepEquals(caster, savedCaster)) throw new InvalidDataException("Cutout caster group changed in serialization.");
+        savedCaster.Remove();
+        foreach (var p in newPrograms)
+        {
+            var s = saved.Descendants("SHADERPROGRAM").Single(x => (string?)x.Attribute("id") == (string?)p.Attribute("id"));
+            var a = Convert.FromHexString(string.Concat(p.Descendants("SHADERPROGRAMCODEBLOCK").Single().Value.Where(char.IsAsciiHexDigit)));
+            var b = Convert.FromHexString(string.Concat(s.Descendants("SHADERPROGRAMCODEBLOCK").Single().Value.Where(char.IsAsciiHexDigit)));
+            if (!a.AsSpan().SequenceEqual(b)) throw new InvalidDataException("Added shader program changed in serialization.");
+            s.Remove();
+        }
+        savedCutout.Remove(); savedVc.Remove();
         if (!XNode.DeepEquals(original, saved)) throw new InvalidDataException("Stock shader programs or states changed.");
         if (Files.Hash(source) != inputs[source]) throw new InvalidDataException("Shaderpack changed while converting.");
-        return new { Group, Base = "decal_ao_vc_flat", States = "object_2sidedcov cutout (alpha test, coverage, depth write), decal back-face culling", StockUnchanged = true, OriginalHash = inputs[source] };
+        return new { Group, Base = "decal_ao_vc_flat", States = "object_2sidedcov cutout (alpha test, coverage, depth write), decal back-face culling",
+            TerrainGroup, TerrainPasses = patched, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, StockUnchanged = true, OriginalHash = inputs[source] };
     }
 }

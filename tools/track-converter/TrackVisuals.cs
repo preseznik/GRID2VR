@@ -16,6 +16,12 @@ internal static class TrackVisuals
     sealed class State : PssgModelWriterState { }
 
     internal const string Opaque = "terrain_simple.fx";
+    // Multilayer ground: terrain_simple reading baked ambient + sun from vertex colour
+    // (CutoutShader adds it to the overlay shaderpack), so the AO/colour-map UV set keeps
+    // the AC shading map.
+    internal const string TerrainVc = CutoutShader.TerrainGroup + ".fx";
+    internal const string CutoutCaster = CutoutShader.CasterGroup + ".fx";
+    const string CasterSuffix = "|caster";
     // Alpha-tested cutouts (trees, *_AT fences/guardrail): the decal below with the stock
     // object cutout states, added to the overlay shaderpack (CutoutShader). The plain decal
     // never writes depth, so foliage overlapped in draw order (0.2.23 test build), and the
@@ -30,7 +36,7 @@ internal static class TrackVisuals
     // white gave every surface full, untinted ambient. Stock lightmaps hold a sky-blue open
     // ambient instead: Brands Hatch terrain_lm_day sections, 95th percentile (133,172,219).
     internal const string AmbientRamp = "g2vr_ao_ramp", SkyAmbient = "g2vr_ao_sky";
-    const int RampWidth = 256;
+    const int RampWidth = 256, RampHeight = 64;
     static readonly (byte R, byte G, byte B) Sky = (133, 172, 219);
     // Writer colour for a shader-side (r,g,b,a). EGO packs (X,Y,Z,W) as ARGB bytes and the
     // engine reads them as B8G8R8A8, so the shader sees (Y,X,W,Z) (DiRT2VR NordObjectVertex
@@ -38,8 +44,12 @@ internal static class TrackVisuals
     // shader as (s,s,1) with alpha s: lavender road lines and thinner foliage (xr-sim run
     // 20261112-015202-285).
     internal static Vector4 ShaderColor(float r, float g, float b, float a) => new(g, r, a, b);
+    static Vector4 VertexLight(float a, float s)
+    {
+        a = Math.Clamp(a, 0, 1); return ShaderColor(Sky.R / 255f * a, Sky.G / 255f * a, Sky.B / 255f * a, Math.Clamp(s, 0, 1));
+    }
     // UV into AmbientRamp for ambient factor a (texel centres; V mid-row).
-    static Vector2 RampUV(float a) => new((Math.Clamp(a, 0, 1) * (RampWidth - 1) + .5f) / RampWidth, .5f);
+    static Vector2 RampUV(float a, float s) => new((Math.Clamp(a, 0, 1) * (RampWidth - 1) + .5f) / RampWidth, (Math.Clamp(s, 0, 1) * (RampHeight - 1) + .5f) / RampHeight);
     // AC material brightness relative to its neutral 0.3 (DiRT2VR NordMaterials normalises the same way).
     internal static float Brightness(Material material)
     {
@@ -64,7 +74,7 @@ internal static class TrackVisuals
     {
         if (material.StockGroup is not null) return material.StockGroup;
         if (!Supported.Contains(material.Shader)) throw new InvalidDataException("Unmapped AC shader: " + material.Shader);
-        return IsOpaque(material) ? Opaque : IsAlphaTested(material) ? Cutout : Decal;
+        return IsOpaque(material) ? (MultilayerMaterial.Read(material) is not null ? TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : Decal;
     }
     internal static bool IsAlphaTested(Material material) => material.Blend == 0 && material.Shader != "ksPerPixelAlpha" &&
         (material.AlphaTest || material.Shader is "ksTree" or "ksPerPixelAT" || material.Shader.Contains("_AT", StringComparison.Ordinal));
@@ -80,7 +90,7 @@ internal static class TrackVisuals
 
     // Builds the venue tracksplit.pssg: donor terrain removed, source visuals as tiles.
     // Returns the tile bounds in VIS identity order.
-    internal static (Box[] Tiles, object Report) Build(AcSource source, string donorVenue, string venueOut, Vector4[]? weightVariants = null, bool lodOverrides = true, bool keepDonorLand = false, int? fixedTiles = null, bool mergeDraws = true, bool lowCopies = false, bool reverseTileIds = false, bool grassTufts = true)
+    internal static (Box[] Tiles, object Report) Build(AcSource source, string donorVenue, string venueOut, Vector4[]? weightVariants = null, bool lodOverrides = true, bool keepDonorLand = false, int? fixedTiles = null, bool mergeDraws = true, bool lowCopies = false, bool reverseTileIds = false, bool grassTufts = true, bool bakeSun = true, bool foliageCasters = false)
     {
         var tracksplit = Files.Pssg(Path.Combine(donorVenue, "tracksplit.pssg"));
         var objects = Files.Pssg(Path.Combine(donorVenue, "objects.pssg"));
@@ -101,12 +111,29 @@ internal static class TrackVisuals
             var cutoutGroup = new XElement(group); cutoutGroup.SetAttributeValue("id", Cutout);
             var cutoutInstance = new XElement(instance); cutoutInstance.SetAttributeValue("shaderGroup", "#" + Cutout);
             templates[Cutout] = (cutoutGroup, cutoutInstance); layouts[Cutout] = layouts[Decal];
+            var (terrainGroup, terrainInstance) = templates[Opaque];
+            var vcGroup = new XElement(terrainGroup); vcGroup.SetAttributeValue("id", TerrainVc);
+            var vcInstance = new XElement(terrainInstance); vcInstance.SetAttributeValue("shaderGroup", "#" + TerrainVc);
+            templates[TerrainVc] = (vcGroup, vcInstance); layouts[TerrainVc] = layouts[Opaque];
         }
         // ROOT tiles' depth batches use the donor's own HIGHBATCH material ("batchmaterial" on
         // Brands Hatch); "batchmaterial!0" is the LAND/NONLOD one. They differ only by id.
         string depthMaterial = tracksplit.Elements<PssgRenderNode>().Where(n => n.Id.StartsWith("HIGHBATCH_", StringComparison.Ordinal))
             .SelectMany(n => n.ChildElements.OfType<PssgRenderStreamInstance>()).Select(d => d.Shader.TrimStart('#')).GroupBy(s => s)
             .OrderByDescending(g => g.Count()).First().Key;
+        // Foliage shadow casters: the cutout's caster variant (same inputs and layout, plus the
+        // overlay shaderpack's alpha-tested shadow pass), used for foliage near the driving line.
+        var casterGroup = new XElement(templates[Cutout].Group); casterGroup.SetAttributeValue("id", CutoutCaster);
+        layouts[CutoutCaster] = layouts[Decal];
+        var foliageShadow = new Dictionary<string, string>();
+        // 10 m cells within CasterReach (horizontal) of any driving-line gate.
+        var casterCells = new HashSet<(int, int)>();
+        foreach (var gate in source.Gates)
+        {
+            int r = (int)MathF.Ceiling(CasterReach / CasterCell), cx = (int)MathF.Floor(gate.Position.X / CasterCell), cz = (int)MathF.Floor(gate.Position.Z / CasterCell);
+            for (int dx = -r; dx <= r; dx++) for (int dz = -r; dz <= r; dz++)
+                if ((dx * dx + dz * dz) * CasterCell * CasterCell <= (CasterReach + CasterCell) * (CasterReach + CasterCell)) casterCells.Add((cx + dx, cz + dz));
+        }
 
         // Remove every donor terrain draw and tile; keep resources (textures) and other nodes.
         // keepDonorLand (experiment): keep the donor's distant LAND tiles and their data.
@@ -132,6 +159,16 @@ internal static class TrackVisuals
         var visuals = source.Visuals.Where(m => grassTufts || m.Material.StockGroup is not null || m.Material.Shader != "ksGrass")
             .Select(m => MultilayerMaterial.Read(m.Material) is { } layer ? layer.Apply(m, source.Origin) : m).ToList();
         int omittedCoverage = source.Visuals.Sum(m => m.Indices.Length / 3) - visuals.Sum(m => m.Indices.Length / 3);
+        // Baked sun shadows toward the location's own sun (the donor's lighting_day.xml,
+        // which the venue copy keeps). Grass tufts and blended decals do not occlude.
+        object? sunReport = null;
+        if (bakeSun)
+        {
+            var (sun, rotation, height) = SunShadow.FromLighting(Path.Combine(donorVenue, "lighting_day.xml"));
+            Console.WriteLine($"Baking sun shadows (sun {rotation} deg / {height} deg)...");
+            (visuals, var bake) = SunShadow.Bake(visuals, m => m.Material.StockGroup is not null || m.Material.Shader == "ksGrass" ? 0 : IsOpaque(m.Material) ? 1 : IsAlphaTested(m.Material) ? 2 : 0, sun);
+            sunReport = new { Rotation = rotation, Height = height, Bake = bake };
+        }
         List<List<Mesh>> parts; int tileSize, farSize = 0;
         if (source.Gates.Length > 0)
         {
@@ -231,11 +268,21 @@ internal static class TrackVisuals
             instance.SetAttributeValue("parameterSavedCount", instance.Elements("SHADERINPUT").Count());
             Library("SHADERINSTANCE").Add(instance);
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
-                ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Ambient = layer is null ? "per-vertex" : "open sky",
+                ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Lighting = target == TerrainVc ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
                 Approximation = layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
                     : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat (no depth write); no depth batch, no distant LOD."
                     : target == Cutout ? "Cutout: decal_ao_vc_flat programs with object_2sidedcov states (alpha test + coverage, depth written, two-sided); no depth batch, no distant LOD."
                     : "Source diffuse and UVs; specular black, baked ambient per vertex. Normal maps and reflections are not reproduced." });
+            // Foliage (alpha-tested, not grass tufts) also casts dynamic shadow.
+            // Off by default: even limited to the 50 m corridor (1.03 M triangles) the casters
+            // held VR at 16 fps (xr-sim run 20261112-093231-455, 30 ms shadow + ~10 ms per view).
+            if (foliageCasters && target == Cutout && material.Shader != "ksGrass")
+            {
+                if (foliageShadow.Count == 0) Library("SHADERGROUP").Add(casterGroup);
+                var caster = new XElement(instance); string casterId = id + "_caster";
+                caster.SetAttributeValue("id", casterId); caster.SetAttributeValue("shaderGroup", "#" + CutoutCaster);
+                Library("SHADERINSTANCE").Add(caster); foliageShadow[material.Id] = casterId; ids[material.Id + CasterSuffix] = casterId;
+            }
             // Cutouts have no distant (LOW) version.
             if (target != Opaque) continue;
             // Distant (LOW) version: terrain_lod.fx with the same diffuse.
@@ -266,18 +313,20 @@ internal static class TrackVisuals
             }
             else if (texture.Id == AmbientRamp)
             {
-                // 256x4 A8R8G8B8 (memory B,G,R,A): texel i = stock open-sky ambient x i/255,
-                // sun visibility 1. Bilinear filtering between per-vertex lookups reproduces
-                // linear interpolation of the vertex values exactly.
-                dds = new DdsFile(); dds.header.width = RampWidth; dds.header.height = 4; dds.header.mipMapCount = 1;
+                // RampWidth x RampHeight A8R8G8B8 (memory B,G,R,A): texel (x,y) RGB = stock
+                // open-sky ambient x x/(W-1), alpha = sun visibility y/(H-1). RGB is linear in
+                // U and alpha linear in V, so bilinear filtering between per-vertex lookups
+                // reproduces linear interpolation of both vertex values exactly.
+                dds = new DdsFile(); dds.header.width = RampWidth; dds.header.height = RampHeight; dds.header.mipMapCount = 1;
                 dds.header.flags |= DdsHeader.Flags.DDSD_PITCH; dds.header.pitchOrLinearSize = RampWidth * 4;
                 dds.header.ddspf.flags = DdsPixelFormat.Flags.DDPF_RGB | DdsPixelFormat.Flags.DDPF_ALPHAPIXELS; dds.header.ddspf.rGBBitCount = 32;
                 dds.header.ddspf.rBitMask = 0x00ff0000; dds.header.ddspf.gBitMask = 0x0000ff00; dds.header.ddspf.bBitMask = 0x000000ff; dds.header.ddspf.aBitMask = 0xff000000;
-                dds.bdata = new byte[RampWidth * 4 * 4];
-                for (int y = 0; y < 4; y++) for (int x = 0; x < RampWidth; x++)
+                dds.bdata = new byte[RampWidth * RampHeight * 4];
+                for (int y = 0; y < RampHeight; y++) for (int x = 0; x < RampWidth; x++)
                 {
                     int o = (y * RampWidth + x) * 4; float a = x / (RampWidth - 1f);
-                    dds.bdata[o] = (byte)MathF.Round(Sky.B * a); dds.bdata[o + 1] = (byte)MathF.Round(Sky.G * a); dds.bdata[o + 2] = (byte)MathF.Round(Sky.R * a); dds.bdata[o + 3] = 255;
+                    dds.bdata[o] = (byte)MathF.Round(Sky.B * a); dds.bdata[o + 1] = (byte)MathF.Round(Sky.G * a); dds.bdata[o + 2] = (byte)MathF.Round(Sky.R * a);
+                    dds.bdata[o + 3] = (byte)MathF.Round(255f * y / (RampHeight - 1));
                 }
             }
             else
@@ -305,7 +354,7 @@ internal static class TrackVisuals
         var dataLib = tracksplit.Elements<PssgLibrary>().Single(l => l.Type == "RENDERINTERFACEBOUND");
         var tiles = Visibility.TerrainTiles(tracksplit);
         if (tiles.Length != parts.Count + keptLand.Count) throw new InvalidDataException("Tile inventory changed while writing.");
-        var state = new State(); int meshId = 0, triangles = 0, depthTriangles = 0; var bounds = new Box[parts.Count];
+        var state = new State(); int meshId = 0, triangles = 0, depthTriangles = 0, casterTriangles = 0; var bounds = new Box[parts.Count];
         for (int t = 0; t < parts.Count; t++)
         {
             var root = tiles[t];
@@ -336,7 +385,27 @@ internal static class TrackVisuals
                 nodeBoxes[node] = nodeBoxes.TryGetValue(node, out var b) ? b.Union(box) : box;
             }
             Box? tileBox = null; var opaque = new List<Mesh>();
-            foreach (var mesh in mergeDraws ? VisualBatches.Combine(parts[t].Select(RecentreUV)) : parts[t].Select(RecentreUV))
+            // Foliage near the driving line draws through the caster variant (dynamic shadow):
+            // dynamic shadow shows only within ~33-80 m of the camera, and at the 37 degree sun a
+            // 30 m tree's shadow reaches ~40 m. All 1.71 M foliage triangles as casters cost
+            // 46 ms of GPU per VR frame (xr-sim run 20261112-091714-811, 16 fps); farther
+            // foliage keeps its baked shadow only.
+            IEnumerable<Mesh> Split(Mesh mesh)
+            {
+                if (!foliageShadow.ContainsKey(mesh.Material.Id)) { yield return mesh; yield break; }
+                var keep = new List<ushort>(); var cast = new List<ushort>();
+                for (int i = 0; i + 2 < mesh.Indices.Length; i += 3)
+                {
+                    var c = (mesh.Positions[mesh.Indices[i]] + mesh.Positions[mesh.Indices[i + 1]] + mesh.Positions[mesh.Indices[i + 2]]) / 3;
+                    var list = casterCells.Contains(((int)MathF.Floor(c.X / CasterCell), (int)MathF.Floor(c.Z / CasterCell))) ? cast : keep;
+                    list.Add(mesh.Indices[i]); list.Add(mesh.Indices[i + 1]); list.Add(mesh.Indices[i + 2]);
+                }
+                if (cast.Count == 0) { yield return mesh; yield break; }
+                if (keep.Count > 0) yield return AcSource.Compact(mesh, keep);
+                yield return AcSource.Compact(mesh, cast) with { Material = mesh.Material with { Id = mesh.Material.Id + CasterSuffix } };
+            }
+            var tileMeshes = parts[t].SelectMany(Split).Select(RecentreUV);
+            foreach (var mesh in mergeDraws ? VisualBatches.Combine(tileMeshes) : tileMeshes)
             {
                 string id = "g2vr_RDS_" + meshId++; var writer = new RenderDataSourceWriter(id);
                 // Non-opaque: decal_ao_vc_flat alpha = texture alpha x vertex colour w (white).
@@ -348,13 +417,17 @@ internal static class TrackVisuals
                 // set 1 (zw of its 4-component ST). Multilayer meshes (explicit sets) keep set 2
                 // for their shading map and use the open-sky constant instead.
                 int rampSet = mesh.Material.StockGroup is null && mesh.TexCoords is null ? (cutout ? 1 : 2) : -1;
+                // Multilayer ground (TerrainVc): the same ambient x sky and sun visibility as the
+                // ramp, carried in vertex colour (shader-side RGB = ambient light, A = sun).
+                bool vertexLit = mesh.Material.StockGroup is null && Target(mesh.Material) == TerrainVc;
                 for (int i = 0; i < mesh.Positions.Length; i++)
                 {
                     var p = mesh.Positions[i]; tileBox = tileBox is { } b ? b.Union(new(p, p)) : new(p, p);
                     writer.Positions.Add(p); writer.Normals.Add(mesh.Normals[i]); writer.Tangents.Add(new(mesh.Tangents[i], 1));
-                    writer.Colors.Add(mesh.Colors?[i] ?? (cutout ? tint : weightVariants is { Length: > 0 } v ? v[t % v.Length] : TerrainWeights));
+                    writer.Colors.Add(mesh.Colors?[i] ?? (cutout ? tint : vertexLit ? VertexLight(mesh.Ambient?[i] ?? 1, mesh.Sun?[i] ?? 1) :
+                        weightVariants is { Length: > 0 } v ? v[t % v.Length] : TerrainWeights));
                     // Explicit UV sets (stock controls) are written as given; otherwise the source UV fills all.
-                    Vector2 Set(int k) => k == rampSet ? RampUV(mesh.Ambient?[i] ?? 1) :
+                    Vector2 Set(int k) => k == rampSet ? RampUV(mesh.Ambient?[i] ?? 1, mesh.Sun?[i] ?? 1) :
                         mesh.TexCoords is { } sets && sets.Length > 0 ? sets[Math.Min(k, sets.Length - 1)][i] : mesh.UV[i];
                     writer.TexCoords0.Add(Set(0)); writer.TexCoords1.Add(Set(1));
                     writer.TexCoords2.Add(Set(2)); writer.TexCoords3.Add(Set(3));
@@ -374,6 +447,7 @@ internal static class TrackVisuals
                 }
                 triangles += mesh.Indices.Length / 3;
                 if (IsOpaque(mesh.Material)) { opaque.Add(mesh); depthTriangles += mesh.Indices.Length / 3; }
+                else if (mesh.Material.Id.EndsWith(CasterSuffix, StringComparison.Ordinal)) casterTriangles += mesh.Indices.Length / 3;
             }
             // Depth-only batch lists: stock tiles merge the whole level into ONE draw
             // (Brands HIGHBATCH_5_2 = all 26 HIGH_5_2 draws, 33,585 indices). Merge the
@@ -437,7 +511,7 @@ internal static class TrackVisuals
         object lod = lodOverrides ? WriteLodOverrides(donorVenue, venueOut, tileSize, Math.Max(tileSize, farSize), highToCull: !lowCopies) : "stock";
         // VIS identities cover every terrain tile, kept LAND tiles included (after ours).
         bounds = [.. bounds, .. savedTiles.Skip(parts.Count).Select(Visibility.Bounds)];
-        return (bounds, new { KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
+        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
             Materials = materials.Length, UniqueTextures = textureBytes.Count, TextureBytes = textureBytes.Values.Sum(b => (long)b.Length), TextureBytesTrimmed = textureBytesTrimmed, MaxTextureSize, LowCopies = lowCopies, ReverseTileIds = reverseTileIds, DonorTerrainRemoved = donorTiles.Length, OmittedCoverageTriangles = omittedCoverage });
     }
 
@@ -484,6 +558,7 @@ internal static class TrackVisuals
 
     // GRID 2 object shaders read half-precision UVs; move each mesh's UVs near zero
     // by whole texture repeats so large AC UV values keep their precision.
+    const float CasterReach = 50, CasterCell = 10;
     static Mesh RecentreUV(Mesh mesh)
     {
         if (mesh.UV.Length == 0 || mesh.TexCoords is not null) return mesh;
