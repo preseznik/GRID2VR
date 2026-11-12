@@ -23,6 +23,7 @@ internal static class NewFeatures
         ["LaunchMode"] = NextVersion,
         ["Runtime"] = NextVersion,
         ["SponsorDepthBias"] = NextVersion,
+        ["CockpitDepthPrecision"] = NextVersion,
         ["DesktopSeatPosition"] = NextVersion, ["Desktop cockpit FOV"] = NextVersion, ["InGameSeatAdjustment"] = NextVersion,
         ["ForceFeedbackOverride"] = NextVersion,
         ["ChaseHorizontalOnly"] = NextVersion,

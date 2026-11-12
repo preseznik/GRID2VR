@@ -33,6 +33,7 @@ param(
     [switch]$ScreenUiStereo,
     [ValidateSet('Off','Compare','Replace')][string]$NativeLeftEye='Off',
     [switch]$SponsorDepthBias,
+    [switch]$CockpitDepthPrecision,
     [switch]$FrontendSceneAudit,
     [switch]$WaitForStereoStart,
     [switch]$RuntimeSession,
@@ -472,6 +473,9 @@ if ($DisableMotionBlur) { [IO.File]::WriteAllText((Join-Path $run 'disable-motio
 if ($ScreenUiStereo) { [IO.File]::WriteAllText((Join-Path $run 'screen-ui-stereo.request'),'Candidate: verified screen UI shaders and exact native UI cameras only. Align XY to a shared plane; restore original CB and clipping after each draw.') }
 if ($NativeLeftEye -ne 'Off') { [IO.File]::WriteAllText((Join-Path $run 'native-left-eye.request'),$NativeLeftEye.ToLowerInvariant()+"`nCandidate: render the native pass as the left eye from Prepare to scene completion; replays are posed relative to it. Compare keeps both replays; replace skips the left replay.") }
 if ($SponsorDepthBias) { [IO.File]::WriteAllText((Join-Path $run 'sponsor-depth-bias.request'),'') }
+# Experimental: VR cockpit near plane 2 cm -> 10 cm while driving, with depth clamping so the
+# roof stays drawn (engine CockpitNearPlane + DepthClamp; receipt cockpit-near-plane.json).
+if ($CockpitDepthPrecision -and $RuntimeSession) { [IO.File]::WriteAllText((Join-Path $run 'cockpit-near-plane.request'),"0.1`nExperimental: 10 cm VR cockpit near plane while driving, nearer geometry depth-clamped.") }
 if ($WaitForClipTransition) { [IO.File]::WriteAllText((Join-Path $run 'wait-clip-transition.request'),'Arm after an observed native .1 or .2 / 15000 to .2 / 100 main-camera transition. Timeout remains unchanged; acceptance requires a changed captured frame and its following eye history.') }
 if ($TraceReplayWork) { [IO.File]::WriteAllText((Join-Path $run 'replay-work.request'),'Bounded mapped-buffer trace, source-format captures and prepared-list snapshots for the first original/replay pair.') }
 if ($TraceReplaySamples) { [IO.File]::WriteAllText((Join-Path $run 'replay-samples.request'),'Focus color captures on the first PS 922a49bc5dcd4775 draw and preserve exact RGB10A2 MSAA samples before and after it. Retain scene/producer checkpoints.') }
@@ -604,6 +608,7 @@ $receipt.disableMotionBlur=[bool]$DisableMotionBlur
 $receipt.screenUiStereo=[bool]$ScreenUiStereo
 $receipt.nativeLeftEye=$NativeLeftEye
 $receipt.sponsorDepthBias=[bool]$SponsorDepthBias
+$receipt.cockpitDepthPrecision=([bool]$CockpitDepthPrecision -and [bool]$RuntimeSession)
 if ($RecordedViewsFile) { $receipt.recordedViewsSha256=(Get-FileHash -LiteralPath (Join-Path $run 'recorded-views.request')).Hash }
 if ($XrSessionProbe) { $receipt.xrRuntime=$runtimeInfo.name; $receipt.xrRuntimeManifest=$runtimeInfo.manifest; $receipt.xrLayerBypass=$XrLayerBypass }
 if ($ReplayEyeOffset) { [IO.File]::WriteAllText((Join-Path $run 'eye-textures.request'),'Own two native geometry textures from one scene and verify their exact source hashes after restoration.') }

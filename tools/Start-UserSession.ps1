@@ -57,6 +57,7 @@ param(
     [ValidateSet(0,1)][int]$VrGarageMenus=1,
     [switch]$NativeLeftEye,
     [switch]$SponsorDepthBias,
+    [switch]$CockpitDepthPrecision,
     [ValidateRange(0,31)][int]$HudHiddenElements=1,
     [switch]$PerformanceDisplay,
     [ValidateSet(0,1)][int]$PerformanceFollowView=1,
@@ -149,6 +150,7 @@ try {
     $receipt.vrGarageMenus=[bool]$VrGarageMenus
     $receipt.nativeLeftEye=($Mode -eq 'VR' -and [bool]$NativeLeftEye)
     $receipt.sponsorDepthBias=($Mode -eq 'VR' -and [bool]$SponsorDepthBias)
+    $receipt.cockpitDepthPrecision=($Mode -eq 'VR' -and [bool]$CockpitDepthPrecision)
     $receipt.performanceDisplay=($Mode -eq 'VR' -and [bool]$PerformanceDisplay)
     $receipt.performanceFollowView=[bool]$PerformanceFollowView
     $receipt.removeCinemaMatte=($Mode -eq 'VR')
@@ -225,6 +227,7 @@ try {
     $parameters.VrGarageMenus=$VrGarageMenus
     $parameters.NativeLeftEye=$(if($Mode -eq 'VR' -and $NativeLeftEye){'Replace'}else{'Off'})
     $parameters.SponsorDepthBias=($Mode -eq 'VR' -and [bool]$SponsorDepthBias)
+    $parameters.CockpitDepthPrecision=($Mode -eq 'VR' -and [bool]$CockpitDepthPrecision)
     $parameters.PerformanceDisplay=($Mode -eq 'VR' -and [bool]$PerformanceDisplay)
     $parameters.PerformanceFollowView=$PerformanceFollowView
     $parameters.RemoveCinemaMatte=($Mode -eq 'VR')

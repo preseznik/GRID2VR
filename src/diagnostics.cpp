@@ -21,6 +21,7 @@
 #include "msaa_audit.h"
 #include "focus_cockpit.h"
 #include "sponsor_depth.h"
+#include "depth_clamp.h"
 #include "dlc_cockpit.h"
 #include "seat_runtime.h"
 #include "replay_profile.h"
@@ -1647,7 +1648,7 @@ void STDMETHODCALLTYPE Draw(ID3D11DeviceContext* c,UINT n,UINT start) {
     CaptureDrawInputs(c,mark);
     auto repeat=PrepareProducerRepeat(c,mark,true,n,start);
     const bool flatMenu=BeginFlatMenu(c);
-    {auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDraw(c,n,start);}sponsorDepth.End(c,bias);}
+    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDraw(c,n,start);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     CompleteProducerRepeat(c,mark,repeat,true,n,start);
@@ -1659,7 +1660,7 @@ void STDMETHODCALLTYPE DrawIndexed(ID3D11DeviceContext* c,UINT n,UINT start,INT 
     CaptureDrawInputs(c,mark);
     auto repeat=PrepareProducerRepeat(c,mark,false,n,start,base);
     const bool flatMenu=BeginFlatMenu(c);
-    {auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawIndexed(c,n,start,base);}sponsorDepth.End(c,bias);}
+    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawIndexed(c,n,start,base);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     CompleteProducerRepeat(c,mark,repeat,false,n,start,base);
@@ -1670,7 +1671,7 @@ void STDMETHODCALLTYPE DrawInstanced(ID3D11DeviceContext* c,UINT n,UINT count,UI
     ++draws; CameraDraw(c); const UINT args[]{n,count,start,instance}; const auto mark=replaytrace::Work(c,"Instanced",args);
     CaptureDrawInputs(c,mark);
     const bool flatMenu=BeginFlatMenu(c);
-    {auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawInstanced(c,n,count,start,instance);}sponsorDepth.End(c,bias);}
+    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawInstanced(c,n,count,start,instance);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,2,args);
@@ -1680,7 +1681,7 @@ void STDMETHODCALLTYPE DrawIndexedInstanced(ID3D11DeviceContext* c,UINT n,UINT c
     ++draws; CameraDraw(c); const UINT args[]{n,count,start,static_cast<UINT>(base),instance}; const auto mark=replaytrace::Work(c,"IndexedInstanced",args);
     CaptureDrawInputs(c,mark);
     const bool flatMenu=BeginFlatMenu(c);
-    {auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawIndexedInstanced(c,n,count,start,base,instance);}sponsorDepth.End(c,bias);}
+    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawIndexedInstanced(c,n,count,start,base,instance);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,3,args);

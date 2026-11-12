@@ -61,6 +61,7 @@ param(
     [switch]$ScreenUiStereo,
     [ValidateSet('Off','Compare','Replace')][string]$NativeLeftEye='Off',
     [switch]$SponsorDepthBias,
+    [switch]$CockpitDepthPrecision,
     [switch]$FrontendSceneAudit,
     [ValidateSet('Off','Observe','Expand')][string]$InstanceCapacity='Off',
     [ValidateRange(1,600)][int]$FlickerCaptureAfterPairs=120,
@@ -296,6 +297,7 @@ $preflight.visibilityCapture=[bool]$VisibilityCapture
 $preflight.screenUiStereo=[bool]$ScreenUiStereo
 $preflight.nativeLeftEye=$NativeLeftEye
 $preflight.sponsorDepthBias=[bool]$SponsorDepthBias
+$preflight.cockpitDepthPrecision=[bool]$CockpitDepthPrecision
 $preflight.instanceCapacity=$InstanceCapacity
 $preflight.flickerCaptureAfterPairs=$FlickerCaptureAfterPairs
 $preflight.flickerObservationSeconds=$FlickerObservationSeconds
@@ -408,6 +410,7 @@ try {
         ScreenUiStereo=[bool]$ScreenUiStereo
         NativeLeftEye=$NativeLeftEye
         SponsorDepthBias=[bool]$SponsorDepthBias
+        CockpitDepthPrecision=[bool]$CockpitDepthPrecision
         InstanceCapacity=$InstanceCapacity
         RecenterKey=$RecenterKey;RecenterModifiers=$RecenterModifiers;RecenterDeviceBase64=$RecenterDeviceBase64;RecenterTilt=[bool]$RecenterTilt
         UntilExit=[bool]$UntilExit

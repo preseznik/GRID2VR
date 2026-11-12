@@ -22,6 +22,9 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public bool NativeLeftEye { get; init; } = true;
     // Experimental banner flicker fix (ProJict 6a887534): depth-bias stock sponsor board draws. On by default.
     public bool SponsorDepthBias { get; init; } = true;
+    // Experimental cockpit depth precision: 10 cm VR cockpit near plane while driving, nearer
+    // geometry depth-clamped so the roof stays drawn (custom-track trackside flicker). On by default.
+    public bool CockpitDepthPrecision { get; init; } = true;
     public bool VrCockpit { get; init; } = true;
     public string CockpitDriver { get; init; } = "HeadOnly";
     public bool CockpitExposureLimit { get; init; } = true;
@@ -280,6 +283,7 @@ internal sealed class SessionClient(string root)
         if (vr && !value.KeepHorizonLevel) command.ArgumentList.Add("-RecenterTilt");
         if (vr && value.NativeLeftEye) command.ArgumentList.Add("-NativeLeftEye");
         if (vr && value.SponsorDepthBias) command.ArgumentList.Add("-SponsorDepthBias");
+        if (vr && value.CockpitDepthPrecision) command.ArgumentList.Add("-CockpitDepthPrecision");
         if (vr && !value.CockpitExposureLimit) command.ArgumentList.Add("-NativeCockpitExposure");
         if (vr && !value.HideImpactGlitch) command.ArgumentList.Add("-NativeImpactEffect");
         if (vr && value.HideLensDust) command.ArgumentList.Add("-HideLensDust");

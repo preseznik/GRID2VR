@@ -5,6 +5,7 @@
 #include "replay_state.h"
 #include "replay_camera.h"
 #include "intro_near_plane.h"
+#include "depth_clamp.h"
 #include "flashback_observer.h"
 #include "cockpit_exposure.h"
 #include "opponent_lod_runtime.h"
@@ -399,6 +400,13 @@ IntroNearPlane introNear;
 uint64_t introNearApplies{},introNearRestores{},introNearFrames{};
 const char* introNearState="off";
 void VerifyIntroNear(uintptr_t context);
+// VR cockpit near plane while driving, with depth clamping (prototype; intro_near_plane.h
+// CockpitNearPlane, depth_clamp.h).
+bool cockpitNearEnabled{};
+CockpitNearPlane cockpitNear;
+uint64_t cockpitNearApplies{},cockpitNearRestores{},cockpitNearFrames{};
+const char* cockpitNearState="off";
+void VerifyCockpitNear(uintptr_t context);
 GarageMenuSnapshot garageMenu;
 std::atomic<uint64_t> frontendPrepareCalls{},frontendVisibilityCalls{},frontendWorldVisibilityCalls{};
 std::mutex frontendAuditMutex;
@@ -580,7 +588,7 @@ bool SceneSnapshot(const PendingScene& scene,const char* phase) {
 }
 void RememberScene(unsigned slot,void* self,uintptr_t context,uintptr_t view,uintptr_t packet,const void* returnSlot) {
     if (inReplay || !sceneBoundaryEnabled || reinterpret_cast<uintptr_t>(self)!=mainObject) return;
-    if (slot==5 && GetCurrentThreadId()==renderThread) VerifyIntroNear(context);
+    if (slot==5 && GetCurrentThreadId()==renderThread) {VerifyIntroNear(context);VerifyCockpitNear(context);}
     const bool record=runtimeSession?replaySequence.Available():frame.load()<captureEnd.load();
     const bool rememberEye=eyeOffsetEnabled && (replaySequence.Available() ||
         (runtimeSession && replaySequence.Status()==ReplaySequence::State::Suspended));
@@ -1611,6 +1619,45 @@ void VerifyIntroNear(uintptr_t context) {
     Log("intro_near disabled=1 reason=camera_not_built_from_input frame=%llu",frame.load());
     IntroNearReceipt();
 }
+void CockpitNearReceipt() {
+    float target{};const auto bits=cockpitNear.Target();memcpy(&target,&bits,4);
+    auto& clamp=GlobalDepthClamp();
+    std::ofstream file(output/L"cockpit-near-plane.json",std::ios::trunc);
+    file << "{\"schema\":1,\"enabled\":" << (cockpitNearEnabled?"true":"false") << ",\"state\":\"" << cockpitNearState
+        << "\",\"nearMetres\":" << target << ",\"gameNearMetres\":0.02,\"applies\":" << cockpitNearApplies << ",\"restores\":" << cockpitNearRestores
+        << ",\"frames\":" << cockpitNearFrames << ",\"depthClamp\":{\"draws\":" << clamp.Draws() << ",\"states\":" << clamp.States()
+        << ",\"failures\":" << clamp.Failures() << ",\"cacheFull\":" << clamp.CacheFull() << "}}\n";
+}
+// Native Prepare, after the intro near plane: outside cinematics, a world camera at the
+// cockpit bank's 2 cm builds from the target near plane, and colour+depth draws clamp depth.
+void ApplyCockpitNear() {
+    if (!cockpitNearEnabled) return;
+    const auto nearBits=Read<uint32_t>(mainObject+0x40),farBits=Read<uint32_t>(mainObject+0x44);
+    const auto action=cockpitNear.Next(true,SessionRendering() && !flashbackobserver::Cinematic(),nearBits,farBits);
+    if (action!=IntroNearPlane::Action::None) {
+        const bool apply=action==IntroNearPlane::Action::Apply;
+        const uint32_t value=apply?cockpitNear.Target():CockpitNearPlane::cockpitNear;
+        memcpy(reinterpret_cast<void*>(mainObject+0x40),&value,4);
+        const auto count=apply?++cockpitNearApplies:++cockpitNearRestores;
+        const auto* state=apply?"applied":"restored";
+        // The game writes its 2 cm back every frame: log state changes and a bounded sample.
+        if (state!=cockpitNearState || count<=4 || count%3600==0) {
+            Log("cockpit_near %s frame=%llu near_bits=%08x far_bits=%08x count=%llu",state,frame.load(),value,farBits,count);
+            cockpitNearState=state;CockpitNearReceipt();
+        }
+    }
+    GlobalDepthClamp().SetActive(cockpitNear.Active());
+    if (cockpitNear.Active() && ++cockpitNearFrames%600==0) CockpitNearReceipt();
+}
+// Native scene entry: the camera must have been built from the target near plane;
+// otherwise stop for this session (both eyes keep one near plane) and stop clamping.
+void VerifyCockpitNear(uintptr_t context) {
+    if (!cockpitNearEnabled || !cockpitNear.Active() ||
+        cockpitNear.Verified(Read<uint32_t>(mainObject+0x40),Read<uint32_t>(context+0xe8))) return;
+    cockpitNearEnabled=false;cockpitNear.Reset();GlobalDepthClamp().SetActive(false);cockpitNearState="not_taken_disabled";
+    Log("cockpit_near disabled=1 reason=camera_not_built_from_input frame=%llu",frame.load());
+    CockpitNearReceipt();
+}
 void __fastcall Prepare(void* self,void*,uintptr_t arg) {
     if(frontendSceneAudit && !inReplay && reinterpret_cast<uintptr_t>(self)==mainObject)++frontendPrepareCalls;
     StageScope scope(3,self,arg,0,0,_ReturnAddress());
@@ -1621,7 +1668,7 @@ void __fastcall Prepare(void* self,void*,uintptr_t arg) {
         GetCurrentThreadId()==renderThread);
     if (visibility) SnapshotVisibility(currentStage.id,"prepare-before");
     const bool nativeMain=!inReplay && GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject;
-    if (nativeMain) {frametiming::Mark(frametiming::CenterBegin);ApplyIntroNear();BeginNativeEye();}
+    if (nativeMain) {frametiming::Mark(frametiming::CenterBegin);ApplyIntroNear();ApplyCockpitNear();BeginNativeEye();}
     if (GetCurrentThreadId()==renderThread && reinterpret_cast<uintptr_t>(self)==mainObject)
         signvisibility::Snapshot(frame.load(),currentStage.id,replayPass,"prepare-before",mainObject,0);
     realPrepare(self,arg);
@@ -1755,6 +1802,14 @@ InstallResult Install(uintptr_t base,const std::filesystem::path& folder,Boundar
     replay3d=!std::filesystem::exists(folder/L"flat-replays.request");
     garage3d=!std::filesystem::exists(folder/L"flat-garage.request");
     introNearEnabled=runtimeSession && std::filesystem::exists(folder/L"intro-near-plane.request");
+    // cockpit-near-plane.request (prototype): "0.05" or "0.1" metres; anything else stays off.
+    if (runtimeSession && std::filesystem::exists(folder/L"cockpit-near-plane.request")) {
+        std::ifstream request(folder/L"cockpit-near-plane.request"); std::string text; std::getline(request,text);
+        if (text.rfind("0.05",0)==0) {cockpitNear=CockpitNearPlane(0x3d4ccccdu);cockpitNearEnabled=true;}
+        else if (text.rfind("0.1",0)==0) {cockpitNear=CockpitNearPlane(0x3dcccccdu);cockpitNearEnabled=true;}
+        cockpitNearState=cockpitNearEnabled?"waiting":"bad_request";
+        CockpitNearReceipt();
+    }
     introNearState=introNearEnabled?"waiting":"off";
     frontendSceneAudit=std::filesystem::exists(folder/L"frontend-scene-audit.request");
     diagnosticLogging=!runtimeSession || std::filesystem::exists(folder/L"diagnostic-logging.request");

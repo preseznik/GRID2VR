@@ -55,6 +55,24 @@ int main() {
     s={};s.found=Found::Monitor;s.raceState=0;s.inputEnabled=1;s.replayActive=0;if(CinematicPhase(s))return 24; // racing
     s.replayActive=1;if(!CinematicPhase(s))return 25;                   // replay of that race
     s.replayActive=-1;if(CinematicPhase(s))return 26;                   // unreadable: native
+    // VR cockpit near plane (prototype): only the cockpit bank's exact 2 cm, only while
+    // driving a world camera; the game's per-frame rewrite re-applies; cinematics, the
+    // .2/100 near-object pass and other cameras restore or are left alone.
+    CockpitNearPlane cockpitNear;const uint32_t target=cockpitNear.Target();
+    if(target!=0x3dcccccdu)return 30;
+    if(cockpitNear.Next(true,true,near02,far2300)!=Action::None || cockpitNear.Active())return 31;   // chase/menu .2: untouched
+    if(cockpitNear.Next(false,true,cockpit,far2300)!=Action::None)return 32;                         // disabled
+    if(cockpitNear.Next(true,false,cockpit,far2300)!=Action::None)return 33;                         // cinematic shots
+    if(cockpitNear.Next(true,true,cockpit,far100)!=Action::None)return 34;                           // near-object pass
+    if(cockpitNear.Next(true,true,cockpit,far2300)!=Action::Apply || !cockpitNear.Active())return 35;
+    if(cockpitNear.Next(true,true,target,far2300)!=Action::None || !cockpitNear.Active())return 36;  // still ours
+    if(cockpitNear.Next(true,true,cockpit,far2300)!=Action::Apply || !cockpitNear.Active())return 37; // game rewrote 2 cm
+    if(!cockpitNear.Verified(target,target) || cockpitNear.Verified(cockpit,target) || cockpitNear.Verified(target,cockpit))return 38;
+    if(cockpitNear.Next(true,false,target,far2300)!=Action::Restore || cockpitNear.Active())return 39; // cinematic: restore once
+    if(cockpitNear.Next(true,true,bonnet,far2300)!=Action::None)return 40;                           // bonnet camera: never
+    if(!cockpitNear.Verified(cockpit,cockpit))return 41;                                             // inactive: nothing to check
+    if(CockpitNearPlane(0x3d4ccccdu).Target()!=near005)return 42;
     puts("Intro near plane: 5 cm only for world cameras at 0.2 m in pre-race/replay shots; restore, menu pass, camera change, self-check and phase passed.");
+    puts("Cockpit near plane: only the 2 cm world camera while driving; per-frame re-apply, cinematic restore, near-object pass and self-check passed.");
     return 0;
 }

@@ -91,6 +91,14 @@ internal static class LauncherFeaturesTests
         client.Save(bannerFix); Check(client.Load().SponsorDepthBias); client.Save(settings);
         Check(client.LaunchCommand(bannerFix, true).ArgumentList.Contains("-SponsorDepthBias"));
         Check(!client.LaunchCommand(bannerFix, false).ArgumentList.Contains("-SponsorDepthBias"));
+        // Experimental cockpit depth precision: on by default (also for settings saved before it existed), VR only.
+        Check(new Choices().CockpitDepthPrecision && JsonSerializer.Deserialize<Choices>("{}")!.CockpitDepthPrecision);
+        Check(!JsonSerializer.Deserialize<Choices>("{\"CockpitDepthPrecision\":false}")!.CockpitDepthPrecision);
+        Check(client.LaunchCommand(new Choices(), true).ArgumentList.Contains("-CockpitDepthPrecision"));
+        Check(!client.LaunchCommand(new Choices(), false).ArgumentList.Contains("-CockpitDepthPrecision"));
+        var depthOff = settings with { CockpitDepthPrecision = false };
+        client.Save(depthOff); Check(!client.Load().CockpitDepthPrecision); client.Save(settings);
+        Check(!client.LaunchCommand(depthOff, true).ArgumentList.Contains("-CockpitDepthPrecision"));
         var seats = new SeatAlignment { Cars = new() { ["s20"] = new(-10, 2, 3), ["pag"] = new(-5, 0, 0) } }; seats.Save(fixture);
         Check(SeatAlignment.Load(fixture).Cars["s20"] == new SeatOffset(-10,2,3));
         Check(JsonSerializer.Serialize(client.Load()) == before);
