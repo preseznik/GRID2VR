@@ -23,7 +23,7 @@ internal static class CustomTracks
         new("circuits/g2vr_nordschleife/route_0", "Nordschleife", "244210", "ks_nordschleife", "nordschleife", "nordschleife",
             "your own Assetto Corsa with its Nordschleife (ks_nordschleife)", 1536L * 1024 * 1024,
             "Assetto Corsa", "Circuit · 20.7 km",
-            "Nürburgring Nordschleife, converted from your Assetto Corsa copy. 20.7 km circuit · Practice and Race · Desktop and VR. Experimental: no baked lighting or grass tufts yet; AI pace is approximate."),
+            "Nürburgring Nordschleife, converted from your Assetto Corsa copy. 20.7 km circuit · Practice and Race · Desktop and VR. Experimental: AI pace is approximate."),
     ];
     const long ManifestLimit = 64 * 1024;
 
