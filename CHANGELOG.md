@@ -1,3 +1,25 @@
+# GRID2VR 0.2.23 — Experimental
+
+- **Custom tracks: the Nordschleife (Experimental).** Turn on **CUSTOM tracks (Experimental)** in the launcher, then **Build and install…** converts the Nürburgring Nordschleife from your own Assetto Corsa copy into a GRID 2 track for Practice and Race, in VR and Desktop. **Manage…** rebuilds or uninstalls it, or picks another Assetto Corsa folder. Only the supported Assetto Corsa version is accepted, and GRID 2's own files are never changed. Turning CUSTOM tracks off restores your original track selection. After installing a new GRID2VR version, rebuild the track to get its latest fixes.
+
+- **Night and sunset.** **Event selection → Conditions** lets Practice and Race run at **Night** or **Sunset** where GRID 2 has that lighting for the layout. Other layouts offer Day only. VR now works at night: before, night sessions stayed on the monitor.
+
+- **Track layout names.** The Track list shows each layout's name, such as **Brands Hatch — Indy Circuit** or **Okutama — Tenshi Way**, instead of Route 0, 1, 2.
+
+- **Lens flares in VR.** The lens flare ghosts no longer appear in different places in each eye; VR now leaves them out. Desktop is unchanged.
+
+- **Hide lens dust.** **Graphics → VR rendering → Hide lens dust** removes the dirty-lens layer that lights up when you look towards the sun. It stays fixed to your view in both eyes; turn it on if it bothers you. Off by default.
+
+- **Cockpit depth precision (experimental).** **Advanced → VR presentation → Cockpit depth precision** stops distant surfaces that lie close together, such as graffiti on walls, from flickering in VR cockpit view, while the roof and pillars near your head stay drawn. On by default; turn it off if anything near the camera looks wrong.
+
+- **VR crash fix.** VR sessions no longer crash right as the game starts drawing the first eye.
+
+- **Chase camera after a stutter.** A turned chase camera no longer snaps back behind the car after a short hitch.
+
+- **Drop-down lists.** The Track and Car lists in the launcher stay open until you pick something.
+
+- **Installer.** Installing over an earlier version now replaces GRID2VR's bundled Python completely, so a leftover file can no longer stop setup from preparing the game.
+
 # GRID2VR 0.2.22 — Experimental
 
 - **Force Feedback settings.** **Controls → Driving → Force Feedback** adjusts the force GRID 2 sends to your wheel, in VR and Desktop. Turn on **Use launcher force feedback**, then set **Wheel weight** (the steady steering force), **Vibration** (kerbs, road surface and impacts) and **Strength** (both). 100% is GRID 2's force unchanged. GRID 2's own Vibration & Feedback settings still apply and are not changed.
