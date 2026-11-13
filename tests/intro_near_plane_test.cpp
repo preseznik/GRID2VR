@@ -72,6 +72,10 @@ int main() {
     if(cockpitNear.Next(true,true,bonnet,far2300)!=Action::None)return 40;                           // bonnet camera: never
     if(!cockpitNear.Verified(cockpit,cockpit))return 41;                                             // inactive: nothing to check
     if(CockpitNearPlane(0x3d4ccccdu).Target()!=near005)return 42;
+    // The cockpit exposure limit recognises the cockpit by the game's 2 cm, also under the override.
+    if(cockpitNear.GameNear(target)!=target || cockpitNear.GameNear(cockpit)!=cockpit)return 43;         // inactive: unchanged
+    if(cockpitNear.Next(true,true,cockpit,far2300)!=Action::Apply)return 44;
+    if(cockpitNear.GameNear(target)!=cockpit || cockpitNear.GameNear(near02)!=near02)return 45;          // ours reads as 2 cm only
     puts("Intro near plane: 5 cm only for world cameras at 0.2 m in pre-race/replay shots; restore, menu pass, camera change, self-check and phase passed.");
     puts("Cockpit near plane: only the 2 cm world camera while driving; per-frame re-apply, cinematic restore, near-object pass and self-check passed.");
     return 0;

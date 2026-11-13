@@ -70,6 +70,9 @@ public:
     }
     bool Active() const { return active_; }
     uint32_t Target() const { return target_; }
+    // The game's own near plane behind an applied override. Code that recognises the cockpit
+    // camera by its 2 cm (the cockpit exposure limit) must see 2 cm while the override is on.
+    uint32_t GameNear(uint32_t nearBits) const { return active_ && nearBits==target_ ? cockpitNear : nearBits; }
     void Reset() { active_=false; }
 private:
     bool active_{};

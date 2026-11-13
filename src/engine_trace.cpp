@@ -2197,9 +2197,10 @@ bool CurrentLightCameras(std::array<uint8_t,512>& center,std::array<uint8_t,512>
 }
 bool CurrentCockpitCamera() {
     // Original scene identity is shared by center/left/right. Do not classify
-    // an eye-adjusted projection or an auxiliary/shadow camera as a cockpit.
+    // an eye-adjusted projection or an auxiliary/shadow camera as a cockpit. Cockpit depth
+    // precision moves the cockpit's 2 cm to its target; the game's own value is what counts.
     return GetCurrentThreadId()==renderThread && pendingScene.valid &&
         pendingScene.frame==frame.load() && pendingScene.replayInputsSaved &&
-        CockpitExposure::CameraSupported(pendingScene.nearPlane,pendingScene.farPlane);
+        CockpitExposure::CameraSupported(cockpitNearEnabled?cockpitNear.GameNear(pendingScene.nearPlane):pendingScene.nearPlane,pendingScene.farPlane);
 }
 }
