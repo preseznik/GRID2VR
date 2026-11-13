@@ -29,6 +29,10 @@ internal static class CutoutShader
     // drawn by cars and stock objects in custom-track sessions) stay unchanged.
     internal const string GroundGroup = "terrain_g2vr_simple", PlainDecalGroup = "g2vr_decal_plain";
     const string ShadowPrefix = "g2vr_sm.";
+    // Layered grass ground (LayeredGround): terrain_g2vr_vc with its day passes' programs
+    // prefixed by the four-layer/detail-normal prologue (DxbcPatch.PrependLayers).
+    internal const string LayeredGroup = "terrain_g2vr_layered";
+    const string LayeredPrefix = "g2vr_layer.";
     // Layer variants with a depth offset: the blended decal and the cutout. Only triangles
     // lying on an opaque surface use them (TrackVisuals.SplitLayers): on free-standing cards
     // the slope term pulled hedges and fences metres forward through opaque armco in the first
@@ -208,6 +212,59 @@ internal static class CutoutShader
         foreach (var (g, program) in new[] { (vc, "g2vr_vc.terrain_simple.cg.fp.4359E7BF"), (ground, ShadowPrefix + "terrain_simple.cg.fp.4359E7BF"), (plainDecal, ShadowPrefix + "decal.cg.decal_ao_fp.6AC11FEB"), (cutout, ShadowPrefix + "decal.cg.decal_ao_fp.6AC11FEB") })
             if (!g.Elements("SHADERGROUPPASS").Any(p => (string?)p.Attribute("fragmentProgram") == "#" + program))
                 throw new InvalidDataException($"{g.Attribute("id")} day colour pass lacks the shadow min program {program}.");
+        // Layered ground: a copy of the finished vc group (vertex colour + shadow min) whose day
+        // passes (1, 67108864) run the layer prologue first. Other passes stay single-layer.
+        var layered = new XElement(vc); layered.SetAttributeValue("id", LayeredGroup);
+        var layeredPasses = new List<object>();
+        XElement Definition(XElement template, string name) { var d = new XElement(template); d.SetAttributeValue("name", name); return d; }
+        foreach (var pass in layered.Elements("SHADERGROUPPASS").Where(p => (string?)p.Attribute("passConfigMaskLow") is "1" or "67108864"))
+        {
+            string programId = ((string)pass.Attribute("fragmentProgram")!).TrimStart('#');
+            var program = newPrograms.Single(p => (string?)p.Attribute("id") == programId);
+            var bytes = Convert.FromHexString(string.Concat(program.Descendants("SHADERPROGRAMCODEBLOCK").Single().Value.Where(char.IsAsciiHexDigit)));
+            var result = DxbcPatch.PrependLayers(bytes, LayeredGround.Compile, "TDiffuseSpecMap1", LayeredGround.Textures, LayeredGround.ConstantNames);
+            var copy = new XElement(program); copy.SetAttributeValue("id", LayeredPrefix + programId);
+            var code = copy.Descendants("SHADERPROGRAMCODE").Single(); code.SetAttributeValue("codeSize", result.Code.Length);
+            code.Element("SHADERPROGRAMCODEBLOCK")!.Value = string.Join(" ", result.Code.Select(b => b.ToString("X2")));
+            // Definitions follow reflection order in every stock program (constants by $Globals
+            // offset, then resources in binding-table order); the new ones go to their places.
+            var defs = code.Elements("SHADERINPUTDEFINITION").ToList();
+            var floatTemplate = defs.Single(d => (string?)d.Attribute("name") == "terrainXFade"); var float4Template = defs.Single(d => (string?)d.Attribute("name") == "Map1UVScaleAndOffset");
+            var textureTemplate = defs.Single(d => (string?)d.Attribute("name") == "TDiffuseSpecMap1");
+            var (globals, resources) = DxbcPatch.ReflectionOrder(result.Code);
+            var stockOrder = DxbcPatch.ReflectionOrder(bytes);
+            if (!defs.Where(d => (string?)d.Attribute("type") == "constant").Select(d => (string)d.Attribute("name")!).SequenceEqual(stockOrder.Globals.Where(g => defs.Any(d => (string?)d.Attribute("name") == g && (string?)d.Attribute("type") == "constant")))
+                || !defs.Where(d => (string?)d.Attribute("type") == "texture").Select(d => (string)d.Attribute("name")!).SequenceEqual(stockOrder.Resources))
+                throw new InvalidDataException("Stock program definitions do not follow reflection order: " + programId);
+            var constants = defs.Where(d => (string?)d.Attribute("type") == "constant")
+                .Concat(LayeredGround.ConstantNames.Select(n => Definition(n.StartsWith("Map", StringComparison.Ordinal) ? float4Template : floatTemplate, n)))
+                .OrderBy(d => globals.IndexOf((string)d.Attribute("name")!)).ToList();
+            var textureDefs = defs.Where(d => (string?)d.Attribute("type") == "texture")
+                .Concat(LayeredGround.Textures.Select(t => Definition(textureTemplate, t.Name)))
+                .OrderBy(d => resources.IndexOf((string)d.Attribute("name")!)).ToList();
+            if (constants.Any(d => globals.IndexOf((string)d.Attribute("name")!) < 0) || textureDefs.Any(d => resources.IndexOf((string)d.Attribute("name")!) < 0))
+                throw new InvalidDataException("Layered program definition missing from its reflection.");
+            var others = defs.Where(d => (string?)d.Attribute("type") is not ("constant" or "texture")).ToList();
+            // Stock layout: constants, then customs, then textures.
+            if (!defs.Select(d => (string?)d.Attribute("type")).SequenceEqual(defs.Where(d => (string?)d.Attribute("type") == "constant").Concat(others).Concat(defs.Where(d => (string?)d.Attribute("type") == "texture")).Select(d => (string?)d.Attribute("type"))))
+                throw new InvalidDataException("Unexpected stock definition layout: " + programId);
+            foreach (var d in defs) d.Remove();
+            code.Add(constants.Select(d => new XElement(d))); code.Add(others.Select(d => new XElement(d))); code.Add(textureDefs.Select(d => new XElement(d)));
+            code.SetAttributeValue("parameterCount", code.Elements("SHADERINPUTDEFINITION").Count());
+            newPrograms.Add(copy); pass.SetAttributeValue("fragmentProgram", "#" + LayeredPrefix + programId);
+            layeredPasses.Add(new { Pass = (string?)pass.Attribute("passConfigMaskLow"), Program = programId, Bytes = result.Code.Length, NormalReads = result.InputRegister });
+        }
+        if (layeredPasses.Count != 2) throw new InvalidDataException("Layered ground needs both terrain day passes.");
+        {
+            var defs = layered.Elements("SHADERINPUTDEFINITION").ToList();
+            var floatTemplate = defs.Single(d => (string?)d.Attribute("name") == "terrainXFade"); var float4Template = defs.Single(d => (string?)d.Attribute("name") == "Map1UVScaleAndOffset");
+            var textureTemplate = defs.Single(d => (string?)d.Attribute("name") == "TDiffuseSpecMap1");
+            foreach (var name in LayeredGround.ConstantNames.Where(n => !defs.Any(d => (string?)d.Attribute("name") == n)))
+                layered.Elements("SHADERINPUTDEFINITION").Last().AddAfterSelf(Definition(name.StartsWith("Map", StringComparison.Ordinal) ? float4Template : floatTemplate, name));
+            foreach (var (name, _, _) in LayeredGround.Textures) layered.Elements("SHADERINPUTDEFINITION").Last().AddAfterSelf(Definition(textureTemplate, name));
+            layered.SetAttributeValue("parameterCount", layered.Elements("SHADERINPUTDEFINITION").Count());
+        }
+        vc.AddAfterSelf(layered);
         var programAnchor = candidate.Descendants("SHADERPROGRAM").Last();
         foreach (var p in newPrograms) { programAnchor.AddAfterSelf(p); programAnchor = p; }
 
@@ -239,7 +296,7 @@ internal static class CutoutShader
             if (!a.AsSpan().SequenceEqual(b)) throw new InvalidDataException("Added shader program changed in serialization.");
             s.Remove();
         }
-        foreach (var (g, what) in new[] { (ground, "Shadow-min terrain group"), (plainDecal, "Shadow-min decal group") })
+        foreach (var (g, what) in new[] { (ground, "Shadow-min terrain group"), (plainDecal, "Shadow-min decal group"), (layered, "Layered terrain group") })
         {
             var s = GroupIn(saved, (string)g.Attribute("id")!);
             if (!XNode.DeepEquals(g, s)) throw new InvalidDataException(what + " changed in serialization.");
@@ -250,6 +307,6 @@ internal static class CutoutShader
         if (Files.Hash(source) != inputs[source]) throw new InvalidDataException("Shaderpack changed while converting.");
         return new { Group, Base = "decal_ao_vc_flat", States = "object_2sidedcov cutout (alpha test, coverage, depth write), decal back-face culling",
             DecalGroup, LayerCutoutGroup, DecalOffset = new { DecalOffset.Factor, DecalOffset.Units }, CutoutOffset = new { CutoutOffset.Factor, CutoutOffset.Units },
-            TerrainGroup, TerrainPasses = patched, GroundGroup, PlainDecalGroup, ShadowMin = shadow, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, StockUnchanged = true, OriginalHash = inputs[source] };
+            TerrainGroup, TerrainPasses = patched, GroundGroup, PlainDecalGroup, ShadowMin = shadow, LayeredGroup, LayeredPasses = layeredPasses, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, StockUnchanged = true, OriginalHash = inputs[source] };
     }
 }

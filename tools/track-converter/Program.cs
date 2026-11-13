@@ -78,7 +78,7 @@ internal static class Program
                         var group = doc.Descendants().First(e => e.Name.LocalName == "SHADERGROUP" && (string?)e.Attribute("id") == args[2]);
                         void Print(System.Xml.Linq.XElement e, int depth)
                         {
-                            if (e.Name.LocalName == "SHADERINPUTDEFINITION") return;
+                            if (e.Name.LocalName == "SHADERINPUTDEFINITION" && Environment.GetEnvironmentVariable("G2VR_DEFS") is null) return;
                             var text = e.HasElements ? "" : " = " + (e.Value.Length > 80 ? e.Value[..80] + "…" : e.Value);
                             Console.WriteLine(new string(' ', depth * 2) + e.Name.LocalName + " " + string.Join(" ", e.Attributes().Select(a => $"{a.Name}={a.Value}")) + text);
                             foreach (var child in e.Elements()) Print(child, depth + 1);
@@ -486,6 +486,38 @@ internal static class Program
                         Console.WriteLine($"{args[2]}: {bytes.Length} -> {result.Code.Length} bytes, WARP ok");
                         var lines = result.Disassembly.Split('\n'); int i = Array.FindIndex(lines, l => l.Contains("cb1[21].x, cb1[21].y"));
                         foreach (var l in lines.Skip(i).Take(6)) Console.WriteLine("  " + l.Trim());
+                        return 0;
+                    }
+                case "program-stats" when args.Length == 2:
+                    {
+                        // Per pixel program: texture/constant/total input definitions, largest first.
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var rows = doc.Descendants("SHADERPROGRAM").Select(p => (Id: (string)p.Attribute("id")!, Defs: p.Descendants("SHADERINPUTDEFINITION").ToList()))
+                            .Select(r => (r.Id, Textures: r.Defs.Count(d => (string?)d.Attribute("type") == "texture"), Constants: r.Defs.Count(d => (string?)d.Attribute("type") == "constant"), Total: r.Defs.Count))
+                            .OrderByDescending(r => r.Textures).ThenByDescending(r => r.Total).Take(12);
+                        foreach (var r in rows) Console.WriteLine($"{r.Textures,3} textures {r.Constants,3} constants {r.Total,3} total  {r.Id}");
+                        return 0;
+                    }
+                case "reflect-check" when args.Length == 3:
+                    {
+                        // D3DReflect and hardware creation of one program, with its PSSG input definitions.
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var program = doc.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == args[2]);
+                        var bytes = Convert.FromHexString(string.Concat(program.Descendants("SHADERPROGRAMCODEBLOCK").Single().Value.Where(char.IsAsciiHexDigit)));
+                        var defs = program.Descendants("SHADERINPUTDEFINITION").Select(d => ((string)d.Attribute("name")!, (string?)d.Attribute("type"))).ToList();
+                        Console.WriteLine($"{args[2]}: {bytes.Length} bytes, {defs.Count} definitions");
+                        foreach (var line in DxbcPatch.Reflect(bytes, defs.Where(d => d.Item2 == "texture").Select(d => d.Item1), defs.Where(d => d.Item2 == "constant").Select(d => d.Item1), hardware: true)) Console.WriteLine(line);
+                        return 0;
+                    }
+                case "patch-layers" when args.Length == 3:
+                    {
+                        // Offline check of DxbcPatch.PrependLayers (LayeredGround prologue) on one program.
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var code = doc.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == args[2]).Descendants("SHADERPROGRAMCODEBLOCK").Single();
+                        var bytes = Convert.FromHexString(string.Concat(code.Value.Where(char.IsAsciiHexDigit)));
+                        var result = DxbcPatch.PrependLayers(bytes, LayeredGround.Compile, "TDiffuseSpecMap1", LayeredGround.Textures, LayeredGround.ConstantNames);
+                        Console.WriteLine($"{args[2]}: {bytes.Length} -> {result.Code.Length} bytes, {result.InputRegister} normal reads, WARP ok");
+                        Console.Write(result.Disassembly);
                         return 0;
                     }
                 case "program-asm" when args.Length == 3:

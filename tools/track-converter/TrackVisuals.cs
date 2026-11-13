@@ -23,6 +23,9 @@ internal static class TrackVisuals
     // (CutoutShader adds it to the overlay shaderpack), so the AO/colour-map UV set keeps
     // the AC shading map.
     internal const string TerrainVc = CutoutShader.TerrainGroup + ".fx";
+    // Layered grass ground (LayeredGround): TerrainVc plus AC's four detail layers, mask and
+    // detail normal, spliced into the day passes (CutoutShader.LayeredGroup).
+    internal const string TerrainLayered = CutoutShader.LayeredGroup + ".fx";
     internal const string CutoutCaster = CutoutShader.CasterGroup + ".fx";
     const string CasterSuffix = "|caster";
     // Alpha-tested cutouts (trees, *_AT fences/guardrail): the decal below with the stock
@@ -101,7 +104,7 @@ internal static class TrackVisuals
     {
         if (material.StockGroup is not null) return material.StockGroup;
         if (!Supported.Contains(material.Shader)) throw new InvalidDataException("Unmapped AC shader: " + material.Shader);
-        return IsOpaque(material) ? (MultilayerMaterial.Read(material) is not null ? TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : Decal;
+        return IsOpaque(material) ? (MultilayerMaterial.Read(material) is { } layer ? layer.Layers is not null ? TerrainLayered : TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : Decal;
     }
     internal static bool IsAlphaTested(Material material) => material.Blend == 0 && material.Shader != "ksPerPixelAlpha" &&
         (material.AlphaTest || material.Shader is "ksTree" or "ksPerPixelAT" || material.Shader.Contains("_AT", StringComparison.Ordinal));
@@ -237,6 +240,21 @@ internal static class TrackVisuals
             var vcGroup = new XElement(terrainGroup); vcGroup.SetAttributeValue("id", TerrainVc);
             var vcInstance = new XElement(terrainInstance); vcInstance.SetAttributeValue("shaderGroup", "#" + TerrainVc);
             templates[TerrainVc] = (vcGroup, vcInstance); layouts[TerrainVc] = layouts[Opaque];
+            var layeredGroup = new XElement(vcGroup); layeredGroup.SetAttributeValue("id", TerrainLayered);
+            var diffuseDefinition = layeredGroup.Elements("SHADERINPUTDEFINITION").Single(d => (string?)d.Attribute("name") == "TDiffuseSpecMap1");
+            foreach (var name in LayeredGround.Textures.Select(t => t.Name))
+            {
+                if (layeredGroup.Elements("SHADERINPUTDEFINITION").Any(d => (string?)d.Attribute("name") == name)) throw new InvalidDataException("Donor terrain group already defines " + name);
+                var definition = new XElement(diffuseDefinition); definition.SetAttributeValue("name", name); layeredGroup.Elements("SHADERINPUTDEFINITION").Last().AddAfterSelf(definition);
+            }
+            foreach (var name in LayeredGround.ConstantNames)
+                if (!layeredGroup.Elements("SHADERINPUTDEFINITION").Any(d => (string?)d.Attribute("name") == name)) throw new InvalidDataException("Donor terrain group lacks " + name);
+            layeredGroup.SetAttributeValue("parameterCount", layeredGroup.Elements("SHADERINPUTDEFINITION").Count());
+            // Instances size their inputs by parameterCount (= the group's definitions): the five
+            // new textures are parameters 49-53 (a copied 49 made GRID 2 exit on loading the track).
+            var layeredInstance = new XElement(vcInstance); layeredInstance.SetAttributeValue("shaderGroup", "#" + TerrainLayered);
+            layeredInstance.SetAttributeValue("parameterCount", layeredGroup.Elements("SHADERINPUTDEFINITION").Count());
+            templates[TerrainLayered] = (layeredGroup, layeredInstance); layouts[TerrainLayered] = layouts[Opaque];
         }
         // ROOT tiles' depth batches use the donor's own HIGHBATCH material ("batchmaterial" on
         // Brands Hatch); "batchmaterial!0" is the LAND/NONLOD one. They differ only by id.
@@ -374,6 +392,9 @@ internal static class TrackVisuals
                     // Grey x ColourMapScale 2 = unchanged colour; multilayer: AC shading map x 1.
                     "TColourMap" => colourId,
                     "TNormalMap" => "g2vr_normal",
+                    "TDiffuseSpecMap2" or "TDiffuseSpecMap3" or "TDiffuseSpecMap4" when layer?.Layers is { } layers => TextureId(layers.Details[name[^1] - '1'], true),
+                    "TBlendMap2" when layer?.Layers is { } layers => TextureId(layers.Mask, false),
+                    "TNormalMap2" when layer?.Layers is { } layers => TextureId(layers.Normal, false),
                     _ => "g2vr_black"
                 };
                 input.SetAttributeValue("type", "texture"); input.SetAttributeValue("texture", "#" + texture); input.RemoveNodes();
@@ -381,7 +402,8 @@ internal static class TrackVisuals
             // Source UVs as authored; no terrain specular from AC's diffuse alpha.
             // ColourMapScale also carries AC's own material brightness (ksAmbient/ksDiffuse, 0.3 neutral).
             string colourScale = ((layer is null ? 2 : 1) * Brightness(material)).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-            foreach (var (name, value) in new[] { ("Map1UVScaleAndOffset", "1 1 0 0"), ("PhongColour", "0 0 0"), ("ColourMapScale", colourScale), ("TrackAOScale", "1"), ("SpecScale", "0") })
+            foreach (var (name, value) in new[] { ("Map1UVScaleAndOffset", "1 1 0 0"), ("PhongColour", "0 0 0"), ("ColourMapScale", colourScale), ("TrackAOScale", "1"), ("SpecScale", "0") }
+                .Concat(layer?.Layers?.Constants(source.Origin) ?? []))
             {
                 int parameter = Array.FindIndex(definitions, d => (string?)d.Attribute("name") == name);
                 if (parameter < 0) continue;
@@ -390,6 +412,12 @@ internal static class TrackVisuals
                 input.SetAttributeValue("type", "constant"); input.SetAttributeValue("format", definitions[parameter].Attribute("format")!.Value);
                 input.Attributes("texture").Remove(); input.Value = value;
             }
+            // Donor instances list inputs by ascending parameterID; inputs added above (layered
+            // textures past the stock definitions, then constants such as DetailBlendScale) keep it.
+            var inputs = instance.Elements("SHADERINPUT").OrderBy(x => (int)x.Attribute("parameterID")!).ToList();
+            if (inputs.Select(x => (int)x.Attribute("parameterID")!).Distinct().Count() != inputs.Count) throw new InvalidDataException("Duplicate shader input in " + id);
+            foreach (var x in inputs) x.Remove();
+            instance.Add(inputs);
             instance.SetAttributeValue("parameterSavedCount", instance.Elements("SHADERINPUT").Count());
             Library("SHADERINSTANCE").Add(instance);
             // Layered triangles of this material: the same inputs under the offset group.
@@ -399,8 +427,10 @@ internal static class TrackVisuals
                 Library("SHADERINSTANCE").Add(ground); ids[material.Id + LayerSuffix] = id + "_layer";
             }
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
-                ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Specular = IsOpaque(material) ? Specular(material) : (byte)255, Lighting = target == TerrainVc ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
-                Approximation = layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
+                ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Specular = IsOpaque(material) ? Specular(material) : (byte)255, Lighting = target is TerrainVc or TerrainLayered ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
+                Layers = layer?.Layers,
+                Approximation = layer?.Layers is not null ? "Layered ground: four detail layers on world XZ by txMask, x shading map x magicMult, detail normal (DiRT2VR NordGround reading of multA/detailNMMult); fresnel/specular not reproduced."
+                    : layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
                     : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat with shadow min (no depth write; ground-facing triangles with a depth offset); no depth batch, no distant LOD."
                     : target == Cutout ? "Cutout: decal_ao_vc_flat programs with object_2sidedcov states (alpha test + coverage, depth written, two-sided); no depth batch, no distant LOD."
                     : "Source diffuse and UVs; specular black, baked ambient per vertex. Normal maps and reflections are not reproduced." });
@@ -587,7 +617,7 @@ internal static class TrackVisuals
                 int rampSet = mesh.Material.StockGroup is null && mesh.TexCoords is null ? (cutout ? 1 : 2) : -1;
                 // Multilayer ground (TerrainVc): the same ambient x sky and sun visibility as the
                 // ramp, carried in vertex colour (shader-side RGB = ambient light, A = sun).
-                bool vertexLit = mesh.Material.StockGroup is null && Target(mesh.Material) == TerrainVc;
+                bool vertexLit = mesh.Material.StockGroup is null && Target(mesh.Material) is TerrainVc or TerrainLayered;
                 for (int i = 0; i < mesh.Positions.Length; i++)
                 {
                     var p = mesh.Positions[i]; tileBox = tileBox is { } b ? b.Union(new(p, p)) : new(p, p);

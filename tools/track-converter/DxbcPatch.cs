@@ -150,6 +150,233 @@ internal static partial class DxbcPatch
         return new(rebuilt, -1, text);
     }
 
+    // Prepends a compiled prologue to a stock pixel shader and feeds its two results into the
+    // stock code: SV_Target0.xyz replaces the albedo sampled from `diffuse`, SV_Target1.xyz
+    // replaces every read of the interpolated world normal (TEXCOORD1). The stock lighting,
+    // shadows, lights, fog and output encoding stay as they are. The prologue must use the
+    // stock input signature (same registers), cb0 offsets of the stock $Globals, the stock
+    // diffuse texture/sampler slots, and new textures at `slots` (texture tN with sampler sM,
+    // names from `textures`). Its temps are renumbered past the stock ones. The stock RDEF is
+    // kept and extended: new bindings (sampler and texture named alike, as EGO binds them) and
+    // the USED flag on `constants`.
+    internal static Result PrependLayers(byte[] dxbc, Func<int, int, byte[]> compile, string diffuse, IReadOnlyList<(string Name, int Texture, int Sampler)> textures, IReadOnlyList<string> constants)
+    {
+        if (!Checksum(dxbc).AsSpan().SequenceEqual(dxbc.AsSpan(4, 16))) throw new InvalidDataException("DXBC checksum self-check failed on the stock shader.");
+        var chunks = Chunks(dxbc);
+        var rdef = chunks.Single(c => c.Tag == "RDEF").Data; var isgn = chunks.Single(c => c.Tag == "ISGN").Data;
+        var shex = chunks.Single(c => c.Tag is "SHEX" or "SHDR");
+        int diffuseTexture = Binding(rdef, diffuse, 2), diffuseSampler = Binding(rdef, diffuse, 3);
+        foreach (var (name, texture, sampler) in textures)
+            if (Bindings(rdef).Any(b => b.Name == name || (b.Type == 3 ? b.Point == sampler : b.Type != 0 && b.Point <= texture && texture < b.Point + b.Count)))
+                throw new InvalidDataException($"Stock shader already binds {name} or slot t{texture}/s{sampler}.");
+        var prologue = compile(diffuseTexture, diffuseSampler);
+        var pchunks = Chunks(prologue);
+        if (!Signature(pchunks.Single(c => c.Tag == "ISGN").Data).SequenceEqual(Signature(isgn))) throw new InvalidDataException("Prologue input signature differs from the stock shader.");
+        int normal = Signature(isgn).Single(e => e.Semantic == "TEXCOORD" && e.Index == 1).Register;
+
+        uint[] Tokens(byte[] data) { var t = new uint[data.Length / 4]; for (int i = 0; i < t.Length; i++) t[i] = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(i * 4)); if (t[1] != t.Length) throw new InvalidDataException("Unexpected shader program length."); return t; }
+        var stock = Tokens(shex.Data); var pro = Tokens(pchunks.Single(c => c.Tag is "SHEX" or "SHDR").Data);
+        static bool Declaration(uint opcode) => opcode is >= 0x58 and <= 0x6a or >= 0x8f and <= 0xa2; // dcl_stream .. dcl_resource_structured
+        var stockDecl = Instructions(stock).TakeWhile(i => Declaration(i.Opcode)).ToList();
+        var stockBody = Instructions(stock).Skip(stockDecl.Count).ToList();
+        var proDecl = Instructions(pro).TakeWhile(i => Declaration(i.Opcode)).ToList();
+        var proBody = Instructions(pro).Skip(proDecl.Count).ToList();
+        if (proBody.Count == 0 || proBody[^1].Opcode != 0x3e || proBody.Take(proBody.Count - 1).Any(i => i.Opcode is 0x3e or 0x3f or 0x0d or 0x04 or 0x05 or 0x2c))
+            throw new InvalidDataException("Prologue must end in its only ret, with no discard, call or label.");
+        int Temps(uint[] t, List<(int At, int Length, uint Opcode)> decl) => decl.Count(i => i.Opcode == 0x68) == 1 ? (int)t[decl.Single(i => i.Opcode == 0x68).At + 1]
+            : throw new InvalidDataException("No single dcl_temps among declarations " + string.Join(",", decl.Select(i => i.Opcode.ToString("x"))) + " / first " + string.Join(",", Instructions(t).Take(30).Select(i => i.Opcode.ToString("x"))));
+        int stockTemps = Temps(stock, stockDecl), proTemps = Temps(pro, proDecl);
+        int albedoTemp = stockTemps + proTemps, normalTemp = albedoTemp + 1;
+
+        // Prologue declarations: inputs must already be declared by the stock shader (same or
+        // wider mask); new samplers/resources are added; cb0 must fit the stock declaration.
+        var addSamplers = new List<uint[]>(); var addResources = new List<uint[]>();
+        foreach (var d in proDecl)
+        {
+            var ins = pro.AsSpan(d.At, d.Length);
+            switch (d.Opcode)
+            {
+                case 0x62 or 0x63 or 0x64: // dcl_input_ps*
+                    {
+                        int reg = OperandIndex(ins, 1); uint mask = (ins[1] >> 4) & 0xf;
+                        uint have = 0; foreach (var s in stockDecl) if (s.Opcode is 0x62 or 0x63 or 0x64 && OperandIndex(stock.AsSpan(s.At, s.Length), 1) == reg) have |= (stock[s.At + 1] >> 4) & 0xf;
+                        if ((mask & ~have) != 0) throw new InvalidDataException($"Prologue reads v{reg} components the stock shader does not declare.");
+                        break;
+                    }
+                case 0x5a: if (OperandIndex(ins, 1) != diffuseSampler) addSamplers.Add(ins.ToArray()); break;
+                case 0x58: if (OperandIndex(ins, 1) != diffuseTexture) addResources.Add(ins.ToArray()); break;
+                case 0x59:
+                    {
+                        int slot = (int)ins[2], size = (int)ins[3];
+                        uint have = 0; foreach (var s in stockDecl) if (s.Opcode == 0x59 && stock[s.At + 2] == slot) have = stock[s.At + 3];
+                        if (slot != 0 || size > have) throw new InvalidDataException($"Prologue cb{slot}[{size}] exceeds the stock declaration.");
+                        break;
+                    }
+                case 0x65 or 0x68 or 0x6a: break; // outputs become temps; temps and flags are the stock ones
+                default: throw new InvalidDataException($"Unexpected prologue declaration 0x{d.Opcode:x}.");
+            }
+        }
+        if (addSamplers.Count != textures.Count || addResources.Count != textures.Count) throw new InvalidDataException("Prologue does not use every new texture.");
+
+        // Operand rewriting: walks every operand of an instruction (no relative indexing allowed
+        // where a register is renumbered).
+        void Rewrite(uint[] t, int at, int length, Func<uint, int, (uint Type, int Index)?> map)
+        {
+            int p = at + 1; while ((t[p - 1] >> 31) != 0 && p < at + length) p++;
+            while (p < at + length)
+            {
+                int n = OperandLength(t, p); uint tok = t[p], type = (tok >> 12) & 0xff;
+                if (type is 0 or 1 or 2)
+                {
+                    if (((tok >> 20) & 3) != 1 || ((tok >> 22) & 7) != 0) throw new InvalidDataException("Relative register index in a rewritten operand.");
+                    int idx = p + 1 + (int)(tok >> 31);
+                    if (map(type, (int)t[idx]) is { } to) { t[p] = (tok & ~(0xffu << 12)) | (to.Type << 12); t[idx] = (uint)to.Index; }
+                }
+                p += n;
+            }
+        }
+        var body = new List<uint>();
+        foreach (var i in proBody.Take(proBody.Count - 1))
+        {
+            var copy = pro.AsSpan(i.At, i.Length).ToArray();
+            Rewrite(copy, 0, copy.Length, (type, index) => type switch
+            {
+                0 => (0u, stockTemps + index),
+                2 when index is 0 or 1 => (0u, index == 0 ? albedoTemp : normalTemp),
+                2 => throw new InvalidDataException("Prologue writes an unexpected output."),
+                _ => null
+            });
+            body.AddRange(copy);
+        }
+        int albedoSites = 0, normalReads = 0;
+        foreach (var i in stockBody)
+        {
+            var copy = stock.AsSpan(i.At, i.Length).ToArray();
+            Rewrite(copy, 0, copy.Length, (type, index) => type == 1 && index == normal ? (normalReads++ >= 0 ? (0u, normalTemp) : null) : null);
+            body.AddRange(copy);
+            if ((i.Opcode is 0x45 or 0x48 or 0x49 or 0x4a) && SampleResource(stock.AsSpan(i.At, i.Length), out int slot, out int dest, out _, out _) && slot == diffuseTexture)
+            {
+                uint destTok = stock[i.At + dest];
+                if (((destTok >> 12) & 0xff) != 0 || (destTok >> 31) != 0) throw new InvalidDataException("Albedo sample does not write a temp.");
+                // mov rD.xyz, rAlbedo.xyzx
+                body.AddRange([0x36u | (5u << 24), 0x00100072u, stock[i.At + dest + 1], 0x00100246u, (uint)albedoTemp]);
+                albedoSites++;
+            }
+        }
+        if (albedoSites != 1) throw new InvalidDataException($"Expected one {diffuse} sample, found {albedoSites}.");
+        if (normalReads == 0) throw new InvalidDataException("Stock shader never reads the world normal.");
+
+        var output = new List<uint> { stock[0], 0 };
+        int lastSampler = stockDecl.FindLastIndex(d => d.Opcode == 0x5a), lastResource = stockDecl.FindLastIndex(d => d.Opcode == 0x58);
+        for (int k = 0; k < stockDecl.Count; k++)
+        {
+            var d = stockDecl[k]; var ins = stock.AsSpan(d.At, d.Length).ToArray();
+            if (d.Opcode == 0x68) ins[1] = (uint)(normalTemp + 1);
+            output.AddRange(ins);
+            if (k == lastSampler) foreach (var s in addSamplers) output.AddRange(s);
+            if (k == lastResource) foreach (var r in addResources) output.AddRange(r);
+        }
+        output.AddRange(body);
+        output[1] = (uint)output.Count;
+        var newShex = new byte[output.Count * 4];
+        for (int i = 0; i < output.Count; i++) BinaryPrimitives.WriteUInt32LittleEndian(newShex.AsSpan(i * 4), output[i]);
+        var newRdef = ExtendRdef(rdef, diffuse, textures, constants);
+        var rebuilt = Assemble(dxbc, chunks.Select(c => c.Tag == shex.Tag ? (c.Tag, newShex) : c.Tag == "RDEF" ? (c.Tag, newRdef) : (c.Tag, c.Data)).ToList());
+        var text = Disassemble.Run(rebuilt);
+        Validate(rebuilt);
+        return new(rebuilt, normalReads, text);
+    }
+
+    static List<(int At, int Length, uint Opcode)> Instructions(uint[] tokens)
+    {
+        var list = new List<(int, int, uint)>();
+        for (int i = 2; i < tokens.Length;)
+        {
+            uint op = tokens[i]; uint opcode = op & 0x7ff;
+            int length = opcode == 0x35 ? (int)tokens[i + 1] : (int)((op >> 24) & 0x7f);
+            if (length <= 0 || i + length > tokens.Length) throw new InvalidDataException("Malformed shader instruction stream.");
+            list.Add((i, length, opcode)); i += length;
+        }
+        return list;
+    }
+
+    // Reflection order the PSSG program input definitions follow in every stock program:
+    // $Globals variables by offset, then non-sampler resource bindings in table order.
+    internal static (List<string> Globals, List<string> Resources) ReflectionOrder(byte[] dxbc)
+    {
+        var rdef = Chunks(dxbc).Single(c => c.Tag == "RDEF").Data;
+        var globals = new List<string>();
+        int cbCount = BinaryPrimitives.ReadInt32LittleEndian(rdef), cbOffset = BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(4));
+        for (int c = 0; c < cbCount; c++)
+        {
+            int cb = cbOffset + c * 24;
+            if (CString(rdef, BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(cb))) != "$Globals") continue;
+            int vars = BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(cb + 4)), varOffset = BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(cb + 8));
+            for (int v = 0; v < vars; v++) globals.Add(CString(rdef, BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(varOffset + v * 40))));
+        }
+        return (globals, Bindings(rdef).Where(b => b.Type is not (0 or 3)).Select(b => b.Name).ToList());
+    }
+
+    static List<(string Semantic, int Index, int Register)> Signature(byte[] sgn)
+    {
+        int count = BinaryPrimitives.ReadInt32LittleEndian(sgn); var list = new List<(string, int, int)>();
+        for (int i = 0; i < count; i++)
+        {
+            int e = 8 + i * 24;
+            list.Add((CString(sgn, BinaryPrimitives.ReadInt32LittleEndian(sgn.AsSpan(e))), BinaryPrimitives.ReadInt32LittleEndian(sgn.AsSpan(e + 4)), BinaryPrimitives.ReadInt32LittleEndian(sgn.AsSpan(e + 16))));
+        }
+        return list;
+    }
+
+    static List<(string Name, int Type, int Point, int Count, int Entry)> Bindings(byte[] rdef)
+    {
+        int count = BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(8)), offset = BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(12));
+        return Enumerable.Range(0, count).Select(i => offset + i * 32).Select(e => (CString(rdef, BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(e))),
+            BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(e + 4)), BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(e + 20)), BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(e + 24)), e)).ToList();
+    }
+
+    // Stock reflection plus new sampler/texture bindings (copies of the diffuse's entries; the
+    // table and names are appended, so every stock offset stays valid) and USED flags.
+    static byte[] ExtendRdef(byte[] rdef, string diffuse, IReadOnlyList<(string Name, int Texture, int Sampler)> textures, IReadOnlyList<string> constants)
+    {
+        if (BinaryPrimitives.ReadUInt16LittleEndian(rdef.AsSpan(16)) != 0x0500 || Encoding.ASCII.GetString(rdef, 28, 4) != "RD11") throw new InvalidDataException("Unexpected RDEF version.");
+        var data = rdef.ToList(); while (data.Count % 4 != 0) data.Add(0);
+        var stockEntries = Bindings(rdef);
+        var samplerTemplate = stockEntries.Single(b => b.Name == diffuse && b.Type == 3); var textureTemplate = stockEntries.Single(b => b.Name == diffuse && b.Type == 2);
+        var names = new Dictionary<string, int>();
+        foreach (var (name, _, _) in textures) { names[name] = data.Count; data.AddRange(Encoding.ASCII.GetBytes(name)); data.Add(0); }
+        while (data.Count % 4 != 0) data.Add(0);
+        byte[] Entry(int template, int nameOffset, int point) { var e = rdef.AsSpan(template, 32).ToArray(); BinaryPrimitives.WriteInt32LittleEndian(e, nameOffset); BinaryPrimitives.WriteInt32LittleEndian(e.AsSpan(20), point); return e; }
+        var table = new List<byte[]>();
+        int lastSampler = stockEntries.FindLastIndex(b => b.Type == 3), lastTexture = stockEntries.FindLastIndex(b => b.Type == 2);
+        for (int k = 0; k < stockEntries.Count; k++)
+        {
+            table.Add(rdef.AsSpan(stockEntries[k].Entry, 32).ToArray());
+            if (k == lastSampler) foreach (var t in textures) table.Add(Entry(samplerTemplate.Entry, names[t.Name], t.Sampler));
+            if (k == lastTexture) foreach (var t in textures) table.Add(Entry(textureTemplate.Entry, names[t.Name], t.Texture));
+        }
+        int tableOffset = data.Count; foreach (var e in table) data.AddRange(e);
+        var result = data.ToArray();
+        BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(8), table.Count); BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(12), tableOffset);
+        // $Globals variables (cbuffer desc 24 bytes, variable desc 40 bytes for RD11).
+        int cbCount = BinaryPrimitives.ReadInt32LittleEndian(rdef), cbOffset = BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(4));
+        var pending = new HashSet<string>(constants);
+        for (int c = 0; c < cbCount; c++)
+        {
+            int cb = cbOffset + c * 24;
+            if (CString(rdef, BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(cb))) != "$Globals") continue;
+            int vars = BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(cb + 4)), varOffset = BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(cb + 8));
+            for (int v = 0; v < vars; v++)
+            {
+                int at = varOffset + v * 40;
+                if (pending.Remove(CString(rdef, BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(at)))))
+                    BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(at + 12), BinaryPrimitives.ReadInt32LittleEndian(rdef.AsSpan(at + 12)) | 2);
+            }
+        }
+        if (pending.Count > 0) throw new InvalidDataException("Stock $Globals lacks " + string.Join(", ", pending));
+        return result;
+    }
+
     // Returns operand offsets of a sample instruction: dest (with length) and resource.
     static bool SampleResource(ReadOnlySpan<uint> ins, out int slot, out int dest, out int destLength, out int resource)
     {
@@ -286,6 +513,51 @@ internal static partial class DxbcPatch
             uint temp = d; d = c; c = b; b += uint.RotateLeft(a + f + K[i] + m[g], R[i]); a = temp;
         }
         s[0] += a; s[1] += b; s[2] += c; s[3] += d;
+    }
+
+    // Diagnostic: D3DReflect (as the engine reads bindings) and, optionally, creation on the
+    // hardware adapter. Returns one line per name: binding point, or the failing HRESULT.
+    [LibraryImport("d3dcompiler_47.dll")]
+    private static partial int D3DReflect(nint data, nuint size, in Guid iid, out nint reflector);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int BindingByName(nint self, [MarshalAs(UnmanagedType.LPStr)] string name, nint desc);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate nint VariableByName(nint self, [MarshalAs(UnmanagedType.LPStr)] string name);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate int VariableDesc(nint self, nint desc);
+    internal static IEnumerable<string> Reflect(byte[] code, IEnumerable<string> resources, IEnumerable<string> variables, bool hardware)
+    {
+        var lines = new List<string>();
+        var handle = GCHandle.Alloc(code, GCHandleType.Pinned); var desc = Marshal.AllocHGlobal(256);
+        try
+        {
+            T Slot<T>(nint obj, int i) => Marshal.GetDelegateForFunctionPointer<T>(Marshal.ReadIntPtr(Marshal.ReadIntPtr(obj), i * nint.Size));
+            int hr = D3DReflect(handle.AddrOfPinnedObject(), (nuint)code.Length, new Guid("8d536ca1-0cca-4956-a837-786963755584"), out var reflector);
+            lines.Add($"D3DReflect hr=0x{hr:X8}");
+            if (hr >= 0)
+            {
+                foreach (var name in resources)
+                {
+                    int r = Slot<BindingByName>(reflector, 11)(reflector, name, desc);
+                    lines.Add(r < 0 ? $"  {name}: hr=0x{r:X8}" : $"  {name}: type={Marshal.ReadInt32(desc, nint.Size)} point={Marshal.ReadInt32(desc, nint.Size + 4)}");
+                }
+                foreach (var name in variables)
+                {
+                    var v = Slot<VariableByName>(reflector, 10)(reflector, name);
+                    int r = Marshal.GetDelegateForFunctionPointer<VariableDesc>(Marshal.ReadIntPtr(Marshal.ReadIntPtr(v), 0))(v, desc);
+                    lines.Add(r < 0 ? $"  {name}: hr=0x{r:X8}" : $"  {name}: offset={Marshal.ReadInt32(desc, nint.Size)} size={Marshal.ReadInt32(desc, nint.Size + 4)} flags={Marshal.ReadInt32(desc, nint.Size + 8)}");
+                }
+                Slot<ReleaseFn>(reflector, 2)(reflector);
+            }
+            if (hardware)
+            {
+                hr = D3D11CreateDevice(0, 1 /* hardware */, 0, 0, 0, 0, 7, out var device, out _, out var context);
+                if (hr < 0) { lines.Add($"hardware device hr=0x{hr:X8}"); return lines; }
+                hr = Slot<CreatePixelShader>(device, 15)(device, handle.AddrOfPinnedObject(), (nuint)code.Length, 0, out var shader);
+                lines.Add($"hardware CreatePixelShader hr=0x{hr:X8}");
+                if (shader != 0) Slot<ReleaseFn>(shader, 2)(shader);
+                Slot<ReleaseFn>(context, 2)(context); Slot<ReleaseFn>(device, 2)(device);
+            }
+        }
+        finally { Marshal.FreeHGlobal(desc); handle.Free(); }
+        return lines;
     }
 
     // Creating the shader on WARP runs the D3D11 runtime's own bytecode and hash checks.

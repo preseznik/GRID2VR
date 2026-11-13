@@ -13,10 +13,13 @@ namespace GRID2VR.Tracks;
 // UVs: diffuse = pale base x txDetail at detailUVMultiplier (Nordschleife sand_base.dds averages
 // RGB 227/222/207, so the base alone drew the run-offs almost white). Those use MeshUv: the
 // detail on the original UVs x Scale, the base as colour map.
-internal sealed record MultilayerMaterial(string Detail, string Shading, float Scale, bool MeshUv = false)
+// Layered grass ground (LayeredGround) keeps its R layer here on the first UV set and adds the
+// other layers, mask and detail normal in the shader.
+internal sealed record MultilayerMaterial(string Detail, string Shading, float Scale, bool MeshUv = false, LayeredGround? Layers = null)
 {
     internal static MultilayerMaterial? Read(Material material)
     {
+        if (LayeredGround.Read(material) is { } layers) return new(layers.Details[0], material.Textures["txDiffuse"], layers.Scales[0].X, Layers: layers);
         if (material.Shader == "ksPerPixelMultiMap_NMDetail" && material.Blend == 0 && !material.AlphaTest &&
             material.Textures.TryGetValue("txDiffuse", out var baseMap) && material.Textures.TryGetValue("txDetail", out var detailMap) &&
             material.Properties.TryGetValue("useDetail", out var use) && use.Length > 0 && use[0] > 0 &&

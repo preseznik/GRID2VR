@@ -11,7 +11,19 @@ internal static class DdsAlpha
     // 10-35, painted tarmac ~122. A solid 255 made all converted ground shiny.
     internal static void Prepare(DdsFile file,bool opaque,byte spec=255)
     {
-        if(opaque)Opaque(file,spec);else ExpandLuminance(file,false);
+        if(opaque)Opaque(file,spec);else if(!ExpandLuminance(file,false))ExpandRgb24(file);
+    }
+    // Uncompressed 24-bit RGB (AC layered-ground masks and detail normals) has no EGO texel
+    // format: widen to A8R8G8B8 with alpha 255, as DiRT2VR's NordMaterials does.
+    static void ExpandRgb24(DdsFile file)
+    {
+        var f=file.header.ddspf;
+        if(f.fourCC!=0||f.rGBBitCount!=24)return;
+        if(f.rBitMask!=0xff0000||f.gBitMask!=0xff00||f.bBitMask!=0xff||file.bdata.Length%3!=0)throw new InvalidDataException("Unsupported 24-bit DDS layout.");
+        var pixels=new byte[checked(file.bdata.Length/3*4)];
+        for(int i=0,o=0;i<file.bdata.Length;i+=3,o+=4){pixels[o]=file.bdata[i];pixels[o+1]=file.bdata[i+1];pixels[o+2]=file.bdata[i+2];pixels[o+3]=255;}
+        file.bdata=pixels;file.header.ddspf.flags=DdsPixelFormat.Flags.DDPF_RGB|DdsPixelFormat.Flags.DDPF_ALPHAPIXELS;
+        file.header.ddspf.rGBBitCount=32;file.header.ddspf.aBitMask=0xff000000;file.header.pitchOrLinearSize=checked(file.header.width*4);
     }
     // GRID 2 is a 32-bit process; AC ships many 2048-4096 px maps. Drop whole top mip
     // levels (no resampling) until the texture fits. Returns the bytes removed.
