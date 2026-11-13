@@ -15,7 +15,10 @@ internal static class TrackVisuals
 {
     sealed class State : PssgModelWriterState { }
 
-    internal const string Opaque = "terrain_simple.fx";
+    // Opaque ground and blended decals: shadow-min copies of terrain_simple and decal_ao_vc_flat
+    // (CutoutShader) built from the donor's stock groups, so baked shadow persists near the car.
+    const string StockOpaque = "terrain_simple.fx", StockDecal = "decal_ao_vc_flat.fx";
+    internal const string Opaque = CutoutShader.GroundGroup + ".fx";
     // Multilayer ground: terrain_simple reading baked ambient + sun from vertex colour
     // (CutoutShader adds it to the overlay shaderpack), so the AO/colour-map UV set keeps
     // the AC shading map.
@@ -30,7 +33,7 @@ internal static class TrackVisuals
     internal const string Cutout = CutoutShader.Group + ".fx";
     // Translucent (blended) materials: GRID 2's decal shader takes alpha from
     // TDiffuseAlphaMap.a x vertex alpha, discards below 0.01, blends without depth write.
-    internal const string Decal = "decal_ao_vc_flat.fx";
+    internal const string Decal = CutoutShader.PlainDecalGroup + ".fx";
     // Layered triangles of decal and cutout materials (an opaque surface within LayerGap along
     // the face normal: road paint, wall graffiti, grass laid on a bank): depth-offset copies of
     // those groups (CutoutShader), against cockpit-view z-fighting. The VR cockpit's 2 cm near
@@ -209,14 +212,14 @@ internal static class TrackVisuals
         var objects = Files.Pssg(Path.Combine(donorVenue, "objects.pssg"));
         var layouts = ShaderInputInfo.CreateFromPssg(objects).Concat(ShaderInputInfo.CreateFromPssg(tracksplit))
             .GroupBy(l => l.ShaderGroupId).ToDictionary(g => g.Key, g => g.First());
-        foreach (var required in new[] { Opaque, Decal, Depth, Lod })
+        foreach (var required in new[] { StockOpaque, StockDecal, Depth, Lod })
             if (!layouts.ContainsKey(required)) throw new InvalidDataException("Donor lacks shader group " + required);
         var templates = new Dictionary<string, (XElement Group, XElement Instance)>();
-        foreach (var (id, file) in new[] { (Opaque, tracksplit), (Decal, tracksplit) })
+        foreach (var (id, stock) in new[] { (Opaque, StockOpaque), (Decal, StockDecal) })
         {
-            var group = file.GetObject<PssgShaderGroup>(id.AsMemory());
-            var instance = file.Elements<PssgShaderInstance>().First(i => i.ShaderGroup == "#" + id);
-            templates[id] = (Element(group), Element(instance));
+            var group = Element(tracksplit.GetObject<PssgShaderGroup>(stock.AsMemory())); group.SetAttributeValue("id", id);
+            var instance = Element(tracksplit.Elements<PssgShaderInstance>().First(i => i.ShaderGroup == "#" + stock)); instance.SetAttributeValue("shaderGroup", "#" + id);
+            templates[id] = (group, instance); layouts[id] = layouts[stock];
         }
         // Cutout: the decal's tracksplit group and inputs under the overlay shaderpack's new id.
         {
@@ -398,7 +401,7 @@ internal static class TrackVisuals
             report.Add(new { Source = material.Id, material.Name, material.Shader, material.Blend, material.AlphaTest, Target = target, Diffuse = layer?.Detail ?? diffuse,
                 ColourMap = layer?.Shading, DetailScale = layer?.Scale, Brightness = Brightness(material), Specular = IsOpaque(material) ? Specular(material) : (byte)255, Lighting = target == TerrainVc ? "per-vertex ambient + sun (vertex colour)" : layer is null ? "per-vertex ambient + sun (ramp)" : "open sky",
                 Approximation = layer is not null ? "Multilayer: R/grass detail on source world XZ x shading map; other detail layers, normal maps and reflections not reproduced."
-                    : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat (no depth write; ground-facing triangles with a depth offset); no depth batch, no distant LOD."
+                    : target == Decal ? "Blend: diffuse alpha through decal_ao_vc_flat with shadow min (no depth write; ground-facing triangles with a depth offset); no depth batch, no distant LOD."
                     : target == Cutout ? "Cutout: decal_ao_vc_flat programs with object_2sidedcov states (alpha test + coverage, depth written, two-sided); no depth batch, no distant LOD."
                     : "Source diffuse and UVs; specular black, baked ambient per vertex. Normal maps and reflections are not reproduced." });
             // Foliage (alpha-tested, not grass tufts) also casts dynamic shadow.

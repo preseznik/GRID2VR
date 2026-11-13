@@ -65,6 +65,91 @@ internal static partial class DxbcPatch
         return new(rebuilt, register, text);
     }
 
+    // Terrain shadow by distance (PerFrame shadowBlend, cb1[21]): stock terrain pixel shaders
+    // compute w = sat(dist^2 * shadowBlend.x + shadowBlend.y) and then
+    //     add a, a, -d      (a = baked sun visibility, d = dynamic shadow mask)
+    //     mad a, w, a, d    (a = lerp(d, baked, w): dynamic only within ~33 m)
+    // so converted scenery whose shadows exist only baked (foliage casts no dynamic shadow)
+    // lost them near the car. This rewrites the pair to
+    //     min a, a, d
+    //     mov <mad's dest>, a
+    // : both shadows at every distance (the dynamic mask is lit beyond its range).
+    internal static Result ShadowMin(byte[] dxbc)
+    {
+        if (!Checksum(dxbc).AsSpan().SequenceEqual(dxbc.AsSpan(4, 16))) throw new InvalidDataException("DXBC checksum self-check failed on the stock shader.");
+        var chunks = Chunks(dxbc);
+        var shex = chunks.Single(c => c.Tag is "SHEX" or "SHDR");
+        var tokens = new uint[shex.Data.Length / 4];
+        for (int i = 0; i < tokens.Length; i++) tokens[i] = BinaryPrimitives.ReadUInt32LittleEndian(shex.Data.AsSpan(i * 4));
+        if (tokens[1] != tokens.Length) throw new InvalidDataException("Unexpected shader program length.");
+        var instructions = new List<(int At, int Length, uint Opcode)>();
+        for (int i = 2; i < tokens.Length;)
+        {
+            uint op = tokens[i]; uint opcode = op & 0x7ff;
+            int length = opcode == 0x35 ? (int)tokens[i + 1] : (int)((op >> 24) & 0x7f);
+            if (length <= 0 || i + length > tokens.Length) throw new InvalidDataException("Malformed shader instruction stream.");
+            instructions.Add((i, length, opcode)); i += length;
+        }
+        List<(int At, int Length)> Operands(int at, int length)
+        {
+            var ins = tokens.AsSpan(at, length); int p = 1; while ((ins[p - 1] >> 31) != 0 && p < ins.Length) p++;
+            var list = new List<(int, int)>(); while (p < ins.Length) { int n = OperandLength(ins, p); list.Add((at + p, n)); p += n; }
+            return list;
+        }
+        bool Cb(int at, int slot, int element, uint component)
+        {
+            uint tok = tokens[at]; if (((tok >> 12) & 0xff) != 8 || ((tok >> 20) & 3) != 2 || (tok >> 31) != 0) return false;
+            if (((tok >> 2) & 3) != 2 || ((tok >> 4) & 3) != component) return false; // select_1 of that component
+            return tokens[at + 1] == slot && tokens[at + 2] == element;
+        }
+        int Temp(int at) => ((tokens[at] >> 12) & 0xff) == 0 ? (int)tokens[at + 1 + (int)(tokens[at] >> 31)] : -1;
+        var replacements = new Dictionary<int, uint[]>(); int sites = 0;
+        for (int k = 0; k < instructions.Count; k++)
+        {
+            var (at, length, opcode) = instructions[k];
+            if (opcode != 0x32 || ((tokens[at] >> 13) & 1) == 0) continue; // mad_sat
+            var ops = Operands(at, length);
+            if (ops.Count != 4 || !Cb(ops[2].At, 1, 21, 0) || !Cb(ops[3].At, 1, 21, 1)) continue;
+            // The lerp follows within a few instructions: add a, a, -d ; mad a, w, a, d.
+            for (int j = k + 1; j < Math.Min(k + 6, instructions.Count - 1); j++)
+            {
+                var add = instructions[j]; var mad = instructions[j + 1];
+                if (add.Opcode != 0x00 || mad.Opcode != 0x32 || ((tokens[mad.At] >> 13) & 1) != 0) continue;
+                var a = Operands(add.At, add.Length); var m = Operands(mad.At, mad.Length);
+                if (a.Count != 3 || m.Count != 4) continue;
+                int dest = Temp(a[0].At), src0 = Temp(a[1].At), neg = Temp(a[2].At);
+                uint negTok = tokens[a[2].At];
+                if (dest < 0 || src0 != dest || neg < 0 || (negTok >> 31) == 0 || (tokens[a[2].At + 1] & 0x3f) != 1 || ((tokens[a[2].At + 1] >> 6) & 0xff) != 1) continue;
+                // The mad may write a or the weight register (decal mask-1 pass: mad w, w, a, d).
+                if (Temp(m[0].At) < 0 || Temp(m[2].At) != dest || Temp(m[3].At) != neg) continue;
+                // min dest, src0, d   (the negate's extended operand token dropped)
+                var min = new List<uint> { 0 };
+                for (int t = 0; t < a[0].Length; t++) min.Add(tokens[a[0].At + t]);
+                for (int t = 0; t < a[1].Length; t++) min.Add(tokens[a[1].At + t]);
+                min.Add(negTok & 0x7fffffffu); for (int t = 2; t < a[2].Length; t++) min.Add(tokens[a[2].At + t]);
+                min[0] = 0x33u | ((uint)min.Count << 24);
+                // mov dest, a  (the mad's own source a)
+                var mov = new List<uint> { 0 };
+                for (int t = 0; t < m[0].Length; t++) mov.Add(tokens[m[0].At + t]);
+                for (int t = 0; t < m[2].Length; t++) mov.Add(tokens[m[2].At + t]);
+                mov[0] = 0x36u | ((uint)mov.Count << 24);
+                replacements[add.At] = min.ToArray(); replacements[mad.At] = mov.ToArray(); sites++;
+                break;
+            }
+        }
+        if (sites != 1) throw new InvalidDataException($"Expected one shadowBlend lerp, found {sites}.");
+        var output = new List<uint> { tokens[0], 0 };
+        foreach (var (at, length, _) in instructions)
+            if (replacements.TryGetValue(at, out var with)) output.AddRange(with); else for (int t = 0; t < length; t++) output.Add(tokens[at + t]);
+        output[1] = (uint)output.Count;
+        var newShex = new byte[output.Count * 4];
+        for (int i = 0; i < output.Count; i++) BinaryPrimitives.WriteUInt32LittleEndian(newShex.AsSpan(i * 4), output[i]);
+        var rebuilt = Assemble(dxbc, chunks.Select(c => c.Tag == shex.Tag ? (c.Tag, newShex) : (c.Tag, c.Data)).ToList());
+        var text = Disassemble.Run(rebuilt);
+        Validate(rebuilt);
+        return new(rebuilt, -1, text);
+    }
+
     // Returns operand offsets of a sample instruction: dest (with length) and resource.
     static bool SampleResource(ReadOnlySpan<uint> ins, out int slot, out int dest, out int destLength, out int resource)
     {

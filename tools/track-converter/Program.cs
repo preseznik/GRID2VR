@@ -476,6 +476,26 @@ internal static class Program
                         }
                         return 0;
                     }
+                case "patch-shadow" when args.Length == 3:
+                    {
+                        // Offline check of DxbcPatch.ShadowMin on one shaderpack program.
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var code = doc.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == args[2]).Descendants("SHADERPROGRAMCODEBLOCK").Single();
+                        var bytes = Convert.FromHexString(string.Concat(code.Value.Where(char.IsAsciiHexDigit)));
+                        var result = DxbcPatch.ShadowMin(bytes);
+                        Console.WriteLine($"{args[2]}: {bytes.Length} -> {result.Code.Length} bytes, WARP ok");
+                        var lines = result.Disassembly.Split('\n'); int i = Array.FindIndex(lines, l => l.Contains("cb1[21].x, cb1[21].y"));
+                        foreach (var l in lines.Skip(i).Take(6)) Console.WriteLine("  " + l.Trim());
+                        return 0;
+                    }
+                case "program-asm" when args.Length == 3:
+                    {
+                        // Full disassembly of one shaderpack program (D3DDisassemble).
+                        var doc = Files.Document(Files.Pssg(args[1]));
+                        var code = doc.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == args[2]).Descendants("SHADERPROGRAMCODEBLOCK").Single();
+                        Console.WriteLine(Disassemble.Run(Convert.FromHexString(string.Concat(code.Value.Where(char.IsAsciiHexDigit)))));
+                        return 0;
+                    }
                 case "ac-material" when args.Length == 4:
                     {
                         // Textures and properties of every source material whose name matches (case-insensitive substring).

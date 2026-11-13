@@ -20,6 +20,15 @@ internal static class CutoutShader
     internal const string FoliageShadowGroup = "g2vr_foliage_shadow", FoliageShadowProgram = "g2vr_foliage_shadow.vp";
     internal const string CasterGroup = "g2vr_cutout_caster";
     internal const string Relative = "shaderpack/dx11/shaderpack.pssg";
+    // Shadow near the car. Stock terrain and decal day passes use only the dynamic shadow map
+    // within ~33 m (shadowBlend lerp to the baked AO-alpha sun), and converted foliage casts no
+    // dynamic shadow (casters cost 16 fps in VR), so baked tree shadow washed out in a radius
+    // around the car (iztok4090, 0.2.23). Every converted ground/decal group therefore takes
+    // min(dynamic, baked) at all distances (DxbcPatch.ShadowMin): the car's own shadow and the
+    // baked one both show. Plain opaque ground and decals use these copies; stock groups (also
+    // drawn by cars and stock objects in custom-track sessions) stay unchanged.
+    internal const string GroundGroup = "terrain_g2vr_simple", PlainDecalGroup = "g2vr_decal_plain";
+    const string ShadowPrefix = "g2vr_sm.";
     // Layer variants with a depth offset: the blended decal and the cutout. Only triangles
     // lying on an opaque surface use them (TrackVisuals.SplitLayers): on free-standing cards
     // the slope term pulled hedges and fences metres forward through opaque armco in the first
@@ -49,6 +58,34 @@ internal static class CutoutShader
             new XAttribute("polyOffsetFactor", offset.Factor.ToString("0.000000000e+000", System.Globalization.CultureInfo.InvariantCulture)),
             new XAttribute("polyOffsetUnits", offset.Units.ToString("0.000000000e+000", System.Globalization.CultureInfo.InvariantCulture))]);
         pass.ReplaceAttributes(attributes);
+    }
+
+    // Rewrites each pass's pixel shader that carries the shadowBlend lerp. Programs already added
+    // by this writer are patched in place; stock ones are copied under ShadowPrefix (shared by
+    // every group that uses them). Passes without the lerp (cheap, depth, night) stay as they are.
+    static List<object> ShadowMin(XDocument candidate, XElement group, List<XElement> newPrograms)
+    {
+        var report = new List<object>();
+        foreach (var pass in group.Elements("SHADERGROUPPASS"))
+        {
+            string programId = ((string)pass.Attribute("fragmentProgram")!).TrimStart('#');
+            var added = newPrograms.SingleOrDefault(p => (string?)p.Attribute("id") == programId);
+            if (added is null && newPrograms.Any(p => (string?)p.Attribute("id") == ShadowPrefix + programId))
+            { pass.SetAttributeValue("fragmentProgram", "#" + ShadowPrefix + programId); report.Add(new { Pass = (string?)pass.Attribute("passConfigMaskLow"), Program = programId, Patched = true, Shared = true }); continue; }
+            var program = added ?? candidate.Descendants("SHADERPROGRAM").Single(p => (string?)p.Attribute("id") == programId);
+            var code = program.Descendants("SHADERPROGRAMCODEBLOCK").SingleOrDefault();
+            if (code is null) continue;
+            var bytes = Convert.FromHexString(string.Concat(code.Value.Where(char.IsAsciiHexDigit)));
+            DxbcPatch.Result result;
+            try { result = DxbcPatch.ShadowMin(bytes); }
+            catch (InvalidDataException e) when (e.Message.StartsWith("Expected one shadowBlend lerp", StringComparison.Ordinal)) { report.Add(new { Pass = (string?)pass.Attribute("passConfigMaskLow"), Program = programId, Patched = false, Reason = e.Message }); continue; }
+            var target = added ?? new XElement(program);
+            if (added is null) { target.SetAttributeValue("id", ShadowPrefix + programId); newPrograms.Add(target); pass.SetAttributeValue("fragmentProgram", "#" + ShadowPrefix + programId); }
+            target.Descendants("SHADERPROGRAMCODE").Single().SetAttributeValue("codeSize", result.Code.Length);
+            target.Descendants("SHADERPROGRAMCODEBLOCK").Single().Value = string.Join(" ", result.Code.Select(b => b.ToString("X2")));
+            report.Add(new { Pass = (string?)pass.Attribute("passConfigMaskLow"), Program = programId, Patched = true, Bytes = result.Code.Length });
+        }
+        return report;
     }
 
     internal static object Write(string gameRoot, string overlay, IDictionary<string, string> inputs)
@@ -90,6 +127,8 @@ internal static class CutoutShader
         var offsetDecal = new XElement(decal); offsetDecal.SetAttributeValue("id", DecalGroup);
         foreach (var pass in offsetDecal.Elements("SHADERGROUPPASS")) Offset(pass, DecalOffset);
         cutout.AddAfterSelf(offsetDecal);
+        var plainDecal = new XElement(decal); plainDecal.SetAttributeValue("id", PlainDecalGroup);
+        offsetDecal.AddAfterSelf(plainDecal);
 
         // Vertex-colour lit terrain for multilayer ground: terrain_simple with its day colour
         // passes' TAmbientOcclusion sample replaced by COLOR0, which terrain_simple's vertex
@@ -122,6 +161,8 @@ internal static class CutoutShader
         if (!newPrograms.Any(p => ((string)p.Attribute("id")!).EndsWith("terrain_simple.cg.fp.4359E7BF", StringComparison.Ordinal)))
             throw new InvalidDataException("The terrain_simple day colour pass could not read vertex colour.");
         terrain.AddAfterSelf(vc);
+        var ground = new XElement(terrain); ground.SetAttributeValue("id", GroundGroup);
+        vc.AddAfterSelf(ground);
 
         // Foliage as dynamic shadow casters. GRID 2 renders its cascaded shadow map from the
         // tiles' HIGHBATCH lists (batched_track: position-only, mask 8). Near the camera the
@@ -160,6 +201,13 @@ internal static class CutoutShader
         positionStream.AddAfterSelf(uvStream);
         newPrograms.Add(vs);
 
+        var shadow = new Dictionary<string, List<object>>();
+        foreach (var g in new[] { vc, ground, plainDecal, offsetDecal, cutout, layerCutout, caster })
+            shadow[(string)g.Attribute("id")!] = ShadowMin(candidate, g, newPrograms);
+        // The day colour passes the game draws (terrain 4359E7BF, decal 6AC11FEB) must be patched.
+        foreach (var (g, program) in new[] { (vc, "g2vr_vc.terrain_simple.cg.fp.4359E7BF"), (ground, ShadowPrefix + "terrain_simple.cg.fp.4359E7BF"), (plainDecal, ShadowPrefix + "decal.cg.decal_ao_fp.6AC11FEB"), (cutout, ShadowPrefix + "decal.cg.decal_ao_fp.6AC11FEB") })
+            if (!g.Elements("SHADERGROUPPASS").Any(p => (string?)p.Attribute("fragmentProgram") == "#" + program))
+                throw new InvalidDataException($"{g.Attribute("id")} day colour pass lacks the shadow min program {program}.");
         var programAnchor = candidate.Descendants("SHADERPROGRAM").Last();
         foreach (var p in newPrograms) { programAnchor.AddAfterSelf(p); programAnchor = p; }
 
@@ -191,11 +239,17 @@ internal static class CutoutShader
             if (!a.AsSpan().SequenceEqual(b)) throw new InvalidDataException("Added shader program changed in serialization.");
             s.Remove();
         }
+        foreach (var (g, what) in new[] { (ground, "Shadow-min terrain group"), (plainDecal, "Shadow-min decal group") })
+        {
+            var s = GroupIn(saved, (string)g.Attribute("id")!);
+            if (!XNode.DeepEquals(g, s)) throw new InvalidDataException(what + " changed in serialization.");
+            s.Remove();
+        }
         savedCutout.Remove(); savedVc.Remove();
         if (!XNode.DeepEquals(original, saved)) throw new InvalidDataException("Stock shader programs or states changed.");
         if (Files.Hash(source) != inputs[source]) throw new InvalidDataException("Shaderpack changed while converting.");
         return new { Group, Base = "decal_ao_vc_flat", States = "object_2sidedcov cutout (alpha test, coverage, depth write), decal back-face culling",
             DecalGroup, LayerCutoutGroup, DecalOffset = new { DecalOffset.Factor, DecalOffset.Units }, CutoutOffset = new { CutoutOffset.Factor, CutoutOffset.Units },
-            TerrainGroup, TerrainPasses = patched, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, StockUnchanged = true, OriginalHash = inputs[source] };
+            TerrainGroup, TerrainPasses = patched, GroundGroup, PlainDecalGroup, ShadowMin = shadow, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, StockUnchanged = true, OriginalHash = inputs[source] };
     }
 }
