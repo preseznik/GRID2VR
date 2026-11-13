@@ -61,12 +61,19 @@ internal static class RouteProbe
         if (visuals)
         {
             Console.WriteLine("Converting scenery, materials and textures...");
-            var (tiles, report) = TrackVisuals.Build(source, donor, venueOut, reverseTileIds: reverseTileIds);
-            var vis = Visibility.Write(tiles, File.ReadAllBytes(Path.Combine(donorRoute, "track.vis")));
+            // G2VR_NO_GRASS_TUFTS (diagnostic): leave ksGrass tufts out, to measure their cost.
+            // G2VR_ALL_VISIBLE (diagnostic): the conservative all-visible track.vis instead of the PVS.
+            var pvs = Environment.GetEnvironmentVariable("G2VR_ALL_VISIBLE") is null ? new List<Pvs.Cell>() : null;
+            var (tiles, report) = TrackVisuals.Build(source, donor, venueOut, reverseTileIds: reverseTileIds, grassTufts: Environment.GetEnvironmentVariable("G2VR_NO_GRASS_TUFTS") is null, pvs: pvs);
+            var donorVis = File.ReadAllBytes(Path.Combine(donorRoute, "track.vis"));
+            object visReport = "all visible";
+            byte[] vis;
+            if (pvs is { Count: > 0 }) (vis, visReport) = Visibility.WritePvs(tiles, donorVis, pvs);
+            else vis = Visibility.Write(tiles, donorVis);
             File.WriteAllBytes(Replace(routeOut, "track.vis"), vis);
-            visualReport = new { Scenery = report, CutoutShader = CutoutShader.Write(gameRoot, Path.Combine(output, "overlay"), inputs),
+            visualReport = new { Scenery = report, TrackVis = visReport, CutoutShader = CutoutShader.Write(gameRoot, Path.Combine(output, "overlay"), inputs),
                 VertexAmbient = (object?)source.Ambient?.Report() ?? "none (Custom Shaders Patch ambient occlusion not found or not readable); open-sky ambient" };
-            Console.WriteLine($"Visuals: {tiles.Length} tiles in tracksplit.pssg, conservative all-visible track.vis.");
+            Console.WriteLine($"Visuals: {tiles.Length} tiles in tracksplit.pssg, {(pvs is { Count: > 0 } ? "visibility-culled" : "conservative all-visible")} track.vis.");
         }
         WriteSession(output, layout);
         // Race-intro title (GRID 2 shows its placeholder location/route for a g2vr_ location).

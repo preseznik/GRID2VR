@@ -179,6 +179,166 @@ internal static class Visibility
         return bytes;
     }
 
+    // Real visibility (Pvs): the conservative file's spatial section and mask size, with a view
+    // tree over camera space. Format decoded from stock files (Brands Hatch route_2):
+    //  - view records, 6 bytes. Internal: u16 a = right (upper) child | axis << 13; u16 c = left
+    //    (lower) child (12 bits) | split bits 0-3 << 12; u16 d = split bits 4-19. The split is a
+    //    20-bit fraction of the node's box along the axis; the root box is header bytes 32-56.
+    //    Leaf: u16 0, 24-bit mask offset, flag 1 (run-length mask). Header int 4 = records,
+    //    int 8 = leaves.
+    //  - mask bits, LSB first, in spatial-section file order: one bit per spatial node, then one
+    //    per record of that node (here: bit 0 = the single node, bit 1 + i = tile i). Stock leaves
+    //    overlapping a tile have that bit set in 2118 of 2172 cases (the rest partial overlaps).
+    // The tree wraps the eye samples (plus Margin); cameras elsewhere get an all-visible leaf.
+    // Every bit other than invisible tiles stays set, as in the conservative file.
+    internal static readonly Vector3 Margin = new(25, 6, 25);
+    internal static (byte[] Bytes, object Report) WritePvs(Box[] tiles, byte[] donor, IReadOnlyList<Pvs.Cell> cells)
+    {
+        var conservative = Write(tiles, donor);
+        int C(int p) => BinaryPrimitives.ReadInt32LittleEndian(conservative.AsSpan(p, 4));
+        int expanded = C(16), spatialStart = C(28), spatialLength = conservative.Length - spatialStart, tailRelative = C(44) - spatialStart;
+        if (cells.Any(c => c.Visible.Length != tiles.Length)) throw new InvalidDataException("Visibility sets do not cover every tile.");
+        // Points with their cell, and the tree.
+        var points = cells.SelectMany((c, i) => c.Eyes.Select(e => (P: e, Cell: i))).ToArray();
+        var all = tiles.Aggregate((a, b) => a.Union(b));
+        var eyeBox = new Box(points.Select(p => p.P).Aggregate(Vector3.Min) - Margin, points.Select(p => p.P).Aggregate(Vector3.Max) + Margin);
+        var root = all.Union(eyeBox);
+        var records = new List<(bool Leaf, int Axis, uint Fraction, int Left, int Right, HashSet<int>? Cells)>();
+        // Siblings occupy consecutive records (left = lower half, right = left + 1), as in every
+        // stock tree (root children 1/2, then 5/6, 3/4, 11/12, ...). Preorder numbering, which left
+        // siblings apart, crashed GRID 2 while loading the track (game+0x957e74, run 20261113-131854-187).
+        void Build(int index, Box box, (Vector3 P, int Cell)[] pts, int depth)
+        {
+            void Leaf(HashSet<int>? set) => records[index] = (true, 0, 0, 0, 0, set);
+            if (pts.Length == 0) { Leaf(null); return; }
+            var lo = Vector3.Max(box.Min, pts.Select(p => p.P).Aggregate(Vector3.Min) - Margin);
+            var hi = Vector3.Min(box.Max, pts.Select(p => p.P).Aggregate(Vector3.Max) + Margin);
+            // Carve empty space off first (largest gap), so leaves wrap the samples.
+            int gapAxis = -1; bool gapLow = false; float gap = 40; // smaller empty slabs stay inside the leaf
+            for (int k = 0; k < 3; k++)
+            {
+                if (lo[k] - box.Min[k] > gap) { gap = lo[k] - box.Min[k]; gapAxis = k; gapLow = true; }
+                if (box.Max[k] - hi[k] > gap) { gap = box.Max[k] - hi[k]; gapAxis = k; gapLow = false; }
+            }
+            float split; int axis;
+            if (gapAxis >= 0) { axis = gapAxis; split = gapLow ? lo[axis] : hi[axis]; }
+            else
+            {
+                var distinct = pts.Select(p => p.Cell).Distinct().Count();
+                var extent = hi - lo;
+                // Up to three cells share a leaf (their sets merged: conservative, and the tree fits 12-bit indices).
+                if (distinct <= 3 || depth > 40 || Math.Max(extent.X, extent.Z) < 120) { Leaf(pts.Select(p => p.Cell).ToHashSet()); return; }
+                axis = extent.X >= extent.Z ? 0 : 2;
+                var sorted = pts.Select(p => p.P[axis]).OrderBy(v => v).ToArray();
+                split = sorted[sorted.Length / 2];
+                if (split <= box.Min[axis] + .01f || split >= box.Max[axis] - .01f) split = (box.Min[axis] + box.Max[axis]) / 2;
+            }
+            uint fraction = (uint)Math.Clamp(MathF.Round((split - box.Min[axis]) / (box.Max[axis] - box.Min[axis]) * (1 << 20)), 1, (1 << 20) - 1);
+            float at = box.Min[axis] + fraction / (float)(1 << 20) * (box.Max[axis] - box.Min[axis]); // as the engine reads it
+            var lowMax = box.Max; lowMax[axis] = at; var highMin = box.Min; highMin[axis] = at;
+            int left = records.Count, right = left + 1; records.Add(default); records.Add(default);
+            if (right > 4095) throw new InvalidDataException("Visibility tree exceeds the 12-bit child index.");
+            records[index] = (false, axis, fraction, left, right, null);
+            Build(left, new(box.Min, lowMax), pts.Where(p => p.P[axis] < at).ToArray(), depth + 1);
+            Build(right, new(highMin, box.Max), pts.Where(p => p.P[axis] >= at).ToArray(), depth + 1);
+        }
+        records.Add(default);
+        Build(0, root, points, 0);
+        // Masks: all bits set; invisible tiles cleared (tile i = bit 1 + i). Shared by content.
+        byte[] Mask(HashSet<int>? set)
+        {
+            var mask = new byte[expanded]; Array.Fill(mask, (byte)0xff);
+            if (set is null) return mask;
+            for (int t = 0; t < tiles.Length; t++)
+                if (!set.Any(c => cells[c].Visible[t])) mask[(1 + t) >> 3] &= (byte)~(1 << ((1 + t) & 7));
+            return mask;
+        }
+        static byte[] Rle(byte[] data)
+        {
+            var output = new List<byte>(); int i = 0;
+            while (i < data.Length)
+            {
+                int run = 1; while (i + run < data.Length && run < 127 && data[i + run] == data[i]) run++;
+                if (run >= 3) { output.Add((byte)(0x80 | run)); output.Add(data[i]); i += run; continue; }
+                int start = i, length = 0;
+                while (i < data.Length && length < 127)
+                {
+                    int r = 1; while (i + r < data.Length && r < 3 && data[i + r] == data[i]) r++;
+                    if (r >= 3) break;
+                    i++; length++;
+                }
+                output.Add((byte)length); output.AddRange(data.AsSpan(start, length).ToArray());
+            }
+            return [.. output];
+        }
+        int viewStart = 128, maskStart = (viewStart + records.Count * 6 + 15) / 16 * 16;
+        var maskSection = new List<byte>(); var offsets = new Dictionary<string, int>(); var leafMask = new Dictionary<int, byte[]>();
+        int leaves = 0, allVisibleLeaves = 0;
+        for (int r = 0; r < records.Count; r++)
+        {
+            if (!records[r].Leaf) continue;
+            leaves++; if (records[r].Cells is null) allVisibleLeaves++;
+            var mask = Mask(records[r].Cells); leafMask[r] = mask;
+            // One mask per leaf, in record order, as in every stock file (no sharing).
+            var key = r.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            while (maskSection.Count % 16 != 0) maskSection.Add(0); // each stock mask starts 16-byte aligned
+            offsets[key] = maskStart + maskSection.Count; maskSection.AddRange(Rle(mask));
+        }
+        int spatial = (maskStart + maskSection.Count + 15) / 16 * 16;
+        if (spatial > 0xffffff) throw new InvalidDataException("Visibility masks exceed the 24-bit offset.");
+        var bytes = new byte[spatial + spatialLength];
+        conservative.AsSpan(0, 128).CopyTo(bytes);
+        conservative.AsSpan(spatialStart).CopyTo(bytes.AsSpan(spatial));
+        void I(int p, int v) => BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(p, 4), v);
+        I(4, records.Count); I(8, leaves); I(20, viewStart); I(24, maskStart); I(28, spatial); I(44, spatial + tailRelative);
+        for (int k = 0; k < 3; k++) { BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(32 + k * 4), root.Min[k]); BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(48 + k * 4), root.Max[k]); }
+        maskSection.ToArray().CopyTo(bytes, maskStart);
+        for (int r = 0; r < records.Count; r++)
+        {
+            int p = viewStart + r * 6; var rec = records[r];
+            if (rec.Leaf)
+            {
+                int offset = offsets[r.ToString(System.Globalization.CultureInfo.InvariantCulture)];
+                bytes[p] = 0; bytes[p + 1] = 0; bytes[p + 2] = (byte)offset; bytes[p + 3] = (byte)(offset >> 8); bytes[p + 4] = (byte)(offset >> 16); bytes[p + 5] = 1;
+            }
+            else
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(p), (ushort)(rec.Right | rec.Axis << 13));
+                BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(p + 2), (ushort)(rec.Left | (int)(rec.Fraction & 0xf) << 12));
+                BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(p + 4), (ushort)(rec.Fraction >> 4));
+            }
+        }
+        // Read back: every eye lands in a leaf whose mask shows its cell's visible tiles.
+        if (TerrainRecords(bytes).Count != tiles.Length) throw new InvalidDataException("PVS file does not read back.");
+        int misses = 0;
+        foreach (var (p, cell) in points)
+        {
+            var mask = Expand(bytes.AsSpan(Leaf(bytes, p)), expanded);
+            for (int t = 0; t < tiles.Length; t++) if (cells[cell].Visible[t] && (mask[(1 + t) >> 3] >> ((1 + t) & 7) & 1) == 0) misses++;
+        }
+        if (misses > 0) throw new InvalidDataException($"PVS read-back: {misses} visible tiles missing from their eyes' leaves.");
+        var visibleBits = cells.Select(c => c.Visible.Count(v => v)).ToArray();
+        return (bytes, new { ViewRecords = records.Count, Leaves = leaves, AllVisibleLeaves = allVisibleLeaves, DistinctMasks = leafMask.Values.Select(Convert.ToBase64String).Distinct().Count(), MaskBytes = maskSection.Count, Bytes = bytes.Length,
+            RootMin = new[] { root.Min.X, root.Min.Y, root.Min.Z }, RootMax = new[] { root.Max.X, root.Max.Y, root.Max.Z }, MarginMetres = new[] { Margin.X, Margin.Y, Margin.Z }, EyeReadBack = points.Length });
+    }
+
+    // The engine's lookup: descend the view tree to the leaf containing p; returns its mask offset.
+    internal static int Leaf(byte[] b, Vector3 p)
+    {
+        int I(int o) => BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(o, 4));
+        var lo = new Vector3(BitConverter.ToSingle(b, 32), BitConverter.ToSingle(b, 36), BitConverter.ToSingle(b, 40));
+        var hi = new Vector3(BitConverter.ToSingle(b, 48), BitConverter.ToSingle(b, 52), BitConverter.ToSingle(b, 56));
+        int node = 0;
+        for (int guard = 0; guard < 4096; guard++)
+        {
+            int r = I(20) + node * 6; ushort a = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(r)), c = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(r + 2)), d = BinaryPrimitives.ReadUInt16LittleEndian(b.AsSpan(r + 4));
+            if (a == 0) return b[r + 2] | b[r + 3] << 8 | b[r + 4] << 16;
+            int axis = (a >> 13) & 3; float s = lo[axis] + ((d << 4) | (c >> 12)) / (float)(1 << 20) * (hi[axis] - lo[axis]);
+            if (p[axis] < s) { hi[axis] = s; node = c & 0xfff; } else { lo[axis] = s; node = a & 0x1fff; }
+        }
+        throw new InvalidDataException("Visibility tree does not terminate.");
+    }
+
     // Run-length mask decoder (for checks, and for reading stock masks).
     internal static byte[] Expand(ReadOnlySpan<byte> stream, int length)
     {

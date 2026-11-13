@@ -209,7 +209,7 @@ internal static class TrackVisuals
 
     // Builds the venue tracksplit.pssg: donor terrain removed, source visuals as tiles.
     // Returns the tile bounds in VIS identity order.
-    internal static (Box[] Tiles, object Report) Build(AcSource source, string donorVenue, string venueOut, Vector4[]? weightVariants = null, bool lodOverrides = true, bool keepDonorLand = false, int? fixedTiles = null, bool mergeDraws = true, bool lowCopies = false, bool reverseTileIds = false, bool grassTufts = true, bool bakeSun = true, bool foliageCasters = false)
+    internal static (Box[] Tiles, object Report) Build(AcSource source, string donorVenue, string venueOut, Vector4[]? weightVariants = null, bool lodOverrides = true, bool keepDonorLand = false, int? fixedTiles = null, bool mergeDraws = true, bool lowCopies = false, bool reverseTileIds = false, bool grassTufts = true, bool bakeSun = true, bool foliageCasters = false, List<Pvs.Cell>? pvs = null)
     {
         var tracksplit = Files.Pssg(Path.Combine(donorVenue, "tracksplit.pssg"));
         var objects = Files.Pssg(Path.Combine(donorVenue, "objects.pssg"));
@@ -322,6 +322,14 @@ internal static class TrackVisuals
         }
         else (parts, tileSize) = Tiles.Partition(visuals, fixedTiles);
         if (reverseTileIds) parts.Reverse();
+        // Potentially visible sets per 100 m of track (Pvs), for a real track.vis.
+        object? pvsReport = null;
+        if (pvs is not null && source.Gates.Length > 0)
+        {
+            Console.WriteLine("Computing visibility from the driving line...");
+            var (cells, cellsReport) = Pvs.Compute(parts, visuals, m => m.Material.StockGroup is null && IsOpaque(m.Material), source.Gates, keepDonorLand ? Visibility.TerrainTiles(tracksplit).Count(t => t.Id.StartsWith("LAND_", StringComparison.Ordinal)) : 0);
+            pvs.AddRange(cells); pvsReport = cellsReport;
+        }
         int width = (int)MathF.Ceiling(MathF.Sqrt(parts.Count));
         var binaryTracksplit = tracksplit;
         var doc = Files.Document(tracksplit);
@@ -710,7 +718,7 @@ internal static class TrackVisuals
         object lod = lodOverrides ? WriteLodOverrides(donorVenue, venueOut, tileSize, Math.Max(tileSize, farSize), highToCull: !lowCopies) : "stock";
         // VIS identities cover every terrain tile, kept LAND tiles included (after ours).
         bounds = [.. bounds, .. savedTiles.Skip(parts.Count).Select(Visibility.Bounds)];
-        return (bounds, new { SunShadows = sunReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, CoincidentDuplicates = coincident, HiddenLayersDropped = hiddenLayers, FarLodCopiesDropped = new { Meshes = source.FarLodMeshes, Triangles = source.FarLodTriangles }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
+        return (bounds, new { SunShadows = sunReport, Visibility = pvsReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, CoincidentDuplicates = coincident, HiddenLayersDropped = hiddenLayers, FarLodCopiesDropped = new { Meshes = source.FarLodMeshes, Triangles = source.FarLodTriangles }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
             Materials = materials.Length, UniqueTextures = textureBytes.Count, TextureBytes = textureBytes.Values.Sum(b => (long)b.Length), TextureBytesTrimmed = textureBytesTrimmed, MaxTextureSize, LowCopies = lowCopies, ReverseTileIds = reverseTileIds, DonorTerrainRemoved = donorTiles.Length, OmittedCoverageTriangles = omittedCoverage });
     }
 

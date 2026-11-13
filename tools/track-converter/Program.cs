@@ -488,6 +488,65 @@ internal static class Program
                         foreach (var l in lines.Skip(i).Take(6)) Console.WriteLine("  " + l.Trim());
                         return 0;
                     }
+                case "pvs-estimate" when args.Length is 3 or 4:
+                    {
+                        // Offline estimate of terrain-occlusion culling: the conversion's own tiles, eye
+                        // points along the driving line (cells of `cell` m), rays to sampled points of every
+                        // tile within the far plane against opaque geometry only (cutouts see-through).
+                        float cellLength = args.Length == 4 ? float.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture) : 100;
+                        const float far = 3600; const int targetsPerTile = 96;
+                        var source = AcSource.Read(args[1], args[2], (min, max) => min, visuals: true);
+                        var visuals = source.Visuals.Where(m => m.Material.StockGroup is null).ToList();
+                        var corridor = new HashSet<Cell>();
+                        foreach (var g in source.Gates) for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++)
+                            corridor.Add(new((int)MathF.Floor(g.Position.X / 125) + dx, (int)MathF.Floor(g.Position.Z / 125) + dz));
+                        var (parts, nearSize, farSize) = Tiles.PartitionNearFar(visuals, p => corridor.Contains(new((int)MathF.Floor(p.X / 125), (int)MathF.Floor(p.Z / 125))));
+                        Console.WriteLine($"{parts.Count} tiles ({nearSize} m near, {farSize} m far), {source.Gates.Length} gates");
+                        var bvh = new SunShadow.Bvh(visuals, m => TrackVisuals.IsOpaque(m.Material) ? 1 : 0);
+                        Console.WriteLine($"occluders: {bvh.OpaqueTriangles:N0} opaque triangles");
+                        var rng = new Random(1);
+                        var tiles = parts.Select(meshes =>
+                        {
+                            var faces = meshes.SelectMany(m => Enumerable.Range(0, m.Indices.Length / 3).Select(i => (m, i))).ToArray();
+                            var targets = new Vector3[Math.Min(targetsPerTile, faces.Length)];
+                            for (int k = 0; k < targets.Length; k++)
+                            {
+                                var (m, i) = faces[rng.Next(faces.Length)];
+                                Vector3 a = m.Positions[m.Indices[i * 3]], b = m.Positions[m.Indices[i * 3 + 1]], c = m.Positions[m.Indices[i * 3 + 2]];
+                                var n = Vector3.Cross(b - a, c - a); n = n.LengthSquared() > 0 ? Vector3.Normalize(n) : Vector3.UnitY;
+                                targets[k] = (a + b + c) / 3 + n * .3f;
+                            }
+                            var lo = meshes.SelectMany(m => m.Positions).Aggregate(Vector3.Min); var hi = meshes.SelectMany(m => m.Positions).Aggregate(Vector3.Max);
+                            return (Targets: targets, Min: lo, Max: hi, Triangles: faces.Length);
+                        }).ToArray();
+                        var cells = source.Gates.GroupBy(g => (int)(g.Distance / cellLength)).Select(g => g.ToArray()).ToArray();
+                        var visibleCount = new int[cells.Length]; var rangeCount = new int[cells.Length]; var visibleTris = new long[cells.Length]; var rangeTris = new long[cells.Length];
+                        float BoxDistance(Vector3 p, Vector3 lo, Vector3 hi) => Vector3.Distance(p, Vector3.Clamp(p, lo, hi));
+                        Parallel.For(0, cells.Length, ci =>
+                        {
+                            var gates = cells[ci]; var eyes = new List<Vector3>();
+                            for (int k = 0; k < gates.Length; k += Math.Max(1, gates.Length / 4))
+                            {
+                                var g = gates[k]; var side = Vector3.Normalize(Vector3.Cross(Vector3.UnitY, g.Tangent));
+                                foreach (float h in new[] { 1.1f, 3.5f }) foreach (float s in new[] { -.7f, 0f, .7f })
+                                    eyes.Add(g.Position + Vector3.UnitY * h + side * (s < 0 ? s * g.Left : s * g.Right));
+                            }
+                            foreach (var tile in tiles)
+                            {
+                                if (eyes.Min(e => BoxDistance(e, tile.Min, tile.Max)) > far) continue;
+                                rangeCount[ci]++; rangeTris[ci] += tile.Triangles;
+                                bool seen = eyes.Any(e => BoxDistance(e, tile.Min, tile.Max) < 1); // eye inside the tile
+                                foreach (var t in tile.Targets) { if (seen) break; foreach (var e in eyes) { var d = t - e; float len = d.Length(); if (len > far || len < 1e-3f) continue; if (bvh.Transmission(e, d / len, len - .5f) > 0) { seen = true; break; } } }
+                                if (seen) { visibleCount[ci]++; visibleTris[ci] += tile.Triangles; }
+                            }
+                        });
+                        double mv = visibleCount.Average(), mr = rangeCount.Average();
+                        Console.WriteLine($"{cells.Length} cells of {cellLength} m: tiles in range mean {mr:0.0}, visible mean {mv:0.0} ({mv / mr:P0}), max {visibleCount.Max()}");
+                        Console.WriteLine($"triangles in range mean {rangeTris.Average():N0}, visible mean {visibleTris.Average():N0} ({visibleTris.Average() / rangeTris.Average():P0}); all tiles {tiles.Sum(t => (long)t.Triangles):N0}");
+                        var sorted = visibleCount.Zip(rangeCount, (v, r) => (double)v / r).OrderBy(x => x).ToArray();
+                        Console.WriteLine($"visible/in-range per cell: p10 {sorted[sorted.Length / 10]:P0} p50 {sorted[sorted.Length / 2]:P0} p90 {sorted[sorted.Length * 9 / 10]:P0}");
+                        return 0;
+                    }
                 case "program-stats" when args.Length == 2:
                     {
                         // Per pixel program: texture/constant/total input definitions, largest first.
