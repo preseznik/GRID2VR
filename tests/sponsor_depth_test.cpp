@@ -1,11 +1,13 @@
 #include "sponsor_depth.h"
 #include <d3dcompiler.h>
 #include <wrl/client.h>
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -195,6 +197,48 @@ int Gpu(const std::filesystem::path& run) {
     CHECK(cached.find("\"retainedViews\":128")!=std::string::npos);
     CHECK(cached.find("\"viewCacheOverflow\":true")!=std::string::npos);
     std::cout<<"bounded view identity: lifetime, limit and overflow fallback passed\n";
+
+    // Binding tracking on the immediate context: known non-sponsor slots skip the readback,
+    // unknown slots, ClearState and context-state swaps stay correct, the audit catches a miss.
+    {
+        const auto trackRun=run/"tracking";std::filesystem::create_directories(trackRun);
+        SponsorDepth tracker;tracker.ConfigureTest(trackRun,{sponsorHash},Settings{});
+        const auto banner=Cloth(g,tracker,7,nullptr),plainView=Cloth(g,tracker,8,nullptr);CHECK(banner && plainView);
+        auto targets=[&]{c->OMSetRenderTargets(1,rtv.GetAddressOf(),dsv.Get());c->OMSetDepthStencilState(lessEqual.Get(),0);c->RSSetState(native.Get());};
+        auto bind=[&](UINT slot,ID3D11ShaderResourceView* v){c->PSSetShaderResources(slot,1,&v);tracker.ResourcesBound(c,slot,1,&v);};
+        auto draw=[&]{auto t=tracker.Begin(c);const bool active=t.active;tracker.End(c,t);return active;};
+        std::array<ID3D11ShaderResourceView*,viewSlots> none{};
+        c->ClearState();targets();
+        c->PSSetShaderResources(3,1,banner.GetAddressOf());   // bound before tracking: unknown, still found
+        tracker.Track(c);
+        CHECK(draw());
+        c->PSSetShaderResources(0,viewSlots,none.data());tracker.ResourcesBound(c,0,viewSlots,none.data());
+        CHECK(!draw());
+        bind(2,banner.Get());CHECK(draw());
+        bind(2,plainView.Get());CHECK(!draw());
+        bind(5,banner.Get());c->ClearState();tracker.StateCleared(c);targets();CHECK(!draw());
+        // Swap out to a fresh state and back: the banner record comes back with the game's state.
+        ComPtr<ID3D11Device1> device1;ComPtr<ID3D11DeviceContext1> c1;
+        CHECK(SUCCEEDED(g.device.As(&device1)) && SUCCEEDED(g.context.As(&c1)));
+        const D3D_FEATURE_LEVEL level=D3D_FEATURE_LEVEL_11_0;ComPtr<ID3DDeviceContextState> fresh,gameState,back;
+        CHECK(SUCCEEDED(device1->CreateDeviceContextState(0,&level,1,D3D11_SDK_VERSION,__uuidof(ID3D11Device1),nullptr,&fresh)));
+        bind(1,banner.Get());
+        c1->SwapDeviceContextState(fresh.Get(),&gameState);tracker.StateSwapped(c,gameState.Get(),fresh.Get());
+        targets();CHECK(!draw());                              // fresh state: slots unknown, full check finds none
+        c->PSSetShaderResources(0,viewSlots,none.data());tracker.ResourcesBound(c,0,viewSlots,none.data());CHECK(!draw());
+        c1->SwapDeviceContextState(gameState.Get(),&back);tracker.StateSwapped(c,back.Get(),gameState.Get());
+        CHECK(draw());                                         // restored: banner still in slot 1
+        bind(1,plainView.Get());CHECK(!draw());
+        // A binding the tracker never saw: skipped until the audit finds it, then the full check stays on.
+        c->PSSetShaderResources(4,1,banner.GetAddressOf());
+        unsigned skipped=0;while(!draw() && skipped<auditInterval)++skipped;
+        CHECK(skipped<auditInterval);
+        CHECK(draw());
+        tracker.Summary();const auto report=Read(trackRun/"sponsor-depth-bias.json");
+        CHECK(report.find("\"bindingTracking\":\"audit_mismatch\"")!=std::string::npos && report.find("\"auditMismatches\":1")!=std::string::npos);
+        CHECK(report.find("\"trackedSkips\":0")==std::string::npos);
+        std::cout<<"binding tracking: skips, unknown slots, ClearState, state swaps and audit fallback passed\n";
+    }
     std::cout<<"sponsor depth bias: model, tagging, state restore, skips and rendered order passed\n";
     return 0;
 }
@@ -228,7 +272,42 @@ int ProductionCatalog(const std::filesystem::path& run,const char* boardFile,con
     return 0;
 }
 
+// Not part of CTest: per-draw CPU cost of the check on WARP, full readback versus tracked
+// bindings, with 8 non-sponsor views bound and 6 sponsor views tagged (as in a Yas Marina run).
+int Bench() {
+    const auto module=LoadLibraryExW(L"d3d11.dll",nullptr,LOAD_LIBRARY_SEARCH_SYSTEM32);CHECK(module);
+    const auto create=reinterpret_cast<decltype(&D3D11CreateDevice)>(GetProcAddress(module,"D3D11CreateDevice"));CHECK(create);
+    struct Gpu g;
+    CHECK(SUCCEEDED(create(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,0,nullptr,0,D3D11_SDK_VERSION,&g.device,nullptr,&g.context)));
+    const auto run=std::filesystem::temp_directory_path()/"grid2vr-sponsor-bench";std::filesystem::create_directories(run);
+    SponsorDepth probe;std::vector<std::string> ids;std::string hash;
+    for(unsigned char seed=20;seed<26;++seed) {CHECK(Cloth(g,probe,seed,&hash));ids.push_back(hash);}
+    auto measure=[&](bool tracked)->double {
+        SponsorDepth depth;depth.ConfigureTest(run,ids,Settings{});
+        std::vector<ComPtr<ID3D11ShaderResourceView>> banners,others;
+        for(unsigned char seed=20;seed<26;++seed)banners.push_back(Cloth(g,depth,seed,nullptr));
+        for(unsigned char seed=40;seed<48;++seed)others.push_back(Cloth(g,depth,seed,nullptr));
+        std::array<ID3D11ShaderResourceView*,viewSlots> bound{};for(UINT i=0;i<viewSlots;++i)bound[i]=others[i].Get();
+        auto* c=g.context.Get();c->PSSetShaderResources(0,viewSlots,bound.data());
+        if(tracked) {depth.Track(c);depth.ResourcesBound(c,0,viewSlots,bound.data());}
+        LARGE_INTEGER f{},a{},b{};QueryPerformanceFrequency(&f);double best=1e30;
+        constexpr int draws=200000;
+        for(int rep=0;rep<7;++rep) {
+            QueryPerformanceCounter(&a);
+            for(int i=0;i<draws;++i) {auto t=depth.Begin(c);depth.End(c,t);}
+            QueryPerformanceCounter(&b);best=std::min(best,double(b.QuadPart-a.QuadPart)*1e9/f.QuadPart/draws);
+        }
+        return best;
+    };
+    const double full=measure(false),tracked=measure(true);
+    std::cout<<"per draw (best of 7 x 200000, WARP): full readback "<<full<<" ns, tracked "<<tracked<<" ns\n";
+    for(const int perFrame:{3500,7000})
+        std::cout<<"  at "<<perFrame<<" checked draws/frame: "<<(full-tracked)*perFrame/1e6<<" ms saved per frame\n";
+    return 0;
+}
+
 int main(int argc,char** argv) {
+    if(argc==2 && std::string_view(argv[1])=="--bench")return Bench();
     if(argc!=2 && argc!=4)return 2;
     if(const int r=Model())return r;
     if(const int r=Gpu(argv[1]))return r;

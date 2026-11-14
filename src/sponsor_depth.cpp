@@ -98,14 +98,49 @@ bool SponsorDepth::Sponsor(ID3D11ShaderResourceView* view) const noexcept {
     UINT tag{},size=sizeof(tag);
     return SUCCEEDED(view->GetPrivateData(viewTag,&size,&tag)) && tag==1;
 }
+bool SponsorDepth::BoundSponsor(ID3D11DeviceContext* context) const noexcept {
+    std::array<ID3D11ShaderResourceView*,viewSlots> views{};
+    context->PSGetShaderResources(0,viewSlots,views.data());
+    bool sponsor=false;
+    for(auto* view:views) {sponsor=sponsor || Sponsor(view);if(view)view->Release();}
+    return sponsor;
+}
+void SponsorDepth::Track(ID3D11DeviceContext* immediate) noexcept {
+    if(!Enabled())return;
+    tracked=immediate;slots={};auditTick=0;saved={};
+    tracking=immediate!=nullptr;trackingState=immediate?"on":"off";Summary();
+}
+void SponsorDepth::ResourcesBound(ID3D11DeviceContext* context,UINT start,UINT count,ID3D11ShaderResourceView* const* views) noexcept {
+    if(context!=tracked || !tracking.load(std::memory_order_relaxed))return;
+    slots.Bind(start,count,views!=nullptr,[&](UINT i){return Sponsor(views[i]);});
+}
+void SponsorDepth::StateCleared(ID3D11DeviceContext* context) noexcept {
+    if(context==tracked && tracking.load(std::memory_order_relaxed))slots.Clear();
+}
+void SponsorDepth::StateSwapped(ID3D11DeviceContext* context,ID3DDeviceContextState* outgoing,ID3DDeviceContextState* incoming) noexcept {
+    if(context!=tracked || !tracking.load(std::memory_order_relaxed))return;
+    if(outgoing) {
+        auto entry=std::find_if(saved.begin(),saved.end(),[&](const SavedSlots& s){return s.state.Get()==outgoing;});
+        if(entry==saved.end())entry=std::find_if(saved.begin(),saved.end(),[](const SavedSlots& s){return !s.state;});
+        if(entry!=saved.end()) {entry->state=outgoing;entry->slots=slots;}
+    }
+    slots={};
+    if(incoming)for(const auto& entry:saved)if(entry.state.Get()==incoming) {slots=entry.slots;break;}
+}
 SponsorDepth::Token SponsorDepth::Begin(ID3D11DeviceContext* context) noexcept {
     Token token;
     if(!Enabled() || !context || !taggedViews.load())return token;
     try {
-        std::array<ID3D11ShaderResourceView*,viewSlots> views{};
-        context->PSGetShaderResources(0,viewSlots,views.data());
-        bool sponsor=false;
-        for(auto* view:views) {sponsor=sponsor || Sponsor(view);if(view)view->Release();}
+        bool sponsor{};
+        if(context==tracked && tracking.load(std::memory_order_relaxed) && !slots.MaySample()) {
+            // Single writer (the render thread): plain load/store, no locked increment per draw.
+            if(++auditTick<auditInterval) {fastSkips.store(fastSkips.load(std::memory_order_relaxed)+1,std::memory_order_relaxed);return token;}
+            auditTick=0;audits.store(audits.load(std::memory_order_relaxed)+1,std::memory_order_relaxed);
+            if(!BoundSponsor(context)) {fastSkips.store(fastSkips.load(std::memory_order_relaxed)+1,std::memory_order_relaxed);return token;}
+            // Tracking missed a binding: use the full check for the rest of the session.
+            ++auditMismatches;tracking=false;trackingState="audit_mismatch";Summary();
+            sponsor=true;
+        } else sponsor=BoundSponsor(context);
         if(!sponsor)return token;
         ComPtr<ID3D11RenderTargetView> target;ComPtr<ID3D11DepthStencilView> depth;
         context->OMGetRenderTargets(1,&target,&depth);
@@ -155,6 +190,8 @@ void SponsorDepth::Summary() noexcept {
             <<",\"skippedDepthTest\":"<<skippedDepthTest<<",\"stateFailures\":"<<stateFailures<<",\"cacheFull\":"<<cacheFull
             <<",\"cachedStates\":"<<cachedStates<<",\"retainedViews\":"<<retainedViewCount
             <<",\"viewCacheOverflow\":"<<(viewCacheFull?"true":"false")
+            <<",\"bindingTracking\":\""<<trackingState<<"\",\"trackedSkips\":"<<fastSkips.load()
+            <<",\"audits\":"<<audits.load()<<",\"auditMismatches\":"<<auditMismatches.load()
             <<",\"gameFilesModified\":false,\"visualAcceptance\":false}\n";
         ++summaries;
     } catch(...) {}

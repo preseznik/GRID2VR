@@ -395,6 +395,10 @@ LayoutFn realLayout{};
 MapFn realMap{}; UnmapFn realUnmap{}; DrawFn realDraw{}; DrawIndexedFn realDrawIndexed{};
 DrawInstancedFn realDrawInstanced{}; DrawIndexedInstancedFn realDrawIndexedInstanced{}; DispatchFn realDispatch{};
 ClearColorFn realClearColor{}; ClearDepthFn realClearDepth{};
+using PSResourcesFn=void (STDMETHODCALLTYPE*)(ID3D11DeviceContext*,UINT,UINT,ID3D11ShaderResourceView* const*);
+using ClearStateFn=void (STDMETHODCALLTYPE*)(ID3D11DeviceContext*);
+using SwapStateFn=void (STDMETHODCALLTYPE*)(ID3D11DeviceContext1*,ID3DDeviceContextState*,ID3DDeviceContextState**);
+PSResourcesFn realPSResources{}; ClearStateFn realClearState{}; SwapStateFn realSwapState{};
 void CaptureComputeResource(ID3D11DeviceContext* c,ID3D11Resource* resource,const std::string& name);
 
 const char* StopCameraHooksForExit() {
@@ -1787,6 +1791,16 @@ void ClearTrace(ID3D11View* view,const char* kind,UINT flags,const FLOAT* values
 void STDMETHODCALLTYPE ClearColor(ID3D11DeviceContext* c,ID3D11RenderTargetView* view,const FLOAT* color) {
     ClearTrace(view,"color",0,color,0); realClearColor(c,view,color);
 }
+// Banner fix binding tracking: record the bound views after the runtime has applied them.
+void STDMETHODCALLTYPE PSResources(ID3D11DeviceContext* c,UINT start,UINT count,ID3D11ShaderResourceView* const* views) {
+    realPSResources(c,start,count,views);sponsorDepth.ResourcesBound(c,start,count,views);
+}
+void STDMETHODCALLTYPE ClearStateHook(ID3D11DeviceContext* c) { realClearState(c);sponsorDepth.StateCleared(c); }
+// GRID2VR's own eye copies swap the whole context state; the banner record follows the swap.
+void STDMETHODCALLTYPE SwapStateHook(ID3D11DeviceContext1* c,ID3DDeviceContextState* state,ID3DDeviceContextState** previous) {
+    ComPtr<ID3DDeviceContextState> local;auto** out=previous?previous:local.GetAddressOf();
+    realSwapState(c,state,out);sponsorDepth.StateSwapped(c,*out,state);
+}
 void STDMETHODCALLTYPE ClearDepth(ID3D11DeviceContext* c,ID3D11DepthStencilView* view,UINT flags,FLOAT depth,UINT8 stencil) {
     const FLOAT values[]{depth,0,0,0}; ClearTrace(view,"depth",flags,values,stencil); realClearDepth(c,view,flags,depth,stencil);
     if(flicker::Capturing())flicker::DepthClear(view,engine::CurrentScene().pass,flags,depth,stencil);
@@ -1921,6 +1935,14 @@ void Attach(ID3D11Device* device,ID3D11DeviceContext* context,IDXGISwapChain* ch
     Hook(context,41,reinterpret_cast<void*>(Dispatch),realDispatch);
     Hook(context,50,reinterpret_cast<void*>(ClearColor),realClearColor);
     Hook(context,53,reinterpret_cast<void*>(ClearDepth),realClearDepth);
+    if(sponsorDepth.Enabled()) {
+        ComPtr<ID3D11DeviceContext1> context1;
+        const bool swaps=SUCCEEDED(context->QueryInterface(IID_PPV_ARGS(&context1)));
+        if(Hook(context,8,reinterpret_cast<void*>(PSResources),realPSResources) && Hook(context,110,reinterpret_cast<void*>(ClearStateHook),realClearState) &&
+           (!swaps || Hook(context1.Get(),131,reinterpret_cast<void*>(SwapStateHook),realSwapState)))
+            sponsorDepth.Track(context);
+        else Log("sponsor depth binding hooks refused; per-draw check retained");
+    }
     if(std::filesystem::is_regular_file(output/L"flicker-diagnostic.request")) {
         Hook(context,27,reinterpret_cast<void*>(QueryBegin),realQueryBegin);
         Hook(context,28,reinterpret_cast<void*>(QueryEnd),realQueryEnd);

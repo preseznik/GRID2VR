@@ -3,6 +3,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 
 namespace grid2vr::sponsordepth {
@@ -46,6 +47,27 @@ inline D3D11_RASTERIZER_DESC DefaultRasterizer() {
     D3D11_RASTERIZER_DESC d{};
     d.FillMode=D3D11_FILL_SOLID;d.CullMode=D3D11_CULL_BACK;d.DepthClipEnable=TRUE;return d;
 }
+// Which of the inspected pixel-shader slots hold a sponsor view, kept at bind time so
+// draws with none skip the per-draw readback. Slots bound before tracking began (or by
+// an untracked path) stay unknown and keep the full check. The runtime only ever
+// unbinds views on its own (read/write hazards), so a slot recorded as non-sponsor
+// cannot silently gain a sponsor view.
+struct BoundSlots {
+    uint8_t sponsor{},unknown{0xff};
+    bool MaySample() const { return (sponsor|unknown)!=0; }
+    template<class IsSponsor> void Bind(UINT start,UINT count,bool haveViews,IsSponsor isSponsor) {
+        for(UINT i=0;i<count;++i) {
+            const UINT slot=start+i;if(slot<start || slot>=viewSlots)break;
+            const auto bit=static_cast<uint8_t>(1u<<slot);
+            if(!haveViews) {unknown|=bit;continue;}
+            unknown&=static_cast<uint8_t>(~bit);
+            if(isSponsor(i))sponsor|=bit;else sponsor&=static_cast<uint8_t>(~bit);
+        }
+    }
+    void Clear() { sponsor=unknown=0; }
+};
+// One skipped draw in this many is still checked in full against the bound views.
+constexpr unsigned auditInterval=64;
 // Bias in depth-buffer units plus a slope term for banners seen at grazing angles.
 struct Settings { INT units=16;float slope=2.f; };
 inline D3D11_RASTERIZER_DESC Biased(D3D11_RASTERIZER_DESC d,int sign,const Settings& s) {

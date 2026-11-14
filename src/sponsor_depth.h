@@ -1,6 +1,6 @@
 #pragma once
 #include "sponsor_depth_model.h"
-#include <d3d11.h>
+#include <d3d11_1.h>
 #include <wrl/client.h>
 #include <atomic>
 #include <array>
@@ -24,6 +24,15 @@ public:
     void HookFailed(const char* reason) noexcept;
     void TextureCreated(const D3D11_TEXTURE2D_DESC* requested,const D3D11_SUBRESOURCE_DATA* data,ID3D11Texture2D* texture) noexcept;
     void ViewCreated(ID3D11Resource* resource,ID3D11ShaderResourceView* view) noexcept;
+    // Binding tracking: once PSSetShaderResources, ClearState and SwapDeviceContextState are hooked for the
+    // immediate context, draws there with no sponsor view bound skip the readback.
+    // Other contexts, and any disagreement found by the periodic audit, use the full check.
+    void Track(ID3D11DeviceContext* immediate) noexcept;
+    void ResourcesBound(ID3D11DeviceContext* context,UINT start,UINT count,ID3D11ShaderResourceView* const* views) noexcept;
+    void StateCleared(ID3D11DeviceContext* context) noexcept;
+    // SwapDeviceContextState: the outgoing state's slots are kept with it and come back
+    // when it is swapped in again; a state never seen leaves every slot unknown.
+    void StateSwapped(ID3D11DeviceContext* context,ID3DDeviceContextState* outgoing,ID3DDeviceContextState* incoming) noexcept;
     Token Begin(ID3D11DeviceContext* context) noexcept;
     void End(ID3D11DeviceContext* context,Token& token) noexcept;
     void Summary() noexcept;
@@ -33,6 +42,15 @@ public:
 #endif
 private:
     bool Sponsor(ID3D11ShaderResourceView* view) const noexcept;
+    bool BoundSponsor(ID3D11DeviceContext* context) const noexcept;
+    ID3D11DeviceContext* tracked{};   // not owned; compared only
+    sponsordepth::BoundSlots slots;
+    std::atomic<bool> tracking{};
+    unsigned auditTick{};
+    const char* trackingState="off";
+    std::atomic<uint64_t> fastSkips{},audits{},auditMismatches{};
+    struct SavedSlots { Microsoft::WRL::ComPtr<ID3DDeviceContextState> state;sponsordepth::BoundSlots slots; };
+    std::array<SavedSlots,16> saved{};
     struct Cached { Microsoft::WRL::ComPtr<ID3D11RasterizerState> original,biased;int sign{}; };
     std::atomic<bool> enabled{};
     std::filesystem::path folder;
