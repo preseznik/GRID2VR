@@ -4,6 +4,8 @@
 
 - **Frame rate when you click away.** When the game window lost focus during a session, for example after clicking another program, GRID 2 slowed itself to about 16 fps in VR. It now keeps its normal frame rate. Sessions where the game window stays in front are unchanged.
 
+- **Faster banner flicker fix.** **Banner flicker fix (experimental)** now costs much less CPU time per frame in VR. Since 0.2.19 it checked every object the game drew for sponsor banners; it now only checks when a banner texture is actually in use. Banners are fixed the same way as before.
+
 # GRID2VR 0.2.23 — Experimental
 
 - **Custom tracks: the Nordschleife (Experimental).** Turn on **CUSTOM tracks (Experimental)** in the launcher, then **Build and install…** converts the Nürburgring Nordschleife from your own Assetto Corsa copy into a GRID 2 track for Practice and Race, in VR and Desktop. **Manage…** rebuilds or uninstalls it, or picks another Assetto Corsa folder. Only the supported Assetto Corsa version is accepted, and GRID 2's own files are never changed. Turning CUSTOM tracks off restores your original track selection. After installing a new GRID2VR version, rebuild the track to get its latest fixes.
