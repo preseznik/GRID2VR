@@ -13,9 +13,9 @@ Standalone installations launch directly and use **Current game career**. Manage
 | Channel | Published release | Downloads |
 | --- | --- | --- |
 | Stable | [0.2.0 Stable / Latest](https://github.com/preseznik/GRID2VR/releases/latest) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/GRID2VR-0.2.0-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/GRID2VR-0.2.0.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.2.0/SHA256SUMS.txt) |
-| Experimental | [0.2.23 Experimental](https://github.com/preseznik/GRID2VR/releases/tag/v0.2.23) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.2.23/GRID2VR-0.2.23-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.2.23/GRID2VR-0.2.23.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.2.23/SHA256SUMS.txt) |
+| Experimental | [0.2.24 Experimental](https://github.com/preseznik/GRID2VR/releases/tag/v0.2.24) | [Installer](https://github.com/preseznik/GRID2VR/releases/download/v0.2.24/GRID2VR-0.2.24-Setup.exe) · [Portable ZIP](https://github.com/preseznik/GRID2VR/releases/download/v0.2.24/GRID2VR-0.2.24.zip) · [SHA-256 checksums](https://github.com/preseznik/GRID2VR/releases/download/v0.2.24/SHA256SUMS.txt) |
 
-GitHub's **Latest** link selects Stable. Choose **0.2.23 Experimental** above for the Nordschleife as a custom track (from your own Assetto Corsa), night and sunset conditions, real track layout names, lens flare and lens dust fixes in VR, cockpit depth precision, and earlier Experimental features. See [all releases](https://github.com/preseznik/GRID2VR/releases) for earlier versions.
+GitHub's **Latest** link selects Stable. Choose **0.2.24 Experimental** above for a working cockpit exposure limit with cockpit depth precision, full frame rate when the game window loses focus, a faster banner flicker fix, the Nordschleife as a custom track (from your own Assetto Corsa), night and sunset conditions, and earlier Experimental features. See [all releases](https://github.com/preseznik/GRID2VR/releases) for earlier versions.
 
 1. Download the installer for your chosen channel above.
 2. Close GRID 2 and the GRID2VR launcher, then run the installer. Select your existing GRID 2 game folder.
