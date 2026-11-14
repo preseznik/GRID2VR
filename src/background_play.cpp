@@ -18,6 +18,10 @@ std::atomic<bool> installed{},enabled{},stopped{};
 bool requestedSuppress{},failed{};
 uint64_t calls{},matchedCalls{},foregroundPresents{},backgroundPresents{},hiddenPresents{};
 const char* reason="not_installed";
+using SleepFunction=void (WINAPI*)(DWORD);
+SleepFunction originalSleep{};
+std::atomic<uint64_t> throttleSkips{};
+const char* throttleState="off";
 struct Witness { uintptr_t caller{};unsigned before{},after{},replayBefore{},replayAfter{};bool readable{}; };
 std::array<Witness,16> samples{};
 size_t sampleCount{};
@@ -28,7 +32,8 @@ void WriteStatus() {
          << ",\"enabled\":" << (enabled?"true":"false") << ",\"failed\":" << (failed?"true":"false")
          << ",\"stopped\":" << (stopped?"true":"false") << ",\"reason\":\"" << reason << "\",\"focusLossCalls\":" << calls
          << ",\"matchedCallerCalls\":" << matchedCalls << ",\"foregroundPresents\":" << foregroundPresents
-         << ",\"backgroundPresents\":" << backgroundPresents << ",\"hiddenPresents\":" << hiddenPresents << ",\"samples\":[";
+         << ",\"backgroundPresents\":" << backgroundPresents << ",\"hiddenPresents\":" << hiddenPresents
+         << ",\"backgroundThrottle\":\"" << throttleState << "\",\"throttleSleepsSkipped\":" << throttleSkips.load() << ",\"samples\":[";
     for(size_t i=0;i<sampleCount;++i) {
         const auto& w=samples[i];if(i)file<<',';
         file << "{\"callerRva\":" << w.caller << ",\"readable\":" << (w.readable?"true":"false")
@@ -56,6 +61,21 @@ void __fastcall FocusLost(void* self,void*) {
     if(sampleCount<samples.size()) samples[sampleCount++]=w;
     if(calls<=samples.size()) WriteStatus();
 }
+// Hooked at the function the game's own Sleep import points to. Every caller other than the
+// background throttle, and every call once the session stops, sleeps as asked.
+void WINAPI GameSleep(DWORD milliseconds) {
+    if(enabled && !stopped && SkipThrottle(reinterpret_cast<uintptr_t>(_ReturnAddress())-base,milliseconds)) {
+        ++throttleSkips;originalSleep(0);return;
+    }
+    originalSleep(milliseconds);
+}
+void InstallThrottleSkip() {
+    if(!ThrottleMatches(base)) { throttleState="instruction_guard";return; }
+    void* target=*reinterpret_cast<void**>(base+sleepImportRva);
+    auto status=MH_CreateHook(target,reinterpret_cast<void*>(GameSleep),reinterpret_cast<void**>(&originalSleep));
+    if(status==MH_OK)status=MH_EnableHook(target);
+    throttleState=status==MH_OK?"skipped":"hook_failed";
+}
 }
 void Install(uintptr_t gameBase,const std::filesystem::path& output) {
     static bool attempted{};if(attempted)return;attempted=true;
@@ -70,6 +90,8 @@ void Install(uintptr_t gameBase,const std::filesystem::path& output) {
     if(status==MH_OK)status=MH_EnableHook(reinterpret_cast<void*>(base+focusRoutineRva));
     installed=status==MH_OK;failed=!installed;
     reason=installed?(enabled?"focus_pause_requests_suppressed":"observing_focus_loss"):"observer_hook_failed";
+    // Background play also keeps the frame rate: a refused throttle guard leaves the native 50 ms.
+    if(installed && enabled) InstallThrottleSkip();
     WriteStatus();
 }
 bool Enabled() { return enabled && installed; }

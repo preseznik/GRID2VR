@@ -33,7 +33,20 @@ int main() {
         if(WindowEligible(state,false)!=(state==5) || WindowEligible(state,true)!=(state==4 || state==5))return 9;
     }
     if(WindowEligible(~0u,true))return 10;
+    // Background throttle: exact instructions and the image's own Sleep import slot.
+    if(!VirtualProtect(allocation,0x600000,PAGE_READWRITE,&previous))return 11;
+    std::memcpy(allocation+throttleRva,throttle,sizeof(throttle));
+    uint32_t slot=static_cast<uint32_t>(base+sleepImportRva);
+    std::memcpy(allocation+throttleRva+sizeof(throttle),&slot,sizeof(slot));
+    if(throttleRva+sizeof(throttle)+sizeof(slot)!=throttleReturnRva || !ThrottleMatches(base) || ThrottleMatches(0))return 12;
+    slot+=4;std::memcpy(allocation+throttleRva+sizeof(throttle),&slot,sizeof(slot));
+    if(ThrottleMatches(base))return 13;                                  // another import
+    slot-=4;std::memcpy(allocation+throttleRva+sizeof(throttle),&slot,sizeof(slot));
+    allocation[throttleRva+6]=0x31;                                      // push 49
+    if(ThrottleMatches(base))return 14;
+    if(!SkipThrottle(throttleReturnRva,50) || SkipThrottle(throttleReturnRva,49) || SkipThrottle(throttleReturnRva+1,50) || SkipThrottle(0,50))return 15;
     VirtualFree(allocation,0,MEM_RELEASE);
     std::puts("Two guarded focus-pause sites only; other instructions and page protections preserved; hidden/minimized windows remain gated.");
+    std::puts("Background throttle: only the guarded 50 ms Sleep at its own return address is skipped.");
     return 0;
 }

@@ -14,6 +14,22 @@ inline bool InstructionsMatch(uintptr_t base) {
         MatchesInstructions(reinterpret_cast<void*>(base+0x593492),pauseMenu) &&
         MatchesInstructions(reinterpret_cast<void*>(base+0x593537),pauseReplay);
 }
+// Background throttle: the main loop ends with `cmp byte [esi+20h],bl; je +8; push 50;
+// call [Sleep]`, so once the window has lost focus every frame sleeps 50 ms (~16 fps in VR).
+// The call's operand is the image's Sleep import slot, relocated with the image.
+inline constexpr uintptr_t throttleRva=0x35ef2f;
+inline constexpr uintptr_t throttleReturnRva=0x35ef3c;
+inline constexpr uintptr_t sleepImportRva=0xb16188;
+inline constexpr uint8_t throttle[]{0x38,0x5e,0x20,0x74,0x08,0x6a,0x32,0xff,0x15};
+inline bool ThrottleMatches(uintptr_t base) {
+    uint32_t slot{};
+    return base && MatchesInstructions(reinterpret_cast<void*>(base+throttleRva),throttle) &&
+        ReadMemory(reinterpret_cast<void*>(base+throttleRva+sizeof(throttle)),&slot,sizeof(slot)) && slot==base+sleepImportRva;
+}
+// Only the throttle's own 50 ms call is skipped; every other Sleep keeps its length.
+inline constexpr bool SkipThrottle(uintptr_t returnRva,uint32_t milliseconds) {
+    return returnRva==throttleReturnRva && milliseconds==50;
+}
 inline bool SuppressPauseRequests(uintptr_t base) {
     if(!InstructionsMatch(base)) return false;
     auto* menu=reinterpret_cast<uint8_t*>(base+0x593492);
