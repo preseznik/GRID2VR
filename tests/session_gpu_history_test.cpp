@@ -9,6 +9,8 @@ namespace grid2vr::engine {
 SceneStamp testScene{1,false,0};
 SceneStamp CurrentScene() { return testScene; }
 bool CurrentCockpitCamera() { return false; }
+bool RearMirror() { return false; }
+bool RearMirrorPass() { return false; }
 uint64_t NativeCameraFrame() { return testScene.id; }
 const SceneViews* CurrentReplayViews() { return nullptr; }
 const SceneViews* NativeEyeViews() { return nullptr; }

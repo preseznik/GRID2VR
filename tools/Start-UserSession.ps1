@@ -50,6 +50,7 @@ param(
     [switch]$NativeCockpitExposure,
     [switch]$NativeImpactEffect,
     [switch]$HideLensDust,
+    [switch]$RearMirrors,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
     [ValidateSet(0,1)][int]$HudFollowView=0,
@@ -145,6 +146,7 @@ try {
     $receipt.cockpitExposureLimit=($Mode -eq 'VR' -and $CockpitMode -ne 'Off' -and !$NativeCockpitExposure)
     $receipt.hideImpactGlitch=($Mode -eq 'VR' -and !$NativeImpactEffect)
     $receipt.hideLensDust=($Mode -eq 'VR' -and [bool]$HideLensDust)
+    $receipt.rearMirrors=($Mode -eq 'VR' -and [bool]$RearMirrors -and [bool]$NativeLeftEye)
     $receipt.forceFeedback=if($ForceFeedback){$ForceFeedback}else{$null}
     $receipt.vrReplayCameras=[bool]$VrReplayCameras
     $receipt.vrGarageMenus=[bool]$VrGarageMenus
@@ -244,6 +246,7 @@ try {
     $parameters.NativeCockpitExposure=[bool]$NativeCockpitExposure
     $parameters.NativeImpactEffect=[bool]$NativeImpactEffect
     $parameters.HideLensDust=[bool]$HideLensDust
+    $parameters.RearMirrors=[bool]$RearMirrors
     $parameters.ForceFeedback=$ForceFeedback
     $parameters.CockpitTextures=$CockpitTextures
     if($Mode -eq 'VR') { $parameters.RecenterDeviceBase64=$RecenterDeviceBase64; $parameters.RecenterTilt=[bool]$RecenterTilt }

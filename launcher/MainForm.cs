@@ -55,6 +55,7 @@ internal sealed partial class MainForm : LauncherForm
     private readonly CheckBox cockpitExposure = new() { Name = "CockpitExposureLimit", Text = "Limit cockpit exposure", Checked = true, AutoSize = true };
     private readonly CheckBox impactGlitch = new() { Name = "HideImpactGlitch", Text = "Hide impact glitch effect", Checked = true, AutoSize = true };
     private readonly CheckBox lensDust = new() { Name = "HideLensDust", Text = "Hide lens dust", AutoSize = true };
+    private readonly CheckBox rearMirrors = new() { Name = "RearMirrors", Text = "Rear-view mirrors (experimental)", AutoSize = true };
     private readonly SeatAlignmentPanel seatAlignment = new();
     private readonly Button drivingControls = Button("Driving bindings…", "DrivingControls");
     private readonly HudDistanceSlider hudDistance = new();
@@ -165,6 +166,8 @@ internal sealed partial class MainForm : LauncherForm
         graphics.Controls.Add(TextLabel("Hard impacts flash a screen-wide glitch that looks like a second flat picture over the scene in VR. Hidden by default; untick to keep the game's effect. Applies on the next VR launch."));
         graphics.Controls.Add(lensDust);
         graphics.Controls.Add(TextLabel("Looking towards the sun lights up dust spots that stay fixed in your view, like dirt on the headset lens. Shown by default, as in the game; tick to hide them. Applies on the next VR launch."));
+        graphics.Controls.Add(rearMirrors);
+        graphics.Controls.Add(TextLabel("The game has no mirror camera, so cockpit mirrors normally show the view ahead, flipped. Tick to render an extra camera looking behind you each frame and show it in the mirrors. ⚠ Costly: about 4–5 ms of CPU per frame, roughly 20 fps lower (about 70 instead of 90 fps on a fast PC); slower CPUs lose more. Needs Faster stereo (Advanced). Off by default; applies on the next VR launch."));
         Section(graphics, "VR mirror");
         graphics.Controls.Add(vrMirrorBorderless);
         graphics.Controls.Add(TextLabel("Fill the mirror's monitor without borders on the next VR launch. VR resolution stays independent of window size."));
@@ -215,7 +218,7 @@ internal sealed partial class MainForm : LauncherForm
         vrFieldOfViewCrop.SelectedIndexChanged += (_, _) => UpdateResolutionLabels();
         refreshHeadset.Click += async (_, _) => await RefreshHeadsetResolution();
         desktopRenderScale.ValueChanged += (_, _) => UpdateResolutionLabels();
-        graphicsDefaults.Click += (_, _) => { ClearGraphicsPresetUndo(); ApplyGraphics(GraphicsOptions.Defaults); vrCockpit.Checked = true; cockpitExposure.Checked = true; impactGlitch.Checked = true; lensDust.Checked = false; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
+        graphicsDefaults.Click += (_, _) => { ClearGraphicsPresetUndo(); ApplyGraphics(GraphicsOptions.Defaults); vrCockpit.Checked = true; cockpitExposure.Checked = true; impactGlitch.Checked = true; lensDust.Checked = false; rearMirrors.Checked = false; SelectChoice(cockpitDriver, "HeadOnly"); SelectChoice(cockpitTextures, "Off"); notice.Text = "Graphics defaults restored. Save settings or launch to keep them."; };
         ApplyGraphics(GraphicsOptions.Defaults);
         InitializeGraphicsEditTracking();
         graphics.Controls.Add(HelpLink("VR rendering"));
@@ -513,6 +516,7 @@ internal sealed partial class MainForm : LauncherForm
         cockpitExposure.Checked = choices.CockpitExposureLimit;
         impactGlitch.Checked = choices.HideImpactGlitch;
         lensDust.Checked = choices.HideLensDust;
+        rearMirrors.Checked = choices.RearMirrors;
         SelectChoice(cockpitTextures, choices.CockpitTextures);
         cockpitExposure.Enabled = choices.VrCockpit;
         recenterKey = choices.RecenterKey; recenterModifiers = choices.RecenterModifiers; UpdateRecenterLabel();
@@ -553,7 +557,7 @@ internal sealed partial class MainForm : LauncherForm
         SkipIntro = skipIntro.Checked, DiagnosticLogging = diagnosticLogging.Checked, PerformanceDisplay = performanceDisplay.Checked, PerformanceFollowView = performanceFollowView.Checked,
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked, NativeLeftEye = nativeLeftEye.Checked,
         SponsorDepthBias = sponsorDepthBias.Checked, CockpitDepthPrecision = cockpitDepthPrecision.Checked,
-        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, HideLensDust = lensDust.Checked, Conditions = (conditions.SelectedItem as ContentItem)?.Id ?? TrackNames.Day, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked,
+        VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, HideLensDust = lensDust.Checked, RearMirrors = rearMirrors.Checked, Conditions = (conditions.SelectedItem as ContentItem)?.Id ?? TrackNames.Day, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked,
         CustomTracks = customTracks.CustomEnabled, CustomTrack = customTracks.Selected.Id
     }));
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;

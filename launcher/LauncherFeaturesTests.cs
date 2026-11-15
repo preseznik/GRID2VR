@@ -64,6 +64,15 @@ internal static class LauncherFeaturesTests
         client.Save(dustChoices); Check(client.Load().HideLensDust);
         Check(client.LaunchCommand(dustChoices, true).ArgumentList.Contains("-HideLensDust"));
         Check(!client.LaunchCommand(dustChoices, false).ArgumentList.Contains("-HideLensDust"));
+        // Rear-view mirrors: off by default, VR only, and only with faster stereo (native left eye).
+        Check(!new Choices().RearMirrors);
+        Check(!JsonSerializer.Deserialize<Choices>("{}")!.RearMirrors);
+        Check(!client.LaunchCommand(settings with { RearMirrors = false }, true).ArgumentList.Contains("-RearMirrors"));
+        var mirrorChoices = settings with { RearMirrors = true, NativeLeftEye = true };
+        client.Save(mirrorChoices); Check(client.Load().RearMirrors);
+        Check(client.LaunchCommand(mirrorChoices, true).ArgumentList.Contains("-RearMirrors"));
+        Check(!client.LaunchCommand(mirrorChoices, false).ArgumentList.Contains("-RearMirrors"));
+        Check(!client.LaunchCommand(mirrorChoices with { NativeLeftEye = false }, true).ArgumentList.Contains("-RearMirrors"));
         client.Save(settings);
         Check(new Choices().KeepHorizonLevel);
         Check(JsonSerializer.Deserialize<Choices>("{}")!.KeepHorizonLevel);

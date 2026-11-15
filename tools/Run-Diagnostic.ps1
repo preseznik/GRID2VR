@@ -59,6 +59,7 @@ param(
     [switch]$NativeCockpitExposure,
     [switch]$NativeImpactEffect,
     [switch]$HideLensDust,
+    [switch]$RearMirrors,
     [Alias('FocusCockpit')][ValidateSet('Off','Observe','Replace')][string]$CockpitTextures='Off',
     [string]$CareerProfile='current',
     [ValidateRange(1.0,20.0)][ValidateScript({ $_ * 2 -eq [decimal]::Truncate($_ * 2) })][decimal]$HudDistance=1,
@@ -402,7 +403,7 @@ if ($AutoCaptureFlicker -or $HeadsetVisibilityCandidate) { [IO.File]::WriteAllTe
 if ($AutoCaptureFlicker) { [IO.File]::WriteAllText((Join-Path $run 'flicker-watch.request'),'After the eight-scene burst, observe 180 moving scenes with bounded nonblocking draw queries.') }
 if ($FlickerSignTarget) { [IO.File]::WriteAllText((Join-Path $run 'flicker-sign-target.request'),'After the automatic capture request, wait for the verified CPU sign placement before arming the eight-scene burst.') }
 if ($NativeVisibilityControl) { [IO.File]::WriteAllText((Join-Path $run 'native-visibility-control.request'),'Diagnostic comparison only: retain the native visibility volume while preserving same-frame eye replay and restoration guards. Bounded unattended simulated AI capture only; not a launcher setting.') }
-if ($TrackedVisibility) { [IO.File]::WriteAllText((Join-Path $run 'tracked-visibility.request'),'Isolated candidate: enclose the current frozen eye frusta before preparation. Original native corners are not included; not a launcher default.') }
+if ($TrackedVisibility -and $env:GRID2VR_ALL_ROTATION_VISIBILITY -ne '1') { [IO.File]::WriteAllText((Join-Path $run 'tracked-visibility.request'),'Isolated candidate: enclose the current frozen eye frusta before preparation. Original native corners are not included; not a launcher default.') }
 if ($HeadsetVisibilityCandidate) { [IO.File]::WriteAllText((Join-Path $run 'headset-visibility-candidate.request'),'Isolated live OpenXR candidate: frozen tracked eyes, qualified native capacities, existing recenter/suspension. No automatic raw capture.') }
 if ($MirrorPreview) { [IO.File]::WriteAllText((Join-Path $run 'mirror-preview.request'),'Diagnostic only: mirror this frame completed left eye onto a matching native backbuffer. No stale frame, scaling or colour conversion.') }
 if ($VisibilityCapture) { [IO.File]::WriteAllText((Join-Path $run 'flicker-visibility-only.request'),'Diagnostic only: count draws and retain visibility geometry and complete image triples; omit per-draw payloads.') }
@@ -460,6 +461,15 @@ if ($XrSessionProbe -and $DefaultOpenXrRuntime -and $env:XRSIM_DIR) {
     [IO.File]::WriteAllText((Join-Path $run 'xrsim-dir.request'),$env:XRSIM_DIR,[Text.UTF8Encoding]::new($false))
 }
 # Diagnostic comparison only: keep GRID 2's lens flares for this session.
+if ($env:GRID2VR_MIRROR_SOURCE_PROBE -in '1','dump') { [IO.File]::WriteAllText((Join-Path $run 'mirror-source.request'),'Diagnostic: blank one car reflection input per phase.',[Text.UTF8Encoding]::new($false)) }
+if ($env:GRID2VR_MIRROR_SOURCE_PROBE -eq 'dump') { [IO.File]::WriteAllText((Join-Path $run 'mirror-source-dump.request'),'Diagnostic: read the car reflection cube back once; no binding changes.',[Text.UTF8Encoding]::new($false)) }
+if ($env:GRID2VR_SKIP_LEFT_REPLAY_DRAWS -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'skip-left-replay-draws.request'),'Diagnostic: skip left replay driver draws (cost floor).',[Text.UTF8Encoding]::new($false)) }
+# Rear-view mirrors (launcher option, ProJict 18da44dc): an extra rear camera replay shown in the
+# cockpit mirrors. The renderer engages it only with the native left eye in replace mode.
+# GRID2VR_REAR_MIRROR_POSE ('pose <yaw> <right> <up> <back>') is a diagnostic override only.
+if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and ($RearMirrors -or $env:GRID2VR_REAR_MIRROR -eq '1')) { [IO.File]::WriteAllText((Join-Path $run 'rear-mirror.request'),$(if($env:GRID2VR_REAR_MIRROR_POSE){$env:GRID2VR_REAR_MIRROR_POSE}else{'Optional rear-view mirrors: rear camera replay shown in the cockpit mirrors.'}),[Text.UTF8Encoding]::new($false)) }
+if ($env:GRID2VR_MIRROR_BISECT -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'mirror-bisect.request'),'Diagnostic: number car reflection draws and blank them by bit.',[Text.UTF8Encoding]::new($false)) }
+if ($env:GRID2VR_REAR_MIRROR_DEBUG -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'rear-mirror-debug.request'),'Diagnostic: mirror zone colours and per-mirror centres.',[Text.UTF8Encoding]::new($false)) }
 if ($env:GRID2VR_NATIVE_LENS_FLARE -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'native-lens-flare.request'),'Keep native lens flare ghosts.',[Text.UTF8Encoding]::new($false)) }
 if ($RecordedViewsFile) { [IO.File]::Copy((Get-Item -LiteralPath $RecordedViewsFile).FullName,(Join-Path $run 'recorded-views.request'),$false) }
 if ($XrProjection) {
@@ -555,6 +565,7 @@ $receipt.inGameSeatRequested=$inGameSeatRequested
 $receipt.hideImpactGlitch=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$NativeImpactEffect)
 $receipt.hideFloorReflection=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly)
 $receipt.hideLensDust=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and [bool]$HideLensDust)
+$receipt.rearMirrors=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and [bool]$RearMirrors)
 $receipt.introNearPlane=([bool]$RuntimeSession -and [bool]$ReplayStereo -and !$PlayerControlOnly -and !$OnlineLaunch)
 $receipt.forceFeedback=if($RuntimeSession -and $ForceFeedback){$ForceFeedback}else{$null}
 $receipt.exposureAudit=[bool]$ExposureAudit

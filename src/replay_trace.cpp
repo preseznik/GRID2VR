@@ -7,6 +7,9 @@
 #include "motion_blur.h"
 #include "impact_interference.h"
 #include "floor_reflection.h"
+#include "mirror_source_probe.h"
+#include "rear_mirror.h"
+#include <sstream>
 #include "frosted_glass.h"
 #include "lens_flare.h"
 #include "cockpit_exposure.h"
@@ -74,6 +77,24 @@ bool impactInterferenceLogged{};
 bool removeFloorReflection{};
 FloorReflection floorReflection;
 std::array<uint64_t,3> floorDraws{};
+// Diagnostic only (ProJict 18da44dc): tint the car reflection inputs.
+bool probeMirrorSource{};
+MirrorSourceProbe mirrorSource;
+std::array<uint64_t,3> mirrorSourceDraws{};
+uint64_t mirrorSourceRefused{},mirrorSourceChecks{};
+bool mirrorDumpOnly{},mirrorDumpArmed{};
+// Optional rear-view mirrors: receipt of substitute-cube builds and binds.
+bool rearMirrorFailed{};uint64_t rearMirrorReceiptBuilds{};
+// Diagnostic only: mirror draw bisect (see Work).
+bool mirrorBisect{},mirrorBisectLogFrame{},mirrorBisectLogged{};int mirrorBisectPhase{-1};
+uint64_t mirrorBisectScene{};unsigned mirrorBisectIndex{};
+std::ofstream mirrorBisectLog;
+void WriteRearMirrorReceipt(const char* state) {
+    std::ofstream receipt(output/L"rear-mirror.json",std::ios::trunc);
+    receipt << "{\"state\":\"" << state << "\",\"cubeBuilds\":" << Mirror().Builds() << ",\"cubeBinds\":" << Mirror().Applied() << "}\n";
+}
+uint64_t mirrorDumpDraws{};
+std::ofstream mirrorLog; // Own small file: replay-work.txt rotates within seconds.
 bool removeLensFlare{},removeLensDust{};
 std::string lensDustBlend; // First dust draw's blend state, for the receipt.
 LensFlareGhosts lensFlare;
@@ -540,6 +561,12 @@ void Configure(const std::filesystem::path& folder,bool requested,NativeDispatch
     limitCockpitExposure=requested && runtimeSession && std::filesystem::exists(folder/L"cockpit-exposure.request");
     removeImpactInterference=requested && runtimeSession && dispatch && std::filesystem::exists(folder/L"impact-interference.request");
     removeFloorReflection=requested && runtimeSession && dispatch && std::filesystem::exists(folder/L"floor-reflection.request");
+    probeMirrorSource=requested && runtimeSession && std::filesystem::exists(folder/L"mirror-source.request");
+    mirrorBisect=requested && runtimeSession && std::filesystem::exists(folder/L"mirror-bisect.request");
+    if (mirrorBisect && !mirrorBisectLog.is_open()) mirrorBisectLog.open(folder/L"mirror-bisect.jsonl",std::ios::app);
+    if (probeMirrorSource && !mirrorLog.is_open()) mirrorLog.open(folder/L"mirror-source.log",std::ios::app);
+    // Dump mode changes no binding: it only reads the bound cube back once.
+    mirrorDumpOnly=probeMirrorSource && std::filesystem::exists(folder/L"mirror-source-dump.request");
     // The same VR menu request removes the frosted-glass card background (ProJict fdaf3851).
     removeFrostedGlass=removeFloorReflection;
     // ...and the screen-space lens flare ghosts (ProJict 41e89b79).
@@ -706,7 +733,7 @@ void SceneBoundary(ID3D11DeviceContext* context,const char* phase) {
 bool CancelBeforeReplay() {
     const auto scene=engine::CurrentScene();
     if (!runtimeSession || !enabled || GetCurrentThreadId()!=ownerThread || !sceneOpen || eyeReplayStarted ||
-        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() || floorReflection.Pending() || frostedGlass.Pending() || lensFlare.Pending() ||
+        !scene.id || scene.replay || scene.pass || motionBlur.Pending() || cockpitExposure.Pending() || impactInterference.Pending() || floorReflection.Pending() || mirrorSource.Pending() || Mirror().Pending() || frostedGlass.Pending() || lensFlare.Pending() ||
         screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // No eye state was applied. Missing race-only passes in a native menu do
@@ -717,7 +744,7 @@ bool CancelBeforeReplay() {
 }
 bool ResetHistory() {
     if (!enabled || GetCurrentThreadId()!=ownerThread || sceneOpen || !pairHealthy || motionBlur.Pending() || cockpitExposure.Pending() ||
-        impactInterference.Pending() || floorReflection.Pending() || frostedGlass.Pending() || lensFlare.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
+        impactInterference.Pending() || floorReflection.Pending() || mirrorSource.Pending() || Mirror().Pending() || frostedGlass.Pending() || lensFlare.Pending() || screenUi.Pending() || spotlightCorrection.Pending() ||
         restoreUnusedContext || restoreShadowContext || restoreModelBuffer || restoreModelContext) return false;
     // The verified normal Quit path suspends and resets on the render owner.
     // Flush cumulative counts here rather than leaving the last periodic sample.
@@ -843,6 +870,14 @@ void AfterDraw(ID3D11DeviceContext* context) {
         const bool restored=floorReflection.Restore(context);pairHealthy&=restored;
         if(!restored) {log<<"floor_reflection restored=0\n";log.FlushNow();}
     }
+    if (Mirror().Pending() && GetCurrentThreadId()==ownerThread) {
+        const bool restored=Mirror().Restore(context);pairHealthy&=restored;
+        if(!restored) {log<<"rear_mirror restored=0\n";log.FlushNow();}
+    }
+    if (mirrorSource.Pending() && GetCurrentThreadId()==ownerThread) {
+        const bool restored=mirrorSource.Restore(context);pairHealthy&=restored;
+        if(!restored) {log<<"mirror_source restored=0\n";log.FlushNow();}
+    }
     if (frostedGlass.Pending() && GetCurrentThreadId()==ownerThread) {
         const bool restored=frostedGlass.Restore(context);pairHealthy&=restored;
         if(!restored) {log<<"frosted_glass restored=0\n";log.FlushNow();}
@@ -931,6 +966,44 @@ void Upload(ID3D11Resource* resource,const void* data,UINT bytes) {
         log << '\n'; log.flush();
         if (bytes==128) { Source(info.hash); log.flush(); }
     }
+}
+void LogBisectDraw(ID3D11DeviceContext* context,unsigned index,uint64_t ps,const char* kind,std::span<const UINT> args,uint64_t scene) {
+    std::ostringstream out;
+    out << "{\"index\":" << index << ",\"scene\":" << scene << ",\"ps\":\"" << Hex(ps) << "\",\"kind\":\"" << kind << "\",\"args\":[";
+    for (size_t i=0;i<args.size();++i) out << (i?",":"") << args[i];
+    out << "]";
+    ComPtr<ID3D11VertexShader> vs;context->VSGetShader(&vs,nullptr,nullptr);
+    out << ",\"vs\":\"" << Hex(ShaderHash(vs.Get())) << "\"";
+    ComPtr<ID3D11Buffer> ib;DXGI_FORMAT format{};UINT offset{};context->IAGetIndexBuffer(&ib,&format,&offset);
+    out << ",\"ib\":" << reinterpret_cast<uintptr_t>(ib.Get());
+    ComPtr<ID3D11Buffer> vb;UINT stride{},vbOffset{};context->IAGetVertexBuffers(0,1,&vb,&stride,&vbOffset);
+    out << ",\"vb\":" << reinterpret_cast<uintptr_t>(vb.Get()) << ",\"stride\":" << stride << ",\"vbOffset\":" << vbOffset;
+    for (UINT slot=0;slot<2;++slot) {
+        ComPtr<ID3D11ShaderResourceView> view;context->PSGetShaderResources(slot,1,&view);
+        if (!view) continue;
+        ComPtr<ID3D11Resource> resource;view->GetResource(&resource);ComPtr<ID3D11Texture2D> texture;
+        D3D11_TEXTURE2D_DESC desc{};if (SUCCEEDED(resource.As(&texture))) texture->GetDesc(&desc);
+        out << ",\"t" << slot << "\":[" << reinterpret_cast<uintptr_t>(resource.Get()) << "," << desc.Width << "," << desc.Height << "," << desc.Format << "," << desc.MipLevels << "]";
+    }
+    ComPtr<ID3D11Buffer> globals;context->PSGetConstantBuffers(0,1,&globals);
+    if (globals) {
+        D3D11_BUFFER_DESC desc{};globals->GetDesc(&desc);
+        D3D11_BUFFER_DESC staging{desc.ByteWidth,D3D11_USAGE_STAGING,0,D3D11_CPU_ACCESS_READ,0,0};
+        ComPtr<ID3D11Device> device;context->GetDevice(&device);ComPtr<ID3D11Buffer> copy;
+        if (SUCCEEDED(device->CreateBuffer(&staging,nullptr,&copy))) {
+            context->CopyResource(copy.Get(),globals.Get());
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            if (SUCCEEDED(context->Map(copy.Get(),0,D3D11_MAP_READ,0,&mapped))) {
+                const auto* values=static_cast<const float*>(mapped.pData);
+                out << ",\"globals\":[";
+                for (UINT i=0;i<desc.ByteWidth/4 && i<192;++i) out << (i?",":"") << values[i];
+                out << "]";
+                context->Unmap(copy.Get(),0);
+            }
+        }
+    }
+    out << "}";
+    mirrorBisectLog << out.str() << std::endl;
 }
 std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const UINT> args) {
     if (!Active()) return {};
@@ -1069,6 +1142,85 @@ std::string Work(ID3D11DeviceContext* context,const char* kind,std::span<const U
             } else {
                 removeFloorReflection=false;
                 log << "floor_reflection disabled=1 native_fallback=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+            }
+        }
+    }
+    // Optional rear-view mirrors: on the eye passes (never the rear camera's
+    // own pass), car reflection draws see the substitute cube in place of the
+    // game's environment cube. A failure leaves the game's cube for the session.
+    if (!rearMirrorFailed && engine::RearMirror() && !engine::RearMirrorPass() && kind[0]!='C') {
+        ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
+        const auto* car=MirrorSourceProbe::Find(ShaderHash(shader.Get()));
+        if (car && car->cubeSlot!=MirrorSourceProbe::none) {
+            const auto result=Mirror().Apply(context,scene.id,car->cubeSlot,nativeDispatch);
+            if (result==RearMirror::Result::Failed) {
+                rearMirrorFailed=true;WriteRearMirrorReceipt("failed");
+                log << "rear_mirror disabled=1 native_cube=1 scene=" << scene.id << " pass=" << pass << '\n';log.FlushNow();
+            } else if (result==RearMirror::Result::Applied && Mirror().Builds()>=rearMirrorReceiptBuilds) {
+                rearMirrorReceiptBuilds=Mirror().Builds()+900;WriteRearMirrorReceipt("active");
+                log << "rear_mirror cube builds=" << Mirror().Builds() << " binds=" << Mirror().Applied() << '\n';log.FlushNow();
+            }
+        }
+    }
+    // Diagnostic only (ProJict 18da44dc): number the native pass's car
+    // reflection draws each frame; with mirror-bisect-phase.txt = b, draws
+    // whose number has bit b set get a black cube. Captures per bit reveal
+    // each mirror's draw number; mirror-bisect-log.request records one
+    // frame's draw details for a signature.
+    if (mirrorBisect && kind[0]!='C' && pass==0 && !scene.replay) {
+        ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
+        const auto hash=ShaderHash(shader.Get());
+        const auto* car=MirrorSourceProbe::Find(hash);
+        if (car && car->cubeSlot!=MirrorSourceProbe::none) {
+            if (mirrorBisectScene!=scene.id) {
+                mirrorBisectScene=scene.id;mirrorBisectIndex=0;
+                std::ifstream phaseFile(output/L"mirror-bisect-phase.txt");int phase=-1;
+                if (!(phaseFile>>phase)) phase=-1;
+                if (phase!=mirrorBisectPhase) {
+                    mirrorBisectPhase=phase;
+                    mirrorBisectLog << "{\"phase\":" << phase << ",\"scene\":" << scene.id << "}" << std::endl;
+                }
+                std::error_code ignored;
+                mirrorBisectLogFrame=!mirrorBisectLogged && std::filesystem::remove(output/L"mirror-bisect-log.request",ignored);
+                if (mirrorBisectLogFrame) mirrorBisectLogged=true;
+            }
+            const unsigned drawNumber=mirrorBisectIndex++;
+            if (mirrorBisectLogFrame) LogBisectDraw(context,drawNumber,hash,kind,args,scene.id);
+            if (mirrorBisectPhase>=0 && mirrorBisectPhase<8 && ((drawNumber>>mirrorBisectPhase)&1)) {
+                mirrorSource.BlankCube(true);(void)mirrorSource.Apply(context,hash);
+            }
+        }
+    }
+    if (probeMirrorSource && kind[0]!='C') {
+        ComPtr<ID3D11PixelShader> shader;context->PSGetShader(&shader,nullptr,nullptr);
+        const auto hash=ShaderHash(shader.Get());
+        if (MirrorSourceProbe::Find(hash) && mirrorDumpOnly) {
+            if (!mirrorDumpArmed && !(mirrorSourceChecks++%1024)) {
+                mirrorDumpArmed=std::filesystem::exists(output/L"mirror-source-dump-now.request");
+                if (mirrorDumpArmed) mirrorLog << "mirror_source dump_armed scene=" << scene.id << std::endl;
+            }
+            // Bounded: up to four distinct cubes within the next 20,000 matching draws.
+            if (mirrorDumpArmed && mirrorSource.Dumped()<4 && mirrorDumpDraws++<20000) {
+                std::string summary;
+                if (mirrorSource.DumpCube(context,hash,output,summary))
+                    mirrorLog << "mirror_source dump " << summary << " scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << " draw=" << mirrorDumpDraws << std::endl;
+            }
+        } else if (MirrorSourceProbe::Find(hash)) {
+            // Phase switch for the capture script, checked every 4096 matches.
+            if (!(mirrorSourceChecks++%4096)) {
+                const bool cube=std::filesystem::exists(output/L"mirror-source-cube.request");
+                if (cube!=mirrorSource.BlankingCube()) {mirrorSource.BlankCube(cube);mirrorLog << "mirror_source phase=" << (cube?"cube":"screen") << std::endl;}
+            }
+            const auto result=mirrorSource.Apply(context,hash);
+            if (result==MirrorSourceProbe::Result::Applied) {
+                if (pass<mirrorSourceDraws.size() && !(mirrorSourceDraws[pass]++%100000)) {
+                    mirrorLog << "mirror_source applied=" << mirrorSourceDraws[pass] << " scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << " refused=" << mirrorSourceRefused << '\n';mirrorLog.flush();
+                }
+            } else if (result==MirrorSourceProbe::Result::Refused) {
+                if (!mirrorSourceRefused++) {mirrorLog << "mirror_source refused=1 scene=" << scene.id << " pass=" << pass << " shader=" << Hex(hash) << '\n';mirrorLog.flush();}
+            } else {
+                probeMirrorSource=false;
+                mirrorLog << "mirror_source disabled=1 scene=" << scene.id << " pass=" << pass << '\n';mirrorLog.flush();
             }
         }
     }

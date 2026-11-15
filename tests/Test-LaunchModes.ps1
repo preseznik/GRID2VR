@@ -361,6 +361,18 @@ try {
         if((Test-Path -LiteralPath $dustRequest) -ne $case.written) { throw "Lens dust request routing changed: stereo=$($case.stereo) desktop=$($case.player) hide=$($case.hide)" }
         if(Test-Path -LiteralPath $dustRequest) { Remove-Item -LiteralPath $dustRequest }
     }
+    # Rear-view mirrors are opt-in and never reach desktop or non-stereo runs (ProJict 18da44dc).
+    $rear=Find-TestStatement $diagnostic "'rear-mirror.request'"
+    $rearRequest=Join-Path $run 'rear-mirror.request'
+    $savedRearEnv=$env:GRID2VR_REAR_MIRROR;$env:GRID2VR_REAR_MIRROR=$null
+    try {
+        foreach($case in @(@{stereo=$true;player=$false;on=$true;written=$true},@{stereo=$true;player=$false;on=$false;written=$false},
+            @{stereo=$false;player=$false;on=$true;written=$false},@{stereo=$true;player=$true;on=$true;written=$false})) {
+            & { $RuntimeSession=$true;$ReplayStereo=$case.stereo;$PlayerControlOnly=$case.player;$RearMirrors=$case.on; . $rear }
+            if((Test-Path -LiteralPath $rearRequest) -ne $case.written) { throw "Rear mirror request routing changed: stereo=$($case.stereo) desktop=$($case.player) on=$($case.on)" }
+            if(Test-Path -LiteralPath $rearRequest) { Remove-Item -LiteralPath $rearRequest }
+        }
+    } finally { $env:GRID2VR_REAR_MIRROR=$savedRearEnv }
     # The VR intro near plane is default on, never reaches Desktop, non-stereo or Online runs.
     $introStatement=Find-TestStatement $diagnostic "'intro-near-plane.request'"
     $introRequest=Join-Path $run 'intro-near-plane.request'

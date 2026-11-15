@@ -15,6 +15,7 @@
 #include "texture_digest.h"
 #include "eye_textures.h"
 #include "eye_mirror.h"
+#include "rear_mirror.h"
 #include "preview_frame.h"
 #include "screen_ui.h"
 #include "msaa_readback.h"
@@ -111,6 +112,30 @@ SceneViews acquiredViews;
 uint64_t acquiredViewsFrame{},lateUiScene{};
 void FinishLateUi(bool present);
 bool mirrorPreview{};
+// Diagnostic only (ProJict 18da44dc): skip the driver draw call in the left
+// replay, keeping every hook and bookkeeping step, to measure the CPU floor of
+// an extra replayed view. Left eye image is invalid while it is on.
+bool skipLeftReplayDraws{};
+unsigned rearMirrorDumps{};
+uint64_t skippedLeftDraws{},keptReplayDraws{},skippedRearUi{};
+bool SkipDriverDraw(ID3D11DeviceContext* c) {
+    if (!engine::ReplayingEye()) return false;
+    // The rear mirror camera never shows the HUD: its screen-UI draws keep
+    // every binding step (the UI placement still applies and restores) but
+    // never reach the driver, so the mirrors show only the world behind.
+    if (engine::RearMirrorPass()) {
+        ComPtr<ID3D11VertexShader> vs;c->VSGetShader(&vs,nullptr,nullptr);
+        if (vs && ScreenUiVertexShader(replaytrace::ShaderFingerprint(vs.Get()))) {++skippedRearUi;return true;}
+    }
+    if (!skipLeftReplayDraws) return false;
+    const bool skip=engine::CurrentScene().pass==1;
+    if (skip) ++skippedLeftDraws; else ++keptReplayDraws;
+    if (!((skippedLeftDraws+keptReplayDraws)&0xffff)) {
+        std::ofstream receipt(output/L"skip-left-replay-draws.txt",std::ios::trunc);
+        receipt << "skipped_left=" << skippedLeftDraws << " kept_other_replay=" << keptReplayDraws << std::endl;
+    }
+    return skip;
+}
 uint64_t previewDigestBudget=64ull*1024*1024;
 std::vector<SceneViews> recordedViews;
 size_t recordedIndex{};
@@ -656,7 +681,20 @@ bool StageBoundary(engine::StageStamp stage,const char* phase) {
             if (SUCCEEDED(resource.As(&texture))) {
                 if (complete && i==0) {D3D11_TEXTURE2D_DESC desc{};texture->GetDesc(&desc);sceneresolution::ObserveScene(desc.Width,desc.Height);}
                 if(complete)flicker::FinishPass(context,stage.id,!strcmp(phase,"replay-complete")?engine::CurrentScene().pass:0,texture.Get());
-                if (eyePair && complete) {
+                if (eyePair && complete && !strcmp(phase,"replay-complete") && engine::RearMirrorPass()) {
+                    // The rear camera fills the mirror image, never an eye image.
+                    const bool copied=Mirror().CaptureRear(context,stage.id,texture.Get());
+                    std::array<float,16> rearCamera{};
+                    const bool camera=engine::RearMirrorCamera(rearCamera);
+                    if (camera) Mirror().SetRearCamera(rearCamera);
+                    captured=copied && camera && replaytrace::PairHealthy();
+                    if (copied && rearMirrorDumps<4 && std::filesystem::exists(output/L"rear-mirror-dump.request")) {
+                        std::error_code ignored;std::filesystem::remove(output/L"rear-mirror-dump.request",ignored);
+                        CaptureTexture(Mirror().RearImage(),"rear-mirror-"+std::to_string(rearMirrorDumps++),1024);
+                    }
+                    static bool logged{};
+                    if (!logged) {logged=true;Log("rear_mirror first_capture id=%llu copied=%u camera=%u",stage.id,copied,camera);}
+                } else if (eyePair && complete) {
                     // With no left replay, the right replay (pass 2) follows the native left image.
                     const unsigned eye=!strcmp(phase,"replay-complete")?engine::CurrentScene().pass-(engine::NativeLeftReplace()?1:0):0;
                     const auto hash=auditImages?imageHash(texture.Get()):"not_read_back";
@@ -680,6 +718,8 @@ bool StageBoundary(engine::StageStamp stage,const char* phase) {
         ComPtr<ID3D11Texture2D> texture;
         if (SUCCEEDED(resource.As(&texture))) CaptureTexture(texture.Get(),"stage-"+std::to_string(stage.id)+"-slot5-depth");
     }
+    if (eyePair && !strcmp(phase,"replay-restored") && engine::RearMirrorPass())
+        return Mirror().RearCaptured(stage.id) && replaytrace::PairHealthy();
     if (eyePair && !strcmp(phase,"replay-restored"))
         return eyeTextures.Captured(stage.id,engine::CurrentScene().pass+(engine::NativeLeftReplace()?0:1)) && replaytrace::PairHealthy();
     return captured;
@@ -868,6 +908,8 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
                     Log("recorded views loaded=%u count=%zu",valid,recordedViews.size());
                     if(repeatRecordedViews)Log("recorded views repeat=1 bounded_by_diagnostic_worker=1");
                 }
+                skipLeftReplayDraws=runtimeSession && std::filesystem::exists(output/L"skip-left-replay-draws.request");
+                if(skipLeftReplayDraws)Log("diagnostic skip_left_replay_draws=1");
                 if(std::filesystem::exists(output/L"mirror-preview.request")) {
                     const bool allowed=runtimeSession && retainEyeTextures &&
                         (HeadsetVisibilityCandidate(output) || (unattendedStereo && recordedRequested &&
@@ -1646,13 +1688,59 @@ void EndFlatMenu(ID3D11DeviceContext* context,bool applied) {
         Log("flat_menu restore_failed=1 frame=%llu",frame.load());engine::FailSession();
     }
 }
+// Optional rear-view mirrors: after a car_basic draw on an eye pass, the
+// mirror glass is drawn again with the flat, seat-aimed mirror shader.
+uint64_t rearOverlayLogged{};
+void RearMirrorOverlay(ID3D11DeviceContext* c,unsigned kind,std::span<const UINT> args) {
+    if (!engine::RearMirror() || engine::RearMirrorPass()) return;
+    static const bool debug=std::filesystem::exists(output/L"rear-mirror-debug.request");
+    Mirror().SetDebug(debug);
+    const auto scene=engine::CurrentScene();
+    if (!scene.id) return;
+    ComPtr<ID3D11PixelShader> ps;c->PSGetShader(&ps,nullptr,nullptr);
+    if (!ps) return;
+    const auto hash=replaytrace::ShaderFingerprint(ps.Get());
+    if (!RearMirror::FindOverlay(hash)) return;
+    std::array<float,12> seat{};
+    if (!engine::NativeSeatView(seat)) return;
+    Mirror().SetSeat(seat);
+    struct Call {unsigned kind;std::span<const UINT> args;} call{kind,args};
+    const auto redraw=[](ID3D11DeviceContext* context,void* opaque) {
+        const auto& value=*static_cast<const Call*>(opaque);const auto& a=value.args;
+        if (value.kind==1) realDrawIndexed(context,a[0],a[1],INT(a[2]));
+        else if (value.kind==3) realDrawIndexedInstanced(context,a[0],a[1],a[2],INT(a[3]),a[4]);
+    };
+    const auto result=Mirror().DrawOverlay(c,scene.id,hash,redraw,&call);
+    if (result==RearMirror::OverlayResult::Failed) Log("rear_mirror overlay_failed=1 scene=%llu",scene.id);
+    else if (result==RearMirror::OverlayResult::Drawn && Mirror().Overlays()>=rearOverlayLogged) {
+        rearOverlayLogged=Mirror().Overlays()+3600;
+        Log("rear_mirror overlays=%llu seat=%.3f,%.3f,%.3f forward=%.3f,%.3f,%.3f",Mirror().Overlays(),seat[0],seat[1],seat[2],seat[9],seat[10],seat[11]);
+        if (debug) {
+            const auto& vp=Mirror().RearCamera();
+            auto project=[&](float x,float y,float z,const char* name) {
+                float clip[4]{};for (int c=0;c<4;++c) clip[c]=x*vp[c]+y*vp[4+c]+z*vp[8+c];
+                Log("rear_mirror project %s clip=%.3f,%.3f,%.3f,%.3f ndc=%.3f,%.3f",name,clip[0],clip[1],clip[2],clip[3],
+                    clip[3]!=0?clip[0]/clip[3]:0.f,clip[3]!=0?clip[1]/clip[3]:0.f);
+            };
+            project(-seat[9],-seat[10],-seat[11],"back");project(seat[9],seat[10],seat[11],"forward");
+            project(seat[3],seat[4],seat[5],"right");project(seat[6],seat[7],seat[8],"up");
+            Log("rear_mirror seat right=%.3f,%.3f,%.3f up=%.3f,%.3f,%.3f vp0=%.3f,%.3f,%.3f,%.3f vp1=%.3f,%.3f,%.3f,%.3f vp2=%.3f,%.3f,%.3f,%.3f",
+                seat[3],seat[4],seat[5],seat[6],seat[7],seat[8],vp[0],vp[1],vp[2],vp[3],vp[4],vp[5],vp[6],vp[7],vp[8],vp[9],vp[10],vp[11]);
+        }
+        std::array<int,96> box{};
+        if (Mirror().ReadFeedback(box)) for (int slot=0;slot<3;++slot) {
+            const int* b=box.data()+slot*8;
+            Log("rear_mirror zone=%d seen=%d box_mm=x%d..%d y%d..%d z%d..%d",slot,b[0],10000-b[4],b[1]-10000,10000-b[5],b[2]-10000,10000-b[6],b[3]-10000);
+        }
+    }
+}
 void STDMETHODCALLTYPE Draw(ID3D11DeviceContext* c,UINT n,UINT start) {
     profile::Scope measure(profile::DrawHook);
     ++draws; CameraDraw(c); const UINT args[]{n,start}; const auto mark=replaytrace::Work(c,"Draw",args);
     CaptureDrawInputs(c,mark);
     auto repeat=PrepareProducerRepeat(c,mark,true,n,start);
     const bool flatMenu=BeginFlatMenu(c);
-    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDraw(c,n,start);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
+    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);if(!SkipDriverDraw(c))realDraw(c,n,start);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     CompleteProducerRepeat(c,mark,repeat,true,n,start);
@@ -1664,18 +1752,19 @@ void STDMETHODCALLTYPE DrawIndexed(ID3D11DeviceContext* c,UINT n,UINT start,INT 
     CaptureDrawInputs(c,mark);
     auto repeat=PrepareProducerRepeat(c,mark,false,n,start,base);
     const bool flatMenu=BeginFlatMenu(c);
-    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawIndexed(c,n,start,base);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
+    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);if(!SkipDriverDraw(c))realDrawIndexed(c,n,start,base);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     CompleteProducerRepeat(c,mark,repeat,false,n,start,base);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,1,args);
+    RearMirrorOverlay(c,1,args);
 }
 void STDMETHODCALLTYPE DrawInstanced(ID3D11DeviceContext* c,UINT n,UINT count,UINT start,UINT instance) {
     profile::Scope measure(profile::DrawHook);
     ++draws; CameraDraw(c); const UINT args[]{n,count,start,instance}; const auto mark=replaytrace::Work(c,"Instanced",args);
     CaptureDrawInputs(c,mark);
     const bool flatMenu=BeginFlatMenu(c);
-    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawInstanced(c,n,count,start,instance);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
+    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);if(!SkipDriverDraw(c))realDrawInstanced(c,n,count,start,instance);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,2,args);
@@ -1685,10 +1774,11 @@ void STDMETHODCALLTYPE DrawIndexedInstanced(ID3D11DeviceContext* c,UINT n,UINT c
     ++draws; CameraDraw(c); const UINT args[]{n,count,start,static_cast<UINT>(base),instance}; const auto mark=replaytrace::Work(c,"IndexedInstanced",args);
     CaptureDrawInputs(c,mark);
     const bool flatMenu=BeginFlatMenu(c);
-    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);realDrawIndexedInstanced(c,n,count,start,base,instance);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
+    {auto clamp=GlobalDepthClamp().Begin(c);auto bias=sponsorDepth.Begin(c);{profile::Scope driver(profile::DrawDriver);if(!SkipDriverDraw(c))realDrawIndexedInstanced(c,n,count,start,base,instance);}sponsorDepth.End(c,bias);GlobalDepthClamp().End(c,clamp);}
     EndFlatMenu(c,flatMenu);
     flicker::AfterDraw(c);
     replaytrace::AfterDraw(c); exposureaudit::AfterDraw(c,frame.load()); CaptureWorkMark(c,mark);LateDraw(c,3,args);
+    RearMirrorOverlay(c,3,args);
 }
 void CaptureComputeResource(ID3D11DeviceContext* c,ID3D11Resource* resource,const std::string& name) {
     static uint64_t workBytes{},boundaryBytes{},bufferBytes{},sampleBytes{},computeBytes{},repeatBytes{};

@@ -57,6 +57,13 @@ const SceneViews* CurrentReplayViews();
 bool NativeLeftEye();
 // Replace mode on such a frame: no left replay; eye images are native left, then right.
 bool NativeLeftReplace();
+// Optional rear-view mirrors: enabled for this frame / replaying the rear camera now.
+bool RearMirror();
+bool RearMirrorPass();
+// The rear camera's view-projection (CameraParams +64), valid after its replay.
+bool RearMirrorCamera(std::array<float,16>& viewProjection);
+// The seated (unposed) cockpit camera this frame: position, right, up, forward.
+bool NativeSeatView(std::array<float,12>& seat);
 // The immutable pair during the native left-eye pass only, for its screen UI.
 const SceneViews* NativeEyeViews();
 // Immutable original/main-eye contexts, never an auxiliary camera or live pointer.

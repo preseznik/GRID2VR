@@ -31,6 +31,9 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     public bool HideImpactGlitch { get; init; } = true;
     // Head-locked lens dust (ProJict 41e89b79): the game's look by default; opt-in to hide in VR.
     public bool HideLensDust { get; init; }
+    // Rear-view mirrors (ProJict 18da44dc): off by default. Renders one extra rear camera each
+    // frame (about 4–5 ms CPU, ~20 fps on a fast PC) and shows it in the cockpit mirrors; needs faster stereo.
+    public bool RearMirrors { get; init; }
     // Time of day for selected Practice/Race sessions (ProJict ce6f7296): day, night or sunset,
     // applied only where the route offers it (TrackNames.Conditions), otherwise day.
     public string Conditions { get; init; } = TrackNames.Day;
@@ -287,6 +290,7 @@ internal sealed class SessionClient(string root)
         if (vr && !value.CockpitExposureLimit) command.ArgumentList.Add("-NativeCockpitExposure");
         if (vr && !value.HideImpactGlitch) command.ArgumentList.Add("-NativeImpactEffect");
         if (vr && value.HideLensDust) command.ArgumentList.Add("-HideLensDust");
+        if (vr && value.RearMirrors && value.NativeLeftEye) command.ArgumentList.Add("-RearMirrors");
         // Normal/Online use the game's own menus; selected sessions get the route's chosen lighting.
         var lighting = value.LaunchMode is "Practice" or "Race" ? TrackNames.Lighting(value.SessionTrack, value.Conditions) : "day";
         if (lighting != "day") { command.ArgumentList.Add("-Lighting"); command.ArgumentList.Add(lighting); }

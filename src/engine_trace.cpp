@@ -449,6 +449,14 @@ constexpr EyeFrustum stereoRightFrustum{-.8f,1.f,-.7f,.6f};
 // complete; replays are posed relative to it. Compare mode keeps the left
 // replay so its image can be checked against the native left image.
 bool nativeLeftEye{},nativeLeftReplace{};
+// Optional rear-view mirrors (ProJict 18da44dc). With a native left eye the
+// left replay slot is free: replay it once more as a car-fixed rear camera
+// (180 degrees about the native camera's up axis, behind and above the head
+// so the own cabin stays out of view). Its image feeds the mirror cube only.
+bool rearMirror{};
+ScenePose rearMirrorPose{{0,1,0,0},{0,.6f,1.9f}};
+constexpr EyeFrustum rearMirrorFrustum{-1.f,1.f,-.75f,.75f};
+bool RearPassActive() { return rearMirror && replayPass==1 && NativeLeftReplace(); }
 struct NativeEyeSwap {
     uint64_t frame{};
     bool active{},healthy{};
@@ -471,6 +479,7 @@ bool WriteViewPose(uintptr_t view,const SceneView& pose) {
     return ReadMemory(reinterpret_cast<void*>(view),actual.data(),actual.size()) && SameViewPose(actual,pose);
 }
 const ScenePose& CurrentPose() {
+    if (RearPassActive()) return rearMirrorPose;
     if (nativeEye.active && nativeEye.frame==frame.load()) return nativeEye.replayPoses[replayPass==2?1:0];
     if (const auto* views=frozenViews.Get(frame.load())) return views->poses[replayPass==2?1:0];
     return dualEyes ? stereoPoses[replayPass==2?1:0] : eyePose;
@@ -480,6 +489,7 @@ std::array<EyeFrustum,2> CurrentFrusta() {
     return {diagnosticFrustum,dualEyes?stereoRightFrustum:diagnosticFrustum};
 }
 const EyeFrustum& CurrentFrustum() {
+    if (RearPassActive()) return rearMirrorFrustum;
     if (const auto* views=frozenViews.Get(frame.load())) return views->frusta[replayPass==2?1:0];
     return dualEyes && replayPass==2 ? stereoRightFrustum : diagnosticFrustum;
 }
@@ -1069,7 +1079,7 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
     // Every refusal below precedes ApplyReplayHistorySeed, the first game write.
     auto refuse=[&](const char* reason) {
         // Without a left replay, the right eye is the first replayed eye.
-        if (runtimeSession && TransientReplayRefusal(reason,NativeLeftReplace() && replayPass==2?1u:replayPass)) transientRefusal=reason;
+        if (runtimeSession && TransientReplayRefusal(reason,NativeLeftReplace() && !rearMirror && replayPass==2?1u:replayPass)) transientRefusal=reason;
         Log("replay refused id=%llu reason=%s",scene.id,reason); return false;
     };
     auto& renderedEyeHistory=renderedEyeHistories[dualEyes && replayPass==2?1:0];
@@ -1306,8 +1316,9 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
 bool InvokeReplayPair(const PendingScene& scene,bool nativeStereo,bool firstImageSaved,
                       bool& allGpuRestored,bool& allEmptyBuilder) {
     bool accepted=true;
-    // A native left eye leaves only the right eye to replay.
-    const unsigned firstPass=dualEyes && NativeLeftReplace()?2u:1u;
+    // A native left eye leaves only the right eye to replay, unless the
+    // optional rear mirror reuses the free left slot for its rear camera.
+    const unsigned firstPass=dualEyes && NativeLeftReplace() && !RearMirror()?2u:1u;
     __try {
         opponentlod::runtime::SetEyeReplay(true);
         for (unsigned pass=firstPass;pass<=(dualEyes?2u:1u) && accepted;++pass) {
@@ -1814,7 +1825,10 @@ InstallResult Install(uintptr_t base,const std::filesystem::path& folder,Boundar
     frontendSceneAudit=std::filesystem::exists(folder/L"frontend-scene-audit.request");
     diagnosticLogging=!runtimeSession || std::filesystem::exists(folder/L"diagnostic-logging.request");
     nativeVisibilityControl=std::filesystem::exists(folder/L"native-visibility-control.request");
-    trackedVisibility=std::filesystem::exists(folder/L"tracked-visibility.request");
+    // A rear camera needs the all-rotation volume: tracked visibility is one
+    // frustum around both eyes and cannot enclose a rear-facing view.
+    const bool rearMirrorRequested=std::filesystem::exists(folder/L"rear-mirror.request");
+    trackedVisibility=std::filesystem::exists(folder/L"tracked-visibility.request") && !rearMirrorRequested;
     const bool headsetCandidate=HeadsetVisibilityCandidate(folder);
     if(std::filesystem::exists(folder/L"headset-visibility-candidate.request") && !headsetCandidate) {
         Log("engine trace refused: incomplete headset visibility candidate");return result;
@@ -1936,6 +1950,21 @@ InstallResult Install(uintptr_t base,const std::filesystem::path& folder,Boundar
             nativeLeftReplace=mode=="replace";
             Log("native_eye requested=1 mode=%s",nativeLeftReplace?"replace":"compare");
         }
+        rearMirror=rearMirrorRequested && nativeLeftReplace && expandVisibility && asymmetricEyeFov && fullEyePose;
+        if (rearMirror) {
+            // Diagnostic override: "pose <yaw degrees> <right> <up> <back>".
+            std::ifstream request(folder/L"rear-mirror.request");std::string word;float yaw{},x{},y{},z{};
+            if (request>>word && word=="pose" && request>>yaw>>x>>y>>z) {
+                const float half=yaw*3.14159265f/360.f;
+                ScenePose candidate{{0,std::sin(half),0,std::cos(half)},{x,y,z}};
+                PoseRotation axes{};
+                if (PoseAxes(candidate,axes)) rearMirrorPose=candidate;
+                else Log("rear_mirror pose_refused=1");
+            }
+        }
+        if (rearMirrorRequested) Log("rear_mirror requested=1 enabled=%u native_left_replace=%u expand_visibility=%u pose_q=%.6g,%.6g,%.6g,%.6g pos=%.6g,%.6g,%.6g",
+            rearMirror,nativeLeftReplace,expandVisibility,rearMirrorPose.orientation[0],rearMirrorPose.orientation[1],rearMirrorPose.orientation[2],rearMirrorPose.orientation[3],
+            rearMirrorPose.position[0],rearMirrorPose.position[1],rearMirrorPose.position[2]);
         waitForClipTransition=replayEnabled && std::filesystem::exists(folder/L"wait-clip-transition.request");
         headsetProjection=std::filesystem::exists(folder/L"xr-projection.request");
         // A simulated UI-stereo run must exercise the same loading/pause
@@ -2183,6 +2212,27 @@ SceneStamp CurrentScene() {
 bool ReplayingEye() { return inReplay; }
 bool NativeLeftEye() { return nativeEye.active && nativeEye.frame==frame.load(); }
 bool NativeLeftReplace() { return nativeLeftReplace && NativeLeftEye(); }
+bool RearMirror() { return rearMirror && NativeLeftReplace(); }
+// True from the rear replay through its completion/restoration snapshots.
+bool RearMirrorPass() { return RearPassActive(); }
+bool NativeSeatView(std::array<float,12>& seat) {
+    // The unposed native cockpit camera of a native-left frame: position,
+    // right, up and forward (SceneView 0x40, -0x20, 0x10, 0x30).
+    if (!NativeLeftEye() || GetCurrentThreadId()!=renderThread) return false;
+    const auto& view=nativeEye.center;
+    float right[3]{};
+    memcpy(seat.data(),view.data()+0x40,12);memcpy(right,view.data()+0x20,12);
+    for (int i=0;i<3;++i) seat[3+i]=-right[i];
+    memcpy(seat.data()+6,view.data()+0x10,12);memcpy(seat.data()+9,view.data()+0x30,12);
+    for (float value:seat) if (!std::isfinite(value)) return false;
+    return true;
+}
+bool RearMirrorCamera(std::array<float,16>& viewProjection) {
+    if (!RearPassActive() || !replayMainCameraValid || GetCurrentThreadId()!=renderThread) return false;
+    memcpy(viewProjection.data(),replayMainCamera.data()+0x190,64);
+    for (float value:viewProjection) if (!std::isfinite(value)) return false;
+    return true;
+}
 const SceneViews* NativeEyeViews() {
     return !inReplay && NativeLeftEye() && GetCurrentThreadId()==renderThread ? frozenViews.Get(frame.load()):nullptr;
 }

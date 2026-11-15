@@ -14,14 +14,16 @@ void SetEyeReplay(bool value) noexcept {lodSuppressed=value;++changes;}
 }
 namespace grid2vr::engine {
 struct PendingScene {uint64_t frame;};
-bool dualEyes=true,replayedEmptyBuilder=true,replace{};
-// A native left-eye frame in replace mode leaves only the right eye to replay.
+bool dualEyes=true,replayedEmptyBuilder=true,replace{},rear{};
+// A native left-eye frame in replace mode leaves only the right eye to replay,
+// unless the optional rear mirror reuses the left slot for its rear camera.
 bool NativeLeftReplace() {return replace;}
+bool RearMirror() {return rear && replace;}
 unsigned replayPass{},calls{},failPass{},faultPass{},badGpuPass{};
 const PendingScene* first{};
 bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSaved,bool& restored) {
     CHECK(lodSuppressed && nativeStereo && firstImageSaved);
-    const bool skipLeft=replace && dualEyes;
+    const bool skipLeft=replace && dualEyes && !rear;
     CHECK(replayPass==++calls+(skipLeft?1u:0u) && calls<=(skipLeft?1u:2u));
     CHECK(!first || first==&scene);first=&scene;
     CHECK(changes==1); // No policy-enabled gap between the two native eye calls.
@@ -31,8 +33,8 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
 }
 #include "opponent_lod_pair.inc"
 
-void Reset(unsigned fail=0,unsigned fault=0,unsigned gpu=0,bool stereo=true,bool nativeLeft=false) {
-    lodSuppressed=false;changes=0;replayPass=0;calls=0;first=nullptr;replace=nativeLeft;
+void Reset(unsigned fail=0,unsigned fault=0,unsigned gpu=0,bool stereo=true,bool nativeLeft=false,bool rearMirror=false) {
+    lodSuppressed=false;changes=0;replayPass=0;calls=0;first=nullptr;replace=nativeLeft;rear=rearMirror;
     failPass=fail;faultPass=fault;badGpuPass=gpu;dualEyes=stereo;
 }
 void CheckFault(unsigned pass) {
@@ -56,5 +58,9 @@ int main() {
     CHECK(InvokeReplayPair(scene,true,true,gpu,empty) && calls==1 && gpu && !lodSuppressed && changes==2 && replayPass==0);
     Reset(2,0,0,true,true);gpu=empty=true;CHECK(!InvokeReplayPair(scene,true,true,gpu,empty) && calls==1 && !lodSuppressed && replayPass==0);
     Reset(0,0,0,false,true);gpu=empty=true;CHECK(InvokeReplayPair(scene,true,true,gpu,empty) && calls==1 && replayPass==0);
-    std::puts("PASS: production whole-eye-pair LOD suppression, same source, early refusal and native SEH cleanup");
+    // Rear mirror: native left eye plus rear (pass 1) and right (pass 2) replays, one guarded pair.
+    Reset(0,0,0,true,true,true);gpu=empty=true;
+    CHECK(InvokeReplayPair(scene,true,true,gpu,empty) && calls==2 && gpu && !lodSuppressed && changes==2 && replayPass==0);
+    Reset(1,0,0,true,true,true);gpu=empty=true;CHECK(!InvokeReplayPair(scene,true,true,gpu,empty) && calls==1 && !lodSuppressed && replayPass==0);
+    std::puts("PASS: production whole-eye-pair LOD suppression, same source, early refusal, rear mirror pass and native SEH cleanup");
 }
