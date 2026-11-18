@@ -59,7 +59,12 @@ internal static class PreparationCacheTests
             var extra = Write(Path.Combine(data, PreparationCache.Banks[0], "new.bin"), "new");
             Check(!PreparationCache.IsCurrent(root)); File.Delete(extra); Remember();
             var seats = Write(Path.Combine(data, "seat-positions.json"), "{}");
-            Check(!PreparationCache.IsCurrent(root)); File.Delete(seats); Remember();
+            Check(!PreparationCache.IsCurrent(root)); Remember();
+            // Launch re-saves identical seat settings: still current.
+            File.WriteAllText(seats, "{}"); File.SetLastWriteTimeUtc(seats, DateTime.UtcNow.AddMinutes(5));
+            Check(PreparationCache.IsCurrent(root));
+            Write(seats, "{\"Version\":1}"); Check(!PreparationCache.IsCurrent(root));
+            File.Delete(seats); Check(!PreparationCache.IsCurrent(root)); Remember();
             foreach (var name in new[] { "session-pending.json", "diagnostic-pending.json", "practice-flow-pending.json", "steamvr-theater-pending.json" })
             {
                 var pending = Write(Path.Combine(data, name), "{}");

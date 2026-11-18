@@ -119,7 +119,18 @@ internal static class PreparationCache
                 Stamp(Path.Combine(game, "cars", "models", id, "cameras.xml"));
             }
         }
-        Stamp(Path.Combine(data, "seat-positions.json"), required: false);
+        // The launcher re-saves seat settings before every launch, so their
+        // contents (not the write time) decide whether setup must run again.
+        var seats = Path.Combine(data, "seat-positions.json");
+        Plain(seats); Add(Path.GetFullPath(seats).ToUpperInvariant());
+        if (File.Exists(seats))
+        {
+            if (new FileInfo(seats).Length > 32768) throw new IOException("Seat settings exceed their size limit.");
+            var bytes = File.ReadAllBytes(seats);
+            if (bytes.LongLength > 32768) throw new IOException("Seat settings exceed their size limit.");
+            Add(Convert.ToHexStringLower(SHA256.HashData(bytes)));
+        }
+        else Add("missing");
         foreach (var bank in Banks) Bank(Path.Combine(data, bank));
         return Convert.ToHexStringLower(digest.GetHashAndReset());
     }
