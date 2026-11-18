@@ -142,6 +142,10 @@ size_t recordedIndex{};
 bool recordedRequested{};
 bool repeatRecordedViews{}; // Bounded unattended observation only; never live XR.
 bool unattendedStereo{};
+// Diagnostic only (xr-sim): a visible background window may start stereo before
+// background play installs at local-race readiness, so pre-race shots render in 3D
+// as they do for a focused headset player. Rendering eligibility only; no focus change.
+bool earlyBackgroundStereo{};
 #ifdef GRID2VR_ENABLE_XR_SESSION
 XrSessionProbe xrSession;
 bool xrRequested{},xrStopped{};
@@ -794,7 +798,7 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
         false
 #endif
     );
-    bool nativeWindowReady=backgroundHold.Observe(GetTickCount64(),backgroundplay::WindowEligible(windowState,backgroundplay::Enabled()) || simulatedBackground);
+    bool nativeWindowReady=backgroundHold.Observe(GetTickCount64(),backgroundplay::WindowEligible(windowState,backgroundplay::Enabled() || earlyBackgroundStereo) || simulatedBackground);
     static const bool normalLaunch=std::filesystem::is_regular_file(output/L"normal-launch.request");
     auto normalGarageState=GarageMenuState::Unavailable;
     bool normalLiveXr=false,focusedNormalViews=false;
@@ -1955,6 +1959,7 @@ bool Active() {
             diagnosticLogging=!runtimeSession || std::filesystem::exists(output/L"diagnostic-logging.request");
             unattendedStereo=runtimeSession && std::filesystem::is_regular_file(output/L"flicker-diagnostic.request") &&
                 std::filesystem::is_regular_file(output/L"flicker-unattended.request");
+            earlyBackgroundStereo=runtimeSession && std::filesystem::is_regular_file(output/L"early-background-stereo.request");
 #ifdef GRID2VR_ENABLE_XR_SESSION
             if (runtimeSession && std::filesystem::exists(output/L"xr-projection.request")) {
                 // UI camera uploads start before the first Present/replay setup.

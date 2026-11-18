@@ -463,6 +463,7 @@ if ($XrSessionProbe -and $DefaultOpenXrRuntime -and $env:XRSIM_DIR) {
 # Diagnostic comparison only: keep GRID 2's lens flares for this session.
 if ($env:GRID2VR_MIRROR_SOURCE_PROBE -in '1','dump') { [IO.File]::WriteAllText((Join-Path $run 'mirror-source.request'),'Diagnostic: blank one car reflection input per phase.',[Text.UTF8Encoding]::new($false)) }
 if ($env:GRID2VR_MIRROR_SOURCE_PROBE -eq 'dump') { [IO.File]::WriteAllText((Join-Path $run 'mirror-source-dump.request'),'Diagnostic: read the car reflection cube back once; no binding changes.',[Text.UTF8Encoding]::new($false)) }
+if ($RuntimeSession -and $env:GRID2VR_EARLY_BACKGROUND_STEREO -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'early-background-stereo.request'),'Diagnostic (xr-sim): a visible background window may start stereo before local-race readiness, so pre-race shots render in 3D.',[Text.UTF8Encoding]::new($false)) }
 if ($env:GRID2VR_SKIP_LEFT_REPLAY_DRAWS -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'skip-left-replay-draws.request'),'Diagnostic: skip left replay driver draws (cost floor).',[Text.UTF8Encoding]::new($false)) }
 # Rear-view mirrors (launcher option, ProJict 18da44dc): an extra rear camera replay shown in the
 # cockpit mirrors. The renderer engages it only with the native left eye in replace mode.
