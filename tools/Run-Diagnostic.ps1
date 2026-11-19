@@ -470,6 +470,7 @@ if ($env:GRID2VR_SKIP_LEFT_REPLAY_DRAWS -eq '1') { [IO.File]::WriteAllText((Join
 # GRID2VR_REAR_MIRROR_POSE ('pose <yaw> <right> <up> <back>') is a diagnostic override only.
 if($RuntimeSession -and $ReplayStereo -and !$PlayerControlOnly -and ($RearMirrors -or $env:GRID2VR_REAR_MIRROR -eq '1')) { [IO.File]::WriteAllText((Join-Path $run 'rear-mirror.request'),$(if($env:GRID2VR_REAR_MIRROR_POSE){$env:GRID2VR_REAR_MIRROR_POSE}else{'Optional rear-view mirrors: rear camera replay shown in the cockpit mirrors.'}),[Text.UTF8Encoding]::new($false)) }
 if ($env:GRID2VR_MIRROR_BISECT -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'mirror-bisect.request'),'Diagnostic: number car reflection draws and blank them by bit.',[Text.UTF8Encoding]::new($false)) }
+if ($env:GRID2VR_INSTANCE_USE -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'instance-use.request'),'Diagnostic: per-frame instance-lane fill and map modes (about 2 ms/frame).',[Text.UTF8Encoding]::new($false)) }
 if ($env:GRID2VR_REAR_MIRROR_DEBUG -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'rear-mirror-debug.request'),'Diagnostic: mirror zone colours and per-mirror centres.',[Text.UTF8Encoding]::new($false)) }
 if ($env:GRID2VR_NATIVE_LENS_FLARE -eq '1') { [IO.File]::WriteAllText((Join-Path $run 'native-lens-flare.request'),'Keep native lens flare ghosts.',[Text.UTF8Encoding]::new($false)) }
 if ($RecordedViewsFile) { [IO.File]::Copy((Get-Item -LiteralPath $RecordedViewsFile).FullName,(Join-Path $run 'recorded-views.request'),$false) }

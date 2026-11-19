@@ -1,7 +1,10 @@
 """Prepare a guarded native ornament-capacity input; never install or launch.
 
 The native factory copies main_scene to lane 14 and conditionally lane 1 too.
-Those aliases remain native. Only the high style's XML main_scene value changes.
+Those aliases remain native. Only the main_scene values of the three styles the
+renderer qualifies (test, high, medium) change. The optional rear mirror widens
+culling behind the car, which at Brands Hatch raised peak main-scene demand from
+1,007 to 1,616 of test's 1,800; past capacity the game drops trackside props.
 """
 from game_executable import validate_avx
 import argparse
@@ -18,8 +21,9 @@ from session_config import SUPPORTED_AVX_SHA256, plain_path
 
 RELATIVE_PATH = Path('tracks/generic/ornament_system_settings.xml')
 ORIGINAL_SHA256 = 'e838736a38d9de5a83c5fa966c37805c3f9097a4ec193b0dc8602983cf8b9737'
-MODIFIED_SHA256 = 'e11fd1dc2c9b27a9fd5fdf4c2755999febdcdb3e20ad37bffae3f5fc60d51e3e'
+MODIFIED_SHA256 = '83adb11bc15e6669fb1abaa0b0b78c49098e56def320fe8c0537209d31de7f34'
 CAPACITY = 4096
+EXPANDED_STYLES = ('test', 'high', 'medium')
 MAX_CAPACITY = 16384
 STYLES = ('default', 'night', 'test', 'high', 'medium', 'low', 'la_stadium',
           'battersea_night', 'la_stadium_night', 'monaco')
@@ -55,13 +59,14 @@ def transform(root):
             if node.get('name') == 'main_scene' and not int(value):
                 raise ValueError('Main scene capacity must be positive')
     result = copy.deepcopy(root)
-    node = result.find("setting_style[@name='high']/traversal_settings[@name='main_scene']")
-    before = int(node.get('instance_buffer'))
     changes = []
-    if before < CAPACITY:
-        node.set('instance_buffer', str(CAPACITY))
-        changes.append(dict(style='high', traversal='main_scene', attribute='instance_buffer',
-                            before=before, after=CAPACITY))
+    for name in EXPANDED_STYLES:
+        node = result.find(f"setting_style[@name='{name}']/traversal_settings[@name='main_scene']")
+        before = int(node.get('instance_buffer'))
+        if before < CAPACITY:
+            node.set('instance_buffer', str(CAPACITY))
+            changes.append(dict(style=name, traversal='main_scene', attribute='instance_buffer',
+                                before=before, after=CAPACITY))
     return result, changes
 
 
@@ -89,7 +94,8 @@ def prepare(game_root, output, converter):
     source_root = ET.parse(output / 'source-ornament-system.xml').getroot()
     before_signature = signature(source_root)
     expected, changes = transform(source_root)
-    if changes != [dict(style='high', traversal='main_scene', attribute='instance_buffer', before=1200, after=CAPACITY)]:
+    if changes != [dict(style=name, traversal='main_scene', attribute='instance_buffer', before=before, after=CAPACITY)
+                   for name, before in (('test', 1800), ('high', 1200), ('medium', 800))]:
         raise ValueError('Supported baseline did not produce the exact capacity change')
     if signature(source_root) != before_signature:
         raise ValueError('Preparation changed the source tree')

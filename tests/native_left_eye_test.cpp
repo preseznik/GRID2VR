@@ -85,6 +85,27 @@ int main() {
     if (PoseSceneView(mirrored,left,viaView) || viaView!=untouched) return 12;
     auto nonFinite=center;const float bad=NAN;memcpy(nonFinite.data()+0x44,&bad,4);
     if (PoseSceneView(nonFinite,left,viaView) || viaView!=untouched) return 13;
+    // Rear mirror camera (yaw 180, 1.99 units from the seat): measured from a
+    // head-turned, 15 cm-shifted left eye it exceeds the two-unit bound, so the
+    // renderer takes only the eye's rotation; the offset stays 1.99 and passes.
+    {
+        const ScenePose rear{{0,1,0,0},{0,.6f,1.9f}};
+        const float h=std::sin(.27f),c=std::cos(.27f); // about 31 degrees of yaw
+        const ScenePose turned{{0,h,0,c},{-.0315f,.05f,-.15f}};
+        ScenePose full{},rotationOnly{};
+        if (RelativeScenePose(turned,rear,full)) return 14;
+        ScenePose reference=turned;reference.position={};
+        if (!RelativeScenePose(reference,rear,rotationOnly)) return 15;
+        double length{};for (float v:rotationOnly.position) length+=double(v)*v;
+        if (std::abs(std::sqrt(length)-std::sqrt(.6*.6+1.9*1.9))>1e-4) return 16;
+        // Posing the turned eye's rotation with the result gives the car-fixed rear rotation.
+        PoseRotation eye{},relativeAxes{},expected{};
+        if (!PoseAxes(reference,eye) || !PoseAxes(rotationOnly,relativeAxes) || !PoseAxes(rear,expected)) return 17;
+        for (size_t i=0;i<3;++i) for (size_t j=0;j<3;++j) {
+            double v{};for (size_t k=0;k<3;++k) v+=relativeAxes[i][k]*eye[k][j];
+            if (std::abs(v-expected[i][j])>1e-5) return 18;
+        }
+    }
     std::puts("Native left eye: relative eye pose, Prepare-entry view pose and camera-path equality passed.");
     return 0;
 }

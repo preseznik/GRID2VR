@@ -167,7 +167,7 @@ internal sealed partial class MainForm : LauncherForm
         graphics.Controls.Add(lensDust);
         graphics.Controls.Add(TextLabel("Looking towards the sun lights up dust spots that stay fixed in your view, like dirt on the headset lens. Shown by default, as in the game; tick to hide them. Applies on the next VR launch."));
         graphics.Controls.Add(rearMirrors);
-        graphics.Controls.Add(TextLabel("The game has no mirror camera, so cockpit mirrors normally show the view ahead, flipped. Tick to render an extra camera looking behind you each frame and show it in the mirrors. ⚠ Costly: about 4–5 ms of CPU per frame, roughly 20 fps lower (about 70 instead of 90 fps on a fast PC); slower CPUs lose more. Needs Faster stereo (Advanced). Off by default; applies on the next VR launch."));
+        graphics.Controls.Add(TextLabel("The game has no mirror camera, so cockpit mirrors normally show the view ahead, flipped. Tick to render an extra camera looking behind you each frame and show it in the centre mirror; the side mirrors keep the game's look. ⚠ Costly: about 3 ms of CPU per frame, roughly 10–15 fps lower (about 75 instead of 90 fps on a fast PC); slower CPUs lose more. Needs Faster stereo (Advanced). Off by default; applies on the next VR launch."));
         Section(graphics, "VR mirror");
         graphics.Controls.Add(vrMirrorBorderless);
         graphics.Controls.Add(TextLabel("Fill the mirror's monitor without borders on the next VR launch. VR resolution stays independent of window size."));

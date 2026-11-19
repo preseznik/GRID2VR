@@ -32,9 +32,9 @@ int main() {
     std::array<uint32_t,LaneCount> expected{};
     for(bool expanded:{false,true}) {
         CHECK(ExpectedCapacities(2,10,expanded,expected));
-        CHECK(expected[0]==1800 && expected[14]==1800 && expected[2]==1500 && expected[10]==1600);
+        CHECK(expected[0]==(expanded?4096u:1800u) && expected[14]==expected[0] && expected[2]==1500 && expected[10]==1600);
         CHECK(ExpectedCapacities(4,10,expanded,expected));
-        CHECK(expected[0]==800 && expected[14]==800 && expected[2]==300 && expected[10]==350);
+        CHECK(expected[0]==(expanded?4096u:800u) && expected[14]==expected[0] && expected[2]==300 && expected[10]==350);
         CHECK(ExpectedCapacities(3,10,expanded,expected));
         CHECK(expected[0]==(expanded?4096u:1200u) && expected[14]==expected[0] && expected[10]==1000);
         CHECK(expected[1]==0 && expected[15]==400);

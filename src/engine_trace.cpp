@@ -30,6 +30,7 @@
 #include "sign_visibility.h"
 #include "instance_capacity.h"
 #include "instance_observation_policy.h"
+#include "instance_capacity_policy.h"
 #include "headset_visibility_candidate.h"
 #include "transient_refusal.h"
 #include "frame_timing.h"
@@ -300,7 +301,7 @@ struct PendingScene {
 };
 thread_local PendingScene pendingScene;
 bool lazyListsVerified{};
-bool deferredNativeHooks{},instanceObservationRequested{};
+bool deferredNativeHooks{},instanceObservationRequested{},instanceUseRequested{};
 thread_local EmptyListWitness emptyListWitness;
 thread_local EmptyListReplay emptyListReplay;
 thread_local bool replayedEmptyBuilder{};
@@ -455,6 +456,9 @@ bool nativeLeftEye{},nativeLeftReplace{};
 // so the own cabin stays out of view). Its image feeds the mirror cube only.
 bool rearMirror{};
 ScenePose rearMirrorPose{{0,1,0,0},{0,.6f,1.9f}};
+// Native units (metres) behind the eyes the tracked frustum also covers while
+// the rear mirror is on (the rear camera's view; scenery beyond it is not drawn there).
+constexpr double rearVisibilityCoverage=250;
 constexpr EyeFrustum rearMirrorFrustum{-1.f,1.f,-.75f,.75f};
 bool RearPassActive() { return rearMirror && replayPass==1 && NativeLeftReplace(); }
 struct NativeEyeSwap {
@@ -463,6 +467,10 @@ struct NativeEyeSwap {
     unsigned uploads{};
     SceneView center{},left{};
     std::array<ScenePose,2> replayPoses{};
+    // The rear camera in the posed left-eye camera: replays pose the scene's
+    // view, which this swap makes the head-tracked left eye, so the seat-fixed
+    // rear pose must be expressed relative to it or it turns with the head.
+    ScenePose rearPose{};
 } nativeEye;
 uint64_t nativeEyeFrames{},nativeEyeRefusals{};
 const char* nativeEyeRefusal="none";
@@ -479,7 +487,7 @@ bool WriteViewPose(uintptr_t view,const SceneView& pose) {
     return ReadMemory(reinterpret_cast<void*>(view),actual.data(),actual.size()) && SameViewPose(actual,pose);
 }
 const ScenePose& CurrentPose() {
-    if (RearPassActive()) return rearMirrorPose;
+    if (RearPassActive()) return nativeEye.active && nativeEye.frame==frame.load() ? nativeEye.rearPose : rearMirrorPose;
     if (nativeEye.active && nativeEye.frame==frame.load()) return nativeEye.replayPoses[replayPass==2?1:0];
     if (const auto* views=frozenViews.Get(frame.load())) return views->poses[replayPass==2?1:0];
     return dualEyes ? stereoPoses[replayPass==2?1:0] : eyePose;
@@ -749,7 +757,7 @@ bool PrepareVisibility(bool valid,uintptr_t view,uintptr_t caller) {
                 EyeVisibilityFrustum trackedFrustum;
                 prepared=check(views!=nullptr,"frozen_views") &&
                     check(ReadMemory(reinterpret_cast<void*>(mainObject+0x680),renderView.data(),renderView.size()),"render_view_read") &&
-                    check(MakeEyeVisibilityFrustum(original,sourceView,renderView,*views,trackedFrustum),"eye_frustum_construction");
+                    check(MakeEyeVisibilityFrustum(original,sourceView,renderView,*views,trackedFrustum,rearMirror?rearVisibilityCoverage:0.),"eye_frustum_construction");
                 if (prepared) {
                     visibilityMatrix=trackedFrustum.matrix;
                     reinterpret_cast<FrustumBuildFn>(gameBase+0x87d860)(expanded.data(),visibilityMatrix.data());
@@ -1028,15 +1036,27 @@ void BeginNativeEye() {
     else if (!visibilityHealthy || !pendingVisibility.active || pendingVisibility.frame!=current || visibilityRefusedFrame==current) refusal="visibility_not_ready";
     else if (menuScene || replaySceneBlocked || garageSceneBlocked) refusal="presentation";
     else if (!asymmetricEyeFov || !fullEyePose || !dualEyes || !ownedEyeHistory) refusal="stereo_configuration";
-    SceneView center{},left{};ScenePose relative{};
+    SceneView center{},left{};ScenePose relative{},rear{};
     const auto view=mainObject+0x680;
     if (!refusal && (!WritableHeap(view,center.size()) || !ReadMemory(reinterpret_cast<void*>(view),center.data(),center.size()) || center[0x8c]!=1))
         refusal="native_view";
     if (!refusal && (!PoseSceneView(center,views->poses[0],left) || !RelativeScenePose(views->poses[0],views->poses[1],relative)))
         refusal="eye_pose";
+    // The rear camera keeps its car-fixed rotation and its offset (just under
+    // the two-unit pose bound) from the left eye: only the head's rotation is
+    // removed, so the bound holds however the head moves. A refusal keeps the
+    // previous pose for the rear pass and never refuses the native eye.
+    bool rearRelative=false;
+    if (!refusal && rearMirror) {
+        ScenePose reference=views->poses[0];reference.position={};
+        rearRelative=RelativeScenePose(reference,rearMirrorPose,rear);
+        static unsigned rearRefusals{};
+        if (!rearRelative && ++rearRefusals<=8) Log("rear_mirror relative_pose refused frame=%llu count=%u",current,rearRefusals);
+    }
+    if (!rearRelative) rear=rearMirrorPose;
     if (!refusal) {
         if (WriteViewPose(view,left)) {
-            nativeEye={current,true,true,0,center,left,{ScenePose{},relative}};
+            nativeEye={current,true,true,0,center,left,{ScenePose{},relative},rear};
             if (++nativeEyeFrames<=8 || nativeEyeFrames%600==0)
                 Log("native_eye begin frame=%llu count=%llu relative_x=%.9g relative_y=%.9g relative_z=%.9g",
                     current,nativeEyeFrames,relative.position[0],relative.position[1],relative.position[2]);
@@ -1313,6 +1333,72 @@ bool RenderReplay(const PendingScene& scene,bool nativeStereo,bool firstImageSav
 }
 // No C++ objects in this SEH boundary: suppress new LOD policy for the WHOLE
 // frozen eye pair, including the gap between eyes, and clear it on native faults.
+// Read-only: the native instance allocator's per-lane capacity and used words
+// (allocator+0x10 -> 16-byte lane records, +8 capacity, +12 used), sampled at
+// each instance-buffer Map. The native pass writes every instance once per
+// frame; replays reuse them. A failed reservation leaves used unchanged.
+struct InstanceLaneSample { uint32_t used{},capacity{}; };
+struct InstanceLaneWatch {
+    std::array<uint32_t,16> frameUsed{},peak{},capacity{};
+    std::array<uint64_t,16> nearFull{};
+    uint64_t frameId{},frames{},lastLog{},logs{};
+} instanceLaneWatch;
+bool ReadInstanceLanes(std::array<InstanceLaneSample,16>& lanes) {
+    const auto manager=Read<uintptr_t>(mainObject+0xd4);
+    const auto allocator=manager?Read<uintptr_t>(manager+0xf8):0;
+    std::array<uint32_t,6> header{};
+    if(!allocator || !ReadMemory(reinterpret_cast<void*>(allocator),header.data(),sizeof(header)) ||
+       (header[0]&255)!=1 || header[3]!=instancecapacity::Stride || header[5]!=16 || !header[4])return false;
+    std::array<uint32_t,64> words{};
+    if(!ReadMemory(reinterpret_cast<void*>(header[4]),words.data(),sizeof(words)))return false;
+    for(unsigned lane=0;lane<16;++lane)lanes[lane]={words[lane*4+3],words[lane*4+2]};
+    return true;
+}
+void SampleInstanceUseNow() {
+    if(!instanceUseRequested || !mainObject)return;
+    static std::mutex useMutex;std::lock_guard useLock(useMutex);
+    std::array<InstanceLaneSample,16> lanes{};
+    if(!ReadInstanceLanes(lanes)) {
+        static uint64_t failures{},lastFailureLog{};++failures;
+        if(frame.load()>=lastFailureLog+600) {
+            lastFailureLog=frame.load();
+            const auto manager=Read<uintptr_t>(mainObject+0xd4);
+            const auto allocator=manager?Read<uintptr_t>(manager+0xf8):0;
+            std::array<uint32_t,6> header{};
+            if(allocator)ReadMemory(reinterpret_cast<void*>(allocator),header.data(),sizeof(header));
+            Log("instance_use read_failed count=%llu main=%p manager=%p allocator=%p header=%08x,%u,%u,%u,%08x,%u",failures,
+                reinterpret_cast<void*>(mainObject),reinterpret_cast<void*>(manager),reinterpret_cast<void*>(allocator),
+                header[0],header[1],header[2],header[3],header[4],header[5]);
+        }
+        return;
+    }
+    auto& w=instanceLaneWatch;
+    const auto current=frame.load();
+    if(current!=w.frameId) {
+        if(w.frameId) {
+            ++w.frames;
+            for(unsigned lane=0;lane<16;++lane) {
+                w.peak[lane]=std::max(w.peak[lane],w.frameUsed[lane]);
+                // Within 3 % of capacity: a following batch is likely refused.
+                if(w.capacity[lane] && w.frameUsed[lane]*100ull>=w.capacity[lane]*97ull)++w.nearFull[lane];
+            }
+        }
+        w.frameId=current;w.frameUsed={};
+        if(w.frames && w.logs<200 && current>=w.lastLog+600) {
+            w.lastLog=current;++w.logs;
+            char text[1024];int at=snprintf(text,sizeof(text),"instance_use frame=%llu frames=%llu rear=%u",current,w.frames,rearMirror);
+            for(unsigned lane=0;lane<16 && at>0 && at<int(sizeof(text));++lane)
+                if(w.capacity[lane])at+=snprintf(text+at,sizeof(text)-at," l%u=%u/%u:%llu",lane,w.peak[lane],w.capacity[lane],w.nearFull[lane]);
+            // Own bounded file: the session engine.log rotates within seconds.
+            static std::ofstream useLog(output/L"instance-use.log",std::ios::binary|std::ios::trunc);
+            useLog << text << '\n';useLog.flush();
+            w.peak={};w.nearFull={};w.frames=0;
+        }
+    }
+    for(unsigned lane=0;lane<16;++lane) {
+        w.frameUsed[lane]=std::max(w.frameUsed[lane],lanes[lane].used);w.capacity[lane]=lanes[lane].capacity;
+    }
+}
 bool InvokeReplayPair(const PendingScene& scene,bool nativeStereo,bool firstImageSaved,
                       bool& allGpuRestored,bool& allEmptyBuilder) {
     bool accepted=true;
@@ -1825,10 +1911,11 @@ InstallResult Install(uintptr_t base,const std::filesystem::path& folder,Boundar
     frontendSceneAudit=std::filesystem::exists(folder/L"frontend-scene-audit.request");
     diagnosticLogging=!runtimeSession || std::filesystem::exists(folder/L"diagnostic-logging.request");
     nativeVisibilityControl=std::filesystem::exists(folder/L"native-visibility-control.request");
-    // A rear camera needs the all-rotation volume: tracked visibility is one
-    // frustum around both eyes and cannot enclose a rear-facing view.
+    // The rear camera is covered by retreating the tracked eye frustum's apex
+    // (rearVisibilityCoverage), not by the all-rotation volume: that volume's
+    // far larger object count made trackside objects pop.
     const bool rearMirrorRequested=std::filesystem::exists(folder/L"rear-mirror.request");
-    trackedVisibility=std::filesystem::exists(folder/L"tracked-visibility.request") && !rearMirrorRequested;
+    trackedVisibility=std::filesystem::exists(folder/L"tracked-visibility.request");
     const bool headsetCandidate=HeadsetVisibilityCandidate(folder);
     if(std::filesystem::exists(folder/L"headset-visibility-candidate.request") && !headsetCandidate) {
         Log("engine trace refused: incomplete headset visibility candidate");return result;
@@ -1993,6 +2080,8 @@ InstallResult Install(uintptr_t base,const std::filesystem::path& folder,Boundar
             std::filesystem::exists(folder/L"normal-launch.request"),std::filesystem::exists(folder/L"race-launch.request"),
             std::filesystem::exists(folder/L"player-control.request")};
         instanceObservationRequested=replayEnabled && !instanceObservationPolicy.Suppression();
+        // Diagnostic runs only: four guarded reads per instance Map cost about 2 ms/frame.
+        instanceUseRequested=std::filesystem::exists(folder/L"instance-use.request");
         Log("instance allocation telemetry configured requested=%u allowed=%u reason=%s capacity_guards=%u",
             instanceObservationPolicy.requested,instanceObservationRequested,
             instanceObservationPolicy.Suppression()?instanceObservationPolicy.Suppression():"isolated_ai",instancecapacity::Enabled());
@@ -2209,6 +2298,19 @@ StageStamp CurrentStage() { return currentStage; }
 SceneStamp CurrentScene() {
     return pendingScene.valid && pendingScene.frame==frame.load() ? SceneStamp{pendingScene.id,inReplay,replayPass}:SceneStamp{};
 }
+// Read-only: the game's camera manager Look Back selection byte (+0x759),
+// the same chain the chase and DLC cockpit adapters verify. -1 if unreadable.
+int LookBackFlag() {
+    uint32_t root{},state{},owner{},manager{};uint8_t flag{};
+    if(!gameBase || !ReadMemory(reinterpret_cast<void*>(gameBase+0xdef810),&root,4) || !root ||
+       !ReadMemory(reinterpret_cast<void*>(uintptr_t(root)+0x10),&state,4) || !state ||
+       !ReadMemory(reinterpret_cast<void*>(uintptr_t(state)+0x14fc),&owner,4) || !owner ||
+       !ReadMemory(reinterpret_cast<void*>(uintptr_t(owner)+0x33c),&manager,4) || !manager ||
+       !ReadMemory(reinterpret_cast<void*>(uintptr_t(manager)+0x759),&flag,1))return -1;
+    return flag;
+}
+bool InstanceUseRequested() { return instanceUseRequested; }
+void SampleInstanceUse() { SampleInstanceUseNow(); }
 bool ReplayingEye() { return inReplay; }
 bool NativeLeftEye() { return nativeEye.active && nativeEye.frame==frame.load(); }
 bool NativeLeftReplace() { return nativeLeftReplace && NativeLeftEye(); }

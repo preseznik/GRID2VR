@@ -429,6 +429,42 @@ int main(int argc,char** argv) {
             }
         }
     }
+    // Rear-view mirror retreat: the frustum keeps every sampled eye ray and the
+    // readback check, now also encloses the space behind the car the rear camera
+    // sees (100 m back, 30 m to the side), and keeps far^2/near conditioning.
+    {
+        double largestRatio{};
+        for(double yaw:{0.,40.,-40.}) {
+            const auto posed=Views(yaw,0,0);EyeVisibilityFrustum plain,rear;TrackedVisibilityCoverage depth;
+            CHECK(MakeEyeVisibilityFrustum(volume,visibility,render,posed,plain));
+            CHECK(MakeEyeVisibilityFrustum(volume,visibility,render,posed,rear,250));
+            CHECK(ValidateEyeVisibilityFrustum(BuildVolume(rear),rear));
+            CHECK(MeasureTrackedVisibility(volume,visibility,render,posed,depth));
+            CHECK(rear.farDistance*rear.farDistance/rear.nearDistance<=rearRetreatConditioning*1.001 || rear.nearDistance==1.);
+            for(size_t eye=0;eye<2;++eye)for(double fraction:{0.,.01,.5,1.}) {
+                const auto& f=posed.frusta[eye];
+                for(double x:{double(f.left),0.,double(f.right)})for(double y:{double(f.down),0.,double(f.up)})
+                    for(const auto& plane:rear.planes)CHECK(Side(plane,EyePoint(render,posed.poses[eye],x,y,fraction*depth.farDistance))>=eyeVisibilityMargin-1e-8);
+            }
+            // Behind the car: the native camera's back axis (unposed), 100 m back, 30 m aside.
+            std::array<double,3> back{},right{},seat{};
+            for(size_t axis=0;axis<3;++axis){float b{},r{},p{};memcpy(&b,render.data()+0x30+4*axis,4);memcpy(&r,render.data()+0x20+4*axis,4);memcpy(&p,render.data()+0x40+4*axis,4);back[axis]=-b;right[axis]=-r;seat[axis]=p;}
+            for(double side:{-30.,0.,30.}) {
+                tracked_visibility_detail::Point behind{};for(size_t axis=0;axis<3;++axis)behind[axis]=seat[axis]+100*back[axis]+side*right[axis];
+                bool inRear=true,inPlain=true;
+                for(const auto& plane:rear.planes)inRear&=Side(plane,behind)>0;
+                for(const auto& plane:plain.planes)inPlain&=Side(plane,behind)>0;
+                CHECK(inRear && !inPlain);
+            }
+            const auto size=[](const EyeVisibilityFrustum& v){return (v.slopes[1]-v.slopes[0])*(v.slopes[3]-v.slopes[2])*(std::pow(v.farDistance,3)-std::pow(v.nearDistance,3))/3;};
+            largestRatio=(std::max)(largestRatio,size(rear)/size(plain));
+        }
+        CHECK(largestRatio<3);
+        // Track depths seen in game: Brands Hatch (eye depth ~730) and Yas Marina (~7390).
+        CHECK(std::abs(RearRetreat(729,250)-263)<5 && std::abs(RearRetreat(7387,250)-1337)<10);
+        for(double depth:{729.,7387.}) {const double r=RearRetreat(depth,250);CHECK(r-(r+depth)*(r+depth)/rearRetreatConditioning>=249.9);}
+        std::printf("Rear-mirror retreat: rear points enclosed; largest volume ratio versus the eye-only frustum %.3f.\n",largestRatio);
+    }
     // Same native fixture, poses and VDXR tangents measured before the retreat
     // change: 2-unit volume=7440594511.89. Bound the conditioning size cost.
     const auto& slopes=frustum.slopes;

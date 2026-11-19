@@ -149,6 +149,7 @@ RearMirror::Result RearMirror::Apply(ID3D11DeviceContext* context,uint64_t scene
         if (!Build(bound.Get(),perFrame.Get(),dispatch)) {failed_=true;return Result::Failed;}
         builtScene_=scene;
     }
+    if (!substitute_) return Result::Skipped;
     auto* view=cubeView_.Get();context->PSSetShaderResources(cubeSlot,1,&view);
     ComPtr<ID3D11ShaderResourceView> actual;context->PSGetShaderResources(cubeSlot,1,&actual);
     original_=bound;slot_=cubeSlot;pending_=true;
@@ -201,6 +202,7 @@ float4 main(I i):SV_Target{
     // batch (window lines, door handles) faces up or outwards.
     float3 nf=normalize(facet);if(dot(nf,L)>0)nf=-nf;
     float backwards=-(nf.x*axisF.x+nf.y*axisF.y+nf.z*axisF.z);
+    // Only the centre mirror gets the rear view; the wing mirrors keep the game's look.
     if(slot<0||backwards<.5)discard;
     // Per mirror, kept for the whole cockpit stint (not just what is visible
     // this frame, so turning the head never moves a mirror's aim): a seen
@@ -216,12 +218,15 @@ float4 main(I i):SV_Target{
     // Wing mirrors: the glass is the highest backward-facing Shiny Metal in
     // its zone; mounts and trim below it (SL: down to 0.65 m under the eye)
     // keep the game's shading and never enter the box.
-    if(!seen||(slot!=1&&mm.y<high.y-180))discard;
+    if(!seen||slot!=1)discard;
     current.InterlockedMax(base+4,uint(10000+mm.x),ignored);current.InterlockedMax(base+12,uint(10000+mm.z),ignored);
     current.InterlockedMax(base+16,uint(10000-mm.x),ignored);current.InterlockedMax(base+20,uint(10000-mm.y),ignored);current.InterlockedMax(base+24,uint(10000-mm.z),ignored);
     float3 centre=boxed?float3(high+low)*.0005:loc;
     // A flat mirror through this pixel whose normal sends the seat-to-centre
     // ray along the aim: one normal per mirror, so straight lines stay straight.
+    // A fixed picture per mirror, as racing games and VR sims show it: each
+    // glass point maps to the rear view seen from the seat, whatever the head
+    // does, so leaning never runs the mirror off the rear image.
     float3 dc=normalize(centre),d=normalize(loc),t=normalize(aim[slot].xyz);
     float3 n=normalize(t-dc);
     float3 r=reflect(d,n);
@@ -239,8 +244,13 @@ float4 main(I i):SV_Target{
         // yellow = outside its image.
         // Rear-image position: red = horizontal, green = vertical (0..1),
         // blue = zone; behind the rear camera = white.
-        float2 at=clip.w>1e-4?saturate(clip.xy/clip.w*.5+.5):float2(1,1);
-        col=float3(at.x,at.y,clip.w>1e-4?slot*.5:1)*.5;
+        // Stripes every quarter of the rear image survive the game's grading:
+        // bright where both stripe sets agree; solid magenta off the image edge,
+        // solid blue where the ray points away from the rear camera.
+        float2 raw=clip.w>1e-4?clip.xy/clip.w:float2(9,9);
+        bool off=any(abs(raw)>.98);
+        float sx=frac(raw.x*2)<.5,sy=frac(raw.y*2)<.5;
+        col=clip.w<=1e-4?float3(0,0,.6):off?float3(.6,0,.6):float3(.08,.08,.08)+.4*float3(sx,sy,sx*sy);
     }
     float k=params.z>1.5?1:asfloat(gain.Load(12));if(!(k>.01&&k<100))k=1;
     col*=k*(params.z>1.5?1:params.w);

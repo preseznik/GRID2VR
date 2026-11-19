@@ -8,6 +8,7 @@
 #include <atomic>
 #include <fstream>
 #include <mutex>
+#include <unordered_map>
 
 namespace grid2vr::instancecapacity {
 namespace {
@@ -166,6 +167,33 @@ void BufferCreated(const D3D11_BUFFER_DESC* requested,HRESULT result,ID3D11Buffe
         << ",\"bind\":" << actual.BindFlags << ",\"cpuAccess\":" << actual.CPUAccessFlags << "}\n";log.flush();
 }
 
+namespace {
+struct MapWatch {
+    std::array<std::array<uint64_t,6>,3> all{},first{};
+    std::unordered_map<uintptr_t,std::pair<uint64_t,unsigned>> last;
+    uint64_t lastLog{},logs{};
+} maps;
+}
+bool Mapped(ID3D11Resource* resource,D3D11_MAP kind,uint64_t frame,unsigned pass) {
+    if(!enabled || pass>2 || kind<1 || kind>5)return false;
+    BufferEvidence evidence{};
+    if(!buffers.Find(uintptr_t(resource),evidence))return false;
+    std::lock_guard lock(mutex);
+    ++maps.all[pass][kind];
+    auto& previous=maps.last[uintptr_t(resource)];
+    if(previous!=std::pair{frame,pass}){previous={frame,pass};++maps.first[pass][kind];}
+    if(maps.logs<64 && frame>=maps.lastLog+600) {
+        maps.lastLog=frame;++maps.logs;
+        log << "{\"type\":\"maps\",\"frame\":" << frame << ",\"buffers\":" << maps.last.size() << ",\"kinds\":\"write,read_write,discard,no_overwrite\"";
+        for(unsigned p=0;p<3;++p) {
+            log << ",\"pass" << p << "\":{\"all\":[" << maps.all[p][2] << ',' << maps.all[p][3] << ',' << maps.all[p][4] << ',' << maps.all[p][5]
+                << "],\"firstInPass\":[" << maps.first[p][2] << ',' << maps.first[p][3] << ',' << maps.first[p][4] << ',' << maps.first[p][5] << "]}";
+        }
+        log << "}\n";log.flush();
+        maps.all={};maps.first={};
+    }
+    return true;
+}
 void Demand(uint64_t frame,int lane,int count) {
     if(!enabled || lane<0 || lane>=16 || count<=0)return;
     std::lock_guard lock(mutex);

@@ -1,7 +1,7 @@
 # Isolated high-profile capacity experiment. Atomic I/O/path guards are shared
 # with the existing practice transaction; no practice-flow setting is changed.
 $script:CapacityOriginalHash='e838736a38d9de5a83c5fa966c37805c3f9097a4ec193b0dc8602983cf8b9737'
-$script:CapacityModifiedHash='e11fd1dc2c9b27a9fd5fdf4c2755999febdcdb3e20ad37bffae3f5fc60d51e3e'
+$script:CapacityModifiedHash='83adb11bc15e6669fb1abaa0b0b78c49098e56def320fe8c0537209d31de7f34'
 
 function Get-InstanceCapacityPaths([string]$Game,[string]$Run) {
     $gamePath=[IO.Path]::GetFullPath($Game).TrimEnd('\')

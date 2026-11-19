@@ -118,12 +118,15 @@ bool mirrorPreview{};
 bool skipLeftReplayDraws{};
 unsigned rearMirrorDumps{};
 uint64_t skippedLeftDraws{},keptReplayDraws{},skippedRearUi{};
+// Diagnostic logging: rear-pass draws per engine stage slot (15 = other).
+std::array<uint32_t,16> rearStageDraws{};
 bool SkipDriverDraw(ID3D11DeviceContext* c) {
     if (!engine::ReplayingEye()) return false;
     // The rear mirror camera never shows the HUD: its screen-UI draws keep
     // every binding step (the UI placement still applies and restores) but
     // never reach the driver, so the mirrors show only the world behind.
     if (engine::RearMirrorPass()) {
+        if (diagnosticLogging) { const auto slot=engine::CurrentStage().slot;++rearStageDraws[slot<15?slot:15]; }
         ComPtr<ID3D11VertexShader> vs;c->VSGetShader(&vs,nullptr,nullptr);
         if (vs && ScreenUiVertexShader(replaytrace::ShaderFingerprint(vs.Get()))) {++skippedRearUi;return true;}
     }
@@ -698,6 +701,36 @@ bool StageBoundary(engine::StageStamp stage,const char* phase) {
                     }
                     static bool logged{};
                     if (!logged) {logged=true;Log("rear_mirror first_capture id=%llu copied=%u camera=%u",stage.id,copied,camera);}
+                    if (diagnosticLogging) {
+                        // Bounded own file: rear-pass draws per stage, Look Back flag changes
+                        // and four automatic mirror images after each Look Back release.
+                        static std::ofstream rearLog(output/L"rear-mirror-state.log",std::ios::binary|std::ios::trunc);
+                        static std::array<uint32_t,16> previous{};static int previousFlag=-2;
+                        static uint64_t lines{},lastLine{},dumpAt{};
+                        const int flag=engine::LookBackFlag();
+                        const auto now=frame.load();
+                        bool changed=flag!=previousFlag;
+                        for (unsigned i=0;i<16;++i) {
+                            const auto a=rearStageDraws[i],b=previous[i];
+                            if ((a>b?a-b:b-a)*8>std::max(a,b)+8) changed=true;
+                        }
+                        if (lines<2000 && (changed || now>=lastLine+600)) {
+                            ++lines;lastLine=now;
+                            rearLog << "frame=" << now << " look_back=" << flag << " draws";
+                            for (unsigned i=0;i<16;++i) if (rearStageDraws[i]) rearLog << " s" << i << '=' << rearStageDraws[i];
+                            const auto& vp=Mirror().RearCamera();
+                            rearLog << " vp_c2=" << vp[2] << ',' << vp[6] << ',' << vp[10] << " vp_c3=" << vp[3] << ',' << vp[7] << ',' << vp[11] << '\n';
+                            rearLog.flush();
+                        }
+                        if (previousFlag==1 && flag==0) dumpAt=now+90;
+                        if (previousFlag==-2 && flag==0) dumpAt=now+600;
+                        if (dumpAt && now>=dumpAt && rearMirrorDumps<4) {
+                            dumpAt=0;CaptureTexture(Mirror().RearImage(),"rear-mirror-"+std::to_string(rearMirrorDumps++),1024);
+                            rearLog << "frame=" << now << " dumped=rear-mirror-" << rearMirrorDumps-1 << '\n';rearLog.flush();
+                        }
+                        previousFlag=flag;previous=rearStageDraws;
+                    }
+                    rearStageDraws={};
                 } else if (eyePair && complete) {
                     // With no left replay, the right replay (pass 2) follows the native left image.
                     const unsigned eye=!strcmp(phase,"replay-complete")?engine::CurrentScene().pass-(engine::NativeLeftReplace()?1:0):0;
@@ -1273,6 +1306,10 @@ struct Mapped { ID3D11DeviceContext* context; ID3D11Resource* resource; UINT sub
 thread_local std::vector<Mapped> mappings;
 HRESULT STDMETHODCALLTYPE Map(ID3D11DeviceContext* c,ID3D11Resource* resource,UINT sub,D3D11_MAP kind,UINT flags,D3D11_MAPPED_SUBRESOURCE* mapped) {
     const auto hr=realMap(c,resource,sub,kind,flags,mapped);
+    if (SUCCEEDED(hr) && kind!=D3D11_MAP_READ && engine::InstanceUseRequested() && instancecapacity::Enabled()) {
+        const auto scene=engine::CurrentScene();
+        if (instancecapacity::Mapped(resource,kind,frame.load(),scene.replay?scene.pass:0)) engine::SampleInstanceUse();
+    }
     const bool witness=flicker::Observing();
     const bool screenUi=replaytrace::ScreenUiEnabled() || flatMenuUi.Enabled();
     const bool lighting=spotlightwitness::Enabled();
@@ -1705,6 +1742,22 @@ void RearMirrorOverlay(ID3D11DeviceContext* c,unsigned kind,std::span<const UINT
     if (!ps) return;
     const auto hash=replaytrace::ShaderFingerprint(ps.Get());
     if (!RearMirror::FindOverlay(hash)) return;
+    // Only the seated cockpit camera, steady for three frames: Look Back turns
+    // the view around (the camera follows its flag a frame late) and other
+    // cameras see the car from outside. Either would put other glass in the
+    // centre-mirror zone and stretch its learned outline for the whole stint.
+    // Coming back to the cockpit, the outline is learned again.
+    static uint64_t gateScene{};static unsigned steady{};
+    if (scene.id!=gateScene) {
+        gateScene=scene.id;
+        const bool cockpit=engine::CurrentCockpitCamera() && engine::LookBackFlag()!=1;
+        const bool wasOpen=steady>=3;
+        if (!cockpit) steady=0;
+        else if (steady<3 && ++steady==1) Mirror().ResetLearning();
+        static unsigned gateLogs{};
+        if (wasOpen!=(steady>=3) && gateLogs++<64) Log("rear_mirror overlay gate=%u scene=%llu frame=%llu",steady>=3,scene.id,frame.load());
+    }
+    if (steady<3) return;
     std::array<float,12> seat{};
     if (!engine::NativeSeatView(seat)) return;
     Mirror().SetSeat(seat);
@@ -1717,10 +1770,17 @@ void RearMirrorOverlay(ID3D11DeviceContext* c,unsigned kind,std::span<const UINT
     const auto result=Mirror().DrawOverlay(c,scene.id,hash,redraw,&call);
     if (result==RearMirror::OverlayResult::Failed) Log("rear_mirror overlay_failed=1 scene=%llu",scene.id);
     else if (result==RearMirror::OverlayResult::Drawn && Mirror().Overlays()>=rearOverlayLogged) {
-        rearOverlayLogged=Mirror().Overlays()+3600;
+        rearOverlayLogged=Mirror().Overlays()+(debug?240:3600);
         Log("rear_mirror overlays=%llu seat=%.3f,%.3f,%.3f forward=%.3f,%.3f,%.3f",Mirror().Overlays(),seat[0],seat[1],seat[2],seat[9],seat[10],seat[11]);
         if (debug) {
             const auto& vp=Mirror().RearCamera();
+            // Own bounded file: the rotating trace keeps only the last seconds.
+            static std::ofstream debugFile(output/L"rear-mirror-debug.log",std::ios::app);
+            static unsigned debugLines=0;
+            if (debugFile && debugLines++<4000)
+                debugFile << GetTickCount64() << " seat_fwd=" << seat[9] << ',' << seat[10] << ',' << seat[11]
+                    << " seat_right=" << seat[3] << ',' << seat[4] << ',' << seat[5]
+                    << " vp_c0=" << vp[0] << ',' << vp[4] << ',' << vp[8] << " vp_c3=" << vp[3] << ',' << vp[7] << ',' << vp[11] << std::endl;
             auto project=[&](float x,float y,float z,const char* name) {
                 float clip[4]{};for (int c=0;c<4;++c) clip[c]=x*vp[c]+y*vp[4+c]+z*vp[8+c];
                 Log("rear_mirror project %s clip=%.3f,%.3f,%.3f,%.3f ndc=%.3f,%.3f",name,clip[0],clip[1],clip[2],clip[3],

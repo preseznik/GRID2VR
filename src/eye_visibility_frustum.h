@@ -61,8 +61,22 @@ inline bool BuildMatrix(EyeVisibilityFrustum& candidate) {
     return ExtractPlanes(candidate.matrix,candidate.planes);
 }
 }
+// rearCoverage (optional rear-view mirrors): distance behind the eyes the
+// frustum must also enclose, for the rear camera, instead of the far larger
+// all-rotation volume. The apex retreats and the near plane comes back towards
+// it while keeping the default construction's far^2/near conditioning (about
+// 70,000), so float readback stays as tight: retreat R with eye depth F gives
+// near (R+F)^2/C, and R is the smallest with R-near >= rearCoverage.
+inline constexpr double rearRetreatConditioning=70000;
+inline double RearRetreat(double eyeDepth,double rearCoverage) {
+    constexpr double c=rearRetreatConditioning;
+    const double b=c-2*eyeDepth,discriminant=b*b-4*(eyeDepth*eyeDepth+c*rearCoverage);
+    if (!(b>0)) return 0;
+    return discriminant>=0 ? (b-std::sqrt(discriminant))/2 : b/2; // b/2: the most this conditioning allows
+}
 inline bool MakeEyeVisibilityFrustum(const VisibilityVolume& volume,const SceneView& visibility,
-                                    const SceneView& render,const SceneViews& views,EyeVisibilityFrustum& output) {
+                                    const SceneView& render,const SceneViews& views,EyeVisibilityFrustum& output,
+                                    double rearCoverage=0) {
     using namespace eye_visibility_detail;
     tracked_visibility_detail::Geometry geometry;
     if (!tracked_visibility_detail::Prepare(volume,visibility,render,views,geometry)) return false;
@@ -83,7 +97,10 @@ inline bool MakeEyeVisibilityFrustum(const VisibilityVolume& volume,const SceneV
     candidate.axes[2]=Cross(candidate.axes[0],candidate.axes[1]);
     if (!Normalize(candidate.axes[2])) return false;
     const double depthScale=(std::max)(1.,geometry.coverage.farDistance/750.);
-    const double apexRetreat=8.*depthScale*depthScale;
+    if (!std::isfinite(rearCoverage) || rearCoverage<0 || rearCoverage>1000) return false;
+    const double rearRetreat=rearCoverage>0 ? RearRetreat(geometry.coverage.farDistance,rearCoverage) : 0;
+    if (!std::isfinite(rearRetreat) || rearRetreat>20000) return false;
+    const double apexRetreat=(std::max)(8.*depthScale*depthScale,rearRetreat);
     for (size_t axis=0;axis<3;++axis)
         candidate.origin[axis]=(candidate.eyePoints[0][axis]+candidate.eyePoints[5][axis])*.5+
             apexRetreat*candidate.axes[2][axis];
@@ -112,6 +129,9 @@ inline bool MakeEyeVisibilityFrustum(const VisibilityVolume& volume,const SceneV
             candidate.slopes[2*axis+1]=(std::max)(candidate.slopes[2*axis+1],high);
         }
     }
+    if (rearCoverage>0)
+        candidate.nearDistance=(std::min)(candidate.nearDistance,
+            (std::max)(1.,candidate.farDistance*candidate.farDistance/rearRetreatConditioning));
     if (candidate.nearDistance<.05 || candidate.farDistance-candidate.nearDistance<25 ||
         candidate.farDistance>50001) return false;
     for (double value:candidate.slopes) if (!std::isfinite(value) || std::abs(value)>8) return false;

@@ -8,8 +8,9 @@ namespace grid2vr::instancecapacity {
 constexpr unsigned LaneCount=16;
 constexpr uint32_t MaxCapacity=16384;
 constexpr uint32_t Stride=40;
-// Exact observed native layouts. Candidate XML changes only high/main_scene;
-// test and medium retain the game's existing capacities.
+// Exact observed native layouts. The candidate XML raises main_scene (lanes 0
+// and 14) of test, high and medium to 4096; the rear mirror's culling behind
+// the car needs about 60 % more main-scene instances than the eyes alone.
 inline bool ExpectedCapacities(uint32_t style,uint32_t count,bool expanded,
                                std::array<uint32_t,LaneCount>& output) {
     if(count!=10)return false;
@@ -17,7 +18,7 @@ inline bool ExpectedCapacities(uint32_t style,uint32_t count,bool expanded,
     else if(style==3)output={1200,0,500,500,100,100,100,100,100,100,1000,100,100,100,1200,400};
     else if(style==4)output={800,0,300,300,100,100,100,100,100,100,350,100,100,100,800,400};
     else return false;
-    if(expanded && style==3)output[0]=output[14]=4096;
+    if(expanded)output[0]=output[14]=4096;
     return true;
 }
 // RVA 0x185965 refuses equality too; evaluate in wider arithmetic so a bad

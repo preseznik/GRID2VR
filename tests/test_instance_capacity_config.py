@@ -23,19 +23,22 @@ def fixture():
 
 
 class InstanceCapacityConfigTests(unittest.TestCase):
-    def test_only_high_main_scene_changes_and_original_is_unchanged(self):
+    def test_only_qualified_main_scenes_change_and_original_is_unchanged(self):
         source = fixture()
         before = signature(source)
         result, changes = capacity.transform(source)
-        self.assertEqual(changes, [dict(style='high', traversal='main_scene', attribute='instance_buffer', before=1200, after=4096)])
+        self.assertEqual(changes, [dict(style=name, traversal='main_scene', attribute='instance_buffer', before=1200, after=4096)
+                                   for name in ('test', 'high', 'medium')])
         self.assertEqual(signature(source), before)
-        result.find("setting_style[@name='high']/traversal_settings[@name='main_scene']").set('instance_buffer', '1200')
+        for name in ('test', 'high', 'medium'):
+            result.find(f"setting_style[@name='{name}']/traversal_settings[@name='main_scene']").set('instance_buffer', '1200')
         self.assertEqual(signature(result), before)
 
     def test_sufficient_capacity_is_a_noop(self):
         for value in (4096, 8000, 16384):
             source = fixture()
-            source.find("setting_style[@name='high']/traversal_settings[@name='main_scene']").set('instance_buffer', str(value))
+            for name in ('test', 'high', 'medium'):
+                source.find(f"setting_style[@name='{name}']/traversal_settings[@name='main_scene']").set('instance_buffer', str(value))
             result, changes = capacity.transform(source)
             self.assertEqual(changes, [])
             self.assertEqual(signature(result), signature(source))

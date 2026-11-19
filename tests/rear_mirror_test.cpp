@@ -74,6 +74,7 @@ int main() {
         auto flat=RearImage(Pack(1,2,3));ComPtr<ID3D11ShaderResourceView> view;
         CHECK(SUCCEEDED(device->CreateShaderResourceView(flat.Get(),nullptr,&view)));
         auto* raw=view.Get();context->PSSetShaderResources(slot,1,&raw);
+    mirror.SetSubstituteCube(true); // cube substitution is opt-in; the cube tests cover it
         CHECK(mirror.Apply(context.Get(),1,slot,DispatchNative)==RearMirror::Result::Skipped && Bound(slot)==view && !mirror.Pending());
     }
     // No rear image yet: the substitute is the game cube, un-flipped. The face
@@ -122,19 +123,25 @@ int main() {
     CHECK(mirror.Apply(context.Get(),3,slot,DispatchNative)==RearMirror::Result::Skipped && !mirror.Pending());
     raw=game.Get();context->PSSetShaderResources(slot,1,&raw);
 
-    // Mirror overlay: a surface where a left wing mirror sits (seat at the origin,
+    // Mirror overlay: a surface where the centre mirror sits (seat at the origin,
     // right +X, up +Y, forward +Z), drawn first by a stand-in "game" shader,
     // then again by the overlay. Shiny Metal constants: the rear image shows;
     // any other material: the game's pixels stay; game bindings are restored.
     constexpr char vertexCode[]=
         "struct O{float4 p:SV_Position;float4 c0:COLOR0;float4 c1:COLOR1;float4 t0:TEXCOORD0;float4 t1:TEXCOORD1;float4 t2:TEXCOORD2;float4 t4:TEXCOORD4;float4 t5:TEXCOORD5;};"
         "O main(uint i:SV_VertexID){O o=(O)0;float2 uv=float2((i<<1)&2,i&2);o.p=float4(uv*float2(2,-2)+float2(-1,1),.5,1);"
-        "o.t0=float4(-.5+o.p.x*.1,-.35+o.p.y*.06,.75,1);return o;}";
+        "o.t0=float4(.3+o.p.x*.1,.04+o.p.y*.03,.31,1);return o;}"; // centre mirror (SL)
+    constexpr char wingCode[]=
+        "struct O{float4 p:SV_Position;float4 c0:COLOR0;float4 c1:COLOR1;float4 t0:TEXCOORD0;float4 t1:TEXCOORD1;float4 t2:TEXCOORD2;float4 t4:TEXCOORD4;float4 t5:TEXCOORD5;};"
+        "O main(uint i:SV_VertexID){O o=(O)0;float2 uv=float2((i<<1)&2,i&2);o.p=float4(uv*float2(2,-2)+float2(-1,1),.5,1);"
+        "o.t0=float4(-.5+o.p.x*.1,-.35+o.p.y*.06,.75,1);return o;}"; // left wing mirror
     constexpr char gameCode[]="float4 main(float4 p:SV_Position):SV_Target{return float4(.25,.25,.25,1);}";
-    ComPtr<ID3DBlob> vsBlob,gameBlob;ComPtr<ID3D11VertexShader> vertex;ComPtr<ID3D11PixelShader> gamePixel;
+    ComPtr<ID3DBlob> vsBlob,wingBlob,gameBlob;ComPtr<ID3D11VertexShader> vertex,wing;ComPtr<ID3D11PixelShader> gamePixel;
     CHECK(SUCCEEDED(D3DCompile(vertexCode,sizeof(vertexCode)-1,nullptr,nullptr,nullptr,"main","vs_5_0",0,0,&vsBlob,nullptr)));
     CHECK(SUCCEEDED(D3DCompile(gameCode,sizeof(gameCode)-1,nullptr,nullptr,nullptr,"main","ps_5_0",0,0,&gameBlob,nullptr)));
     CHECK(SUCCEEDED(device->CreateVertexShader(vsBlob->GetBufferPointer(),vsBlob->GetBufferSize(),nullptr,&vertex)));
+    CHECK(SUCCEEDED(D3DCompile(wingCode,sizeof(wingCode)-1,nullptr,nullptr,nullptr,"main","vs_5_0",0,0,&wingBlob,nullptr)));
+    CHECK(SUCCEEDED(device->CreateVertexShader(wingBlob->GetBufferPointer(),wingBlob->GetBufferSize(),nullptr,&wing)));
     CHECK(SUCCEEDED(device->CreatePixelShader(gameBlob->GetBufferPointer(),gameBlob->GetBufferSize(),nullptr,&gamePixel)));
     constexpr UINT size=32;
     D3D11_TEXTURE2D_DESC colourDesc{size,size,1,1,DXGI_FORMAT_R32G32B32A32_FLOAT,{1,0},D3D11_USAGE_DEFAULT,D3D11_BIND_RENDER_TARGET};
@@ -155,13 +162,15 @@ int main() {
     CHECK(mirror.CaptureRear(context.Get(),9,RearImage(rearPixel).Get()));
     mirror.SetRearCamera({1,0,0,0, 0,1,0,0, 0,0,0,-1, 0,0,0,1});
     mirror.SetSeat({0,0,0, 1,0,0, 0,1,0, 0,0,1});
-    auto render=[&](const std::vector<float>& material,uint64_t scene) {
+    auto render=[&](const std::vector<float>& material,uint64_t scene,float eyeX=0,bool wingSurface=false) {
         const float clear[4]{0,0,0,0};context->ClearRenderTargetView(target.Get(),clear);context->ClearDepthStencilView(depthView.Get(),D3D11_CLEAR_DEPTH,1,0);
         auto* rt=target.Get();context->OMSetRenderTargets(1,&rt,depthView.Get());context->RSSetViewports(1,&viewport);
         context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);context->IASetInputLayout(nullptr);
-        context->VSSetShader(vertex.Get(),nullptr,0);context->PSSetShader(gamePixel.Get(),nullptr,0);
+        context->VSSetShader(wingSurface?wing.Get():vertex.Get(),nullptr,0);context->PSSetShader(gamePixel.Get(),nullptr,0);
         const auto materialBuffer=constantBuffer(material);
         ID3D11Buffer* buffers[2]{materialBuffer.Get(),frameConstants.Get()};context->PSSetConstantBuffers(0,2,buffers);
+        std::vector<float> camera(16*4,0.f);camera[14*4]=eyeX; // CameraParams.eyePositionWS
+        const auto cameraBuffer=constantBuffer(camera);auto* rawCamera=cameraBuffer.Get();context->PSSetConstantBuffers(3,1,&rawCamera);
         context->Draw(3,0);
         const auto result=mirror.DrawOverlay(context.Get(),scene,0x5036b5f4a70e7144ull,[](ID3D11DeviceContext* c,void*){c->Draw(3,0);},nullptr);
         CHECK(result==RearMirror::OverlayResult::Drawn);
@@ -183,5 +192,14 @@ int main() {
     CHECK(std::abs(mirrored[0]-mirrorValue(512))<.02f && std::abs(mirrored[1]-mirrorValue(256))<.02f && std::abs(mirrored[2]-mirrorValue(1023))<.02f && std::abs(mirrored[3]-1)<.01f);
     const auto untouched=render(paint,12);
     CHECK(std::abs(untouched[0]-.25f)<.001f && std::abs(untouched[2]-.25f)<.001f);
+    // Wing mirrors keep the game's own look (Shiny Metal there is untouched).
+    (void)render(shiny,20,0,true);const auto wingGlass=render(shiny,21,0,true);
+    CHECK(std::abs(wingGlass[0]-.25f)<.001f && std::abs(wingGlass[2]-.25f)<.001f);
+    // A fixed picture: the game's eye position (CameraParams b3) never moves
+    // the sampled spot (debug output = rear-image stripes).
+    mirror.SetDebug(true);
+    const auto atSeat=render(shiny,13),moved=render(shiny,14,.1f),distant=render(shiny,15,5.f);
+    mirror.SetDebug(false);
+    CHECK(std::abs(moved[0]-atSeat[0])<.001f && std::abs(moved[1]-atSeat[1])<.001f && std::abs(distant[0]-atSeat[0])<.001f && std::abs(distant[1]-atSeat[1])<.001f);
     std::puts("PASS: rear mirror cube un-flips the game cube, shows the rear camera, binds and restores exactly; mirror overlay paints only Shiny Metal");
 }

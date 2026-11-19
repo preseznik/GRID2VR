@@ -48,6 +48,10 @@ std::string SnapshotPhase(const char* phase);
 CameraStamp CurrentCamera();
 StageStamp CurrentStage();
 SceneStamp CurrentScene();
+// instance-use.request only: read-only instance-lane fill at an instance Map.
+bool InstanceUseRequested();
+int LookBackFlag();
+void SampleInstanceUse();
 // The renderer's second-eye submission is never a camera simulation update.
 bool ReplayingEye();
 bool CurrentCockpitCamera();

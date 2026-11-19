@@ -87,6 +87,8 @@ public:
     static constexpr float fovScale=2.f;
     // The seated cockpit camera: position, right, up, forward (world).
     void SetSeat(const std::array<float,12>& seat) { seat_=seat;seatValid_=true; }
+    // Forget the learned mirror outlines; the next overlay frame starts again.
+    void ResetLearning() { lastOverlayTick_=0; }
     using Redraw=void (*)(ID3D11DeviceContext* context,void* opaque);
     enum class OverlayResult { Drawn,Skipped,Failed };
     // Call right after the game's own draw, with its bindings still in place.
@@ -95,6 +97,9 @@ public:
     // Diagnostic: rear-image positions instead of the image; last frame's
     // per-mirror count and bounding box (see the shader) for left, centre, right.
     void SetDebug(bool debug) { debug_=debug; }
+    // Off by default: the game's own cube stays on the car and the side mirrors;
+    // Apply still builds the cube once per scene for the centre mirror's gain.
+    void SetSubstituteCube(bool substitute) { substitute_=substitute; }
     const std::array<float,16>& RearCamera() const { return viewProjection_; }
     bool ReadFeedback(std::array<int,96>& values);
     uint64_t Builds() const { return builds_; }
@@ -129,7 +134,7 @@ private:
     uint64_t overlayScene_{},overlays_{},lastOverlayTick_{};
     unsigned overlayRegister_{~0u};
     std::array<float,48> overlayData_{};
-    bool seatValid_{},overlayReady_{},overlayFailed_{},debug_{};
+    bool seatValid_{},overlayReady_{},overlayFailed_{},debug_{},substitute_{};
 };
 RearMirror& Mirror();
 }
