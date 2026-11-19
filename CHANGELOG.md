@@ -1,3 +1,11 @@
+# GRID2VR 0.2.25 — Experimental
+
+- **Rear-view mirror (experimental).** **Graphics → VR rendering → Rear-view mirrors (experimental)** shows the view behind the car in the centre mirror while you drive in VR cockpit view. The picture stays put when you move or lean your head, and stays right after Look Back or a camera change. The side mirrors keep the game's own look. It costs about 3 ms of CPU time per frame, so it is off by default and needs **Faster stereo** (Advanced).
+
+- **Fewer missing trackside objects.** During VR sessions, GRID 2's buffer for braking boards, barriers, marshals and similar trackside objects is larger, so the game no longer leaves some of them out when many are in view.
+
+- **Faster launches.** The launcher no longer repeats **Preparing local game assets** on every launch when your seat settings haven't changed.
+
 # GRID2VR 0.2.24 — Experimental
 
 - **Limit cockpit exposure works again.** With **Cockpit depth precision** on, 0.2.23 stopped applying **Limit cockpit exposure**, so the cockpit view could be blinding on bright tracks such as Barcelona. Both options now work together.
