@@ -1,3 +1,7 @@
+# GRID2VR 0.2.26 — Experimental
+
+- **Wheel controls after Windows re-registers your wheel.** A driver or G HUB update, plugging the wheel into another USB port, or reinstalling Windows can make Windows treat your wheel as a new device. Your bindings then still showed in **Driving controls**, but did nothing in the game, and force feedback was gone. Before each launch, the launcher now moves your bindings to the connected wheel of the same model and tells you it did. If a bound controller isn't connected, or two of the same model are connected so it can't tell which is yours, the launcher asks before starting instead of launching with dead controls.
+
 # GRID2VR 0.2.25 — Experimental
 
 - **Rear-view mirror (experimental).** **Graphics → VR rendering → Rear-view mirrors (experimental)** shows the view behind the car in the centre mirror while you drive in VR cockpit view. The picture stays put when you move or lean your head, and stays right after Look Back or a camera change. The side mirrors keep the game's own look. It costs about 3 ms of CPU time per frame, so it is off by default and needs **Faster stereo** (Advanced).
