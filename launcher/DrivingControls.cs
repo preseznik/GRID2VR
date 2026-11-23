@@ -159,6 +159,32 @@ internal sealed class DrivingControls
         Bindings.Add(binding);
     }
     public void ApplyXboxPreset() { foreach (var binding in XboxPreset()) Assign(binding); }
+    // Windows can give a wheel a new DirectInput instance (a driver or G HUB update,
+    // another USB port, a reinstall). The session opens only the exact instance, so
+    // the bindings would still show here but do nothing in the game. Before a launch,
+    // a bound DirectInput device that is not connected moves to the one connected,
+    // not otherwise bound device of the same product; anything else is reported.
+    // Keyboard and Xbox (slot) bindings are left alone.
+    internal (List<string> Retargeted, List<string> Missing) ResolveDevices(IReadOnlyList<(string Id, string Product, string Name)> connected)
+    {
+        List<string> retargeted = [], missing = [];
+        var direct = Bindings.Where(b => !b.Keyboard && b.DeviceType != "xinput_pad" && b.DeviceId.Length != 0).ToList();
+        var stored = direct.Select(b => b.DeviceId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var present = connected.Select(d => d.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var product in direct.Where(b => !present.Contains(b.DeviceId)).GroupBy(b => b.DeviceType, StringComparer.OrdinalIgnoreCase))
+        {
+            var lost = product.Select(b => b.DeviceId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var free = connected.Where(d => StringComparer.OrdinalIgnoreCase.Equals(d.Product, product.Key) && !stored.Contains(d.Id)).ToList();
+            if (lost.Count == 1 && free.Count == 1)
+            {
+                var target = free[0];
+                Bindings = Bindings.Select(b => StringComparer.OrdinalIgnoreCase.Equals(b.DeviceId, lost[0]) ? b with { DeviceId = target.Id, Device = target.Name } : b).ToList();
+                retargeted.Add(target.Name);
+            }
+            else missing.AddRange(product.GroupBy(b => b.DeviceId, StringComparer.OrdinalIgnoreCase).Select(g => g.First().Device.Length != 0 ? g.First().Device : g.Key));
+        }
+        return (retargeted, missing);
+    }
     // Session worker spec for every launch mode (tools/Driving-Controls.ps1). Wheels
     // precede an Xbox pad, as in the game's own input/paths.xml priorities.
     internal string? DeviceClaimSpec()

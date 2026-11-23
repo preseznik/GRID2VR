@@ -658,9 +658,33 @@ internal sealed partial class MainForm : LauncherForm
         return false;
     }
 
+    // Bound wheels must be the connected ones: a wheel Windows re-registered moves its
+    // bindings to it; a missing one is reported before the game starts without it.
+    private bool CheckDrivingDevices()
+    {
+        var controls = DrivingControls.Load(client.Root);
+        if (!controls.Enabled || controls.Bindings.All(b => b.Keyboard || b.DeviceType == "xinput_pad")) return true;
+        List<(string Id, string Product, string Name)> connected;
+        try { using var input = new DrivingInput(Handle); connected = input.Devices.Select(d => (d.Id, d.Product, d.Name)).ToList(); }
+        catch (Exception error) when (error is IOException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException) { return true; }
+        var (retargeted, missing) = controls.ResolveDevices(connected);
+        if (retargeted.Count != 0)
+        {
+            controls.Save(client.Root);
+            notice.Text = "Driving controls now use " + string.Join(", ", retargeted) + ": Windows re-registered it since your bindings were made.";
+        }
+        if (missing.Count == 0) return true;
+        var answer = MessageBox.Show(this, "These controllers from Driving controls are not connected: " + string.Join(", ", missing.Distinct()) + "." + Environment.NewLine + Environment.NewLine +
+            "Their bindings and force feedback will not work in this session. Connect them and launch again, or launch anyway?", "Driving controls",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+        if (answer == DialogResult.Yes) return true;
+        notice.Text = "Launch cancelled. Connect the controller, then launch again.";
+        return false;
+    }
+
     private async Task Launch(bool inVr)
     {
-        if (!EnsureCockpitTextures()) return;
+        if (!EnsureCockpitTextures() || !CheckDrivingDevices()) return;
         launchProgress?.Dispose();
         launchProgress = new LaunchProgressForm(inVr);
         launchProgress.Show(this);

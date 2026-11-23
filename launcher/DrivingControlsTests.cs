@@ -14,6 +14,30 @@ internal static class DrivingControlsTests
         var initial = DrivingControls.Load(root); Check(!initial.Enabled && initial.Bindings.Count == 0 && initial.ListenAllDevices && initial.Transmission == "game" && initial.SteeringLinearity == 0 && initial.ClutchShiftThreshold == 50);
         var client = new SessionClient(root);
         Check(client.ExportDrivingControls() is null);
+        // A wheel Windows re-registered keeps its bindings; a missing one is reported.
+        const string g29 = "{C24F046D-0000-0000-0000-504944564944}", pedals = "{B6771DD2-0000-0000-0000-504944564944}";
+        const string oldWheel = "{267D2D20-E1EA-11F0-8005-444553540000}", newWheel = "{9A0C1E40-F1B2-11F0-8001-444553540000}";
+        const string pedalId = "{11111111-0000-11F0-8000-444553540000}";
+        DrivingControls Wheel() => new() { Enabled = true, Bindings = [
+            new() { Action = "Steer Left", DeviceId = oldWheel, Device = "G29", DeviceType = g29, Input = "di_x_axis", Calibration = "biDirLower" },
+            new() { Action = "Steer Right", DeviceId = oldWheel, Device = "G29", DeviceType = g29, Input = "di_x_axis", Calibration = "biDirUpper" },
+            new() { Action = "Brake", DeviceId = pedalId, Device = "Pedals", DeviceType = pedals, Input = "di_y_axis" },
+            new() { Action = "Pause", DeviceId = "keyboard", Device = "Keyboard", DeviceType = "keyboard", Input = "Escape" },
+            new() { Action = "Accelerate", DeviceId = "xinput:0", Device = "Xbox controller", DeviceType = "xinput_pad", Input = "xinput_right_trigger" }] };
+        var moved = Wheel(); var (retargeted, missing) = moved.ResolveDevices([(newWheel, g29, "G29 Racing Wheel"), (pedalId, pedals, "Pedals")]);
+        Check(retargeted.SequenceEqual(["G29 Racing Wheel"]) && missing.Count == 0);
+        Check(moved.Bindings.Where(b => b.DeviceType == g29).All(b => b.DeviceId == newWheel && b.Device == "G29 Racing Wheel"));
+        Check(moved.Bindings.Single(b => b.Action == "Brake").DeviceId == pedalId && moved.Bindings.Single(b => b.Action == "Accelerate").DeviceId == "xinput:0");
+        var same = Wheel(); (retargeted, missing) = same.ResolveDevices([(oldWheel.ToLowerInvariant(), g29, "G29"), (pedalId, pedals, "Pedals")]);
+        Check(retargeted.Count == 0 && missing.Count == 0 && same.Bindings.SequenceEqual(Wheel().Bindings));
+        var absent = Wheel(); (retargeted, missing) = absent.ResolveDevices([(pedalId, pedals, "Pedals")]);
+        Check(retargeted.Count == 0 && missing.SequenceEqual(["G29"]) && absent.Bindings.SequenceEqual(Wheel().Bindings));
+        // Two connected wheels of that product: ambiguous, so nothing moves.
+        var twins = Wheel(); (retargeted, missing) = twins.ResolveDevices([(newWheel, g29, "G29"), ("{22222222-0000-11F0-8000-444553540000}", g29, "G29"), (pedalId, pedals, "Pedals")]);
+        Check(retargeted.Count == 0 && missing.SequenceEqual(["G29"]) && twins.Bindings.SequenceEqual(Wheel().Bindings));
+        // Another product connected never takes over the wheel's bindings.
+        var other = Wheel(); (retargeted, missing) = other.ResolveDevices([(newWheel, "{0E8F0003-0000-0000-0000-504944564944}", "Gamepad")]);
+        Check(retargeted.Count == 0 && missing.Contains("G29") && missing.Contains("Pedals") && other.Bindings.SequenceEqual(Wheel().Bindings));
         var preset = new DrivingControls { Enabled = true, Bindings = DrivingControls.XboxPreset() };
         Check(preset.Bindings.All(b => b.DeadZone == 0 && b.Saturation == 1));
         preset.Save(root); var roundtrip = DrivingControls.Load(root);
