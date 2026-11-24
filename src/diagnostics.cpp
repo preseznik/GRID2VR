@@ -856,6 +856,22 @@ HRESULT STDMETHODCALLTYPE Present(IDXGISwapChain* chain,UINT sync,UINT flags) {
     backgroundplay::ObserveWindow(windowState);
     dlccockpit::Present();
     if(runtimeSession)seat::Present(chain,realDraw);
+    if(runtimeSession && diagnosticLogging) {
+        // Diagnostic Look Back hold for unattended xr-sim checks (dlccockpit::DiagnosticLookBack).
+        // Polled every 15 frames; removing the request releases the byte once.
+        static bool requested{},held{};static int lastResult=-2;static unsigned lines{},releaseTries{};
+        if(f%15==0) {std::error_code ignored;requested=std::filesystem::is_regular_file(output/L"look-back-hold.request",ignored);}
+        if(requested || held) {
+            const int result=dlccockpit::DiagnosticLookBack(requested);
+            if(requested) {held=result==1 || held;releaseTries=0;}
+            else held=result==-1 && ++releaseTries<600; // Retry a refused release for ~10 s.
+            if(result!=lastResult && lines<64) {
+                ++lines;static std::ofstream holdLog(output/L"look-back-hold.log",std::ios::binary|std::ios::trunc);
+                holdLog << "frame=" << f << " requested=" << requested << " result=" << result << " flag=" << engine::LookBackFlag() << "\n";holdLog.flush();
+            }
+            lastResult=result;
+        }
+    }
     LARGE_INTEGER now{},frequency{}; QueryPerformanceCounter(&now); QueryPerformanceFrequency(&frequency);
     static LONGLONG previous{};
     const double ms=previous ? 1000.0*(now.QuadPart-previous)/frequency.QuadPart : 0;

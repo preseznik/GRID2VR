@@ -1,6 +1,7 @@
 #include "dlc_cockpit.h"
 #include "seat_camera_host.h"
 #include <windows.h>
+#include <bit>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -60,6 +61,63 @@ void PairTests() {
         forward=a;reverse=b;reverse[0x19]='x';CHECK(!PatchPair(forward,reverse,table,row,hide));
         forward=a;CHECK(!PatchPair(forward,forward,table,row,hide));
         CHECK(!PatchPair(forward,std::span<uint8_t>(forward).subspan(1),table,row,hide));
+    }
+}
+// Bytes the VR rear Look Back view may differ in from the seat-based reverse view.
+bool RearByte(size_t byte) {
+    return (byte>=0x2230 && byte<0x223c) || (byte>=0x10 && byte<0x14) || (byte>=0xf4 && byte<0xf8) || byte==poseCacheValidOffset;
+}
+void LookBackTests() {
+    constexpr uint32_t table=0x1109ef0;
+    namespace seat=grid2vr::seat;
+    for(size_t i=0;i<seat::baseCars.size();++i)CHECK(!std::strcmp(seat::baseRearViews[i].first,seat::baseCars[i].code));
+    for(size_t car=0;car<cars.size();++car)for(bool hide:{false,true}) {
+        auto forward=ObjectFor(car,0,table),reverse=ObjectFor(car,1,table),flatForward=forward,flatReverse=reverse;
+        const Row row{car,cars[car].seat};
+        CHECK(PatchPair(flatForward,flatReverse,table,row,hide));
+        CHECK(PatchPair(forward,reverse,table,row,hide,0,true));
+        // VR: only the reverse (Look Back) view moves to the car's stock rear offset, stock near.
+        CHECK(forward==flatForward);
+        for(size_t i=0;i<3;++i)CHECK(FloatAt(reverse,0x2230+i*4)==cars[car].original[1].values[i]);
+        CHECK(FloatAt(reverse,0x10)==lookBackNear && FloatAt(reverse,0xf4)==lookBackNear);
+        for(size_t byte=0;byte<objectBytes;++byte)if(!RearByte(byte))CHECK(reverse[byte]==flatReverse[byte]);
+        CHECK(PatchedPair(forward,reverse,table,row,hide,0,true));
+        CHECK(!PatchedPair(forward,reverse,table,row,hide));
+        CHECK(!PatchedPair(flatForward,flatReverse,table,row,hide,0,true));
+        // A seat adjustment moves the rear view by the same amount.
+        Row moved=row;moved.seat[1]+=.05f;forward=ObjectFor(car,0,table);reverse=ObjectFor(car,1,table);
+        CHECK(PatchPair(forward,reverse,table,moved,hide,0,true));
+        CHECK(std::abs(FloatAt(reverse,0x2234)-(cars[car].original[1].values[1]+.05f))<1e-5f);
+    }
+    for(size_t car=0;car<seat::CarCount;++car)for(bool desktop:{false,true}) {
+        const bool base=car<seat::baseCars.size();
+        seat::CameraSettings settings{car,{3,-4,5},0,desktop,false};
+        seat::CameraPair pair,seated;CHECK(seat::ExpectedPair(settings,table,pair));CHECK(seat::ExpectedPair(settings,table,seated,false));
+        CHECK(pair[0]==seated[0]);
+        CHECK(FloatAt(pair[0],0x10)==.02f && FloatAt(pair[0],0xf4)==.02f);
+        CHECK(FloatAt(pair[1],0x10)==(desktop?.02f:lookBackNear) && FloatAt(pair[1],0xf4)==(desktop?.02f:lookBackNear));
+        if(desktop)CHECK(pair[1]==seated[1]);
+        else {
+            // The rear offset is the stock rear position plus exactly the seat view's adjustment.
+            const size_t dlc=car-seat::baseCars.size();
+            for(size_t i=0;i<3;++i) {
+                const float rear=base?seat::baseRearViews[car].second[i]:cars[dlc].original[1].values[i];
+                const float origin=base?seat::baseCars[car].views[1].values[i]:cars[dlc].seat[i];
+                CHECK(std::abs((FloatAt(pair[1],0x2230+i*4)-rear)-(FloatAt(seated[1],0x2230+i*4)-origin))<1e-5f);
+            }
+        }
+        for(size_t byte=0;byte<objectBytes;++byte)if(!RearByte(byte))CHECK(pair[1][byte]==seated[1][byte]);
+        // A base bank loads its reverse view at the seat; VR accepts exactly that view as pending.
+        auto loaded=seated[1];const auto original=loaded;
+        const bool pending=seat::PendingLookBack(loaded,settings,table);
+        CHECK(pending==(!desktop && base));
+        if(pending) {
+            CHECK(loaded[poseCacheValidOffset]==0);
+            for(size_t byte=0;byte<objectBytes;++byte)if(byte!=poseCacheValidOffset)CHECK(loaded[byte]==pair[1][byte]);
+        } else CHECK(loaded==original);
+        auto written=pair[1];CHECK(!seat::PendingLookBack(written,settings,table) || desktop);CHECK(desktop || written==pair[1]);
+        auto drifted=original;drifted[0x2237]^=1;const auto driftedBefore=drifted;
+        CHECK(!seat::PendingLookBack(drifted,settings,table) && drifted==driftedBefore);
     }
 }
 void RequestTests() {
@@ -191,13 +249,43 @@ void SeatHostTests(uint8_t* image) {
     TestSetup(Address(image),dlc,true);
     seat::SessionRequest request{};request.count=seat::CarCount;request.positions=true;
     for(size_t car=0;car<seat::CarCount;++car)request.rows[car]={car,{3,-4,5}};
-    const auto load=[&](size_t car) {
+    const auto loadWith=[&](size_t car,const seat::SessionRequest& from) {
         graph.Load(0);std::memcpy(graph.owner.data()+0x564,seat::CarCode(car),4);
-        seat::CameraPair expected;CHECK(seat::ExpectedPair(request.Applied(car),table,expected));
+        seat::CameraPair expected;CHECK(seat::ExpectedPair(from.Applied(car),table,expected));
         graph.front=expected[0];graph.rear=expected[1];
         Put(graph.front.data(),0x60,Address(graph.car.data())+0x12c);Put(graph.rear.data(),0x60,Address(graph.car.data())+0x12c);
         graph.front[poseCacheValidOffset]=graph.rear[poseCacheValidOffset]=1;
     };
+    const auto load=[&](size_t car) {loadWith(car,request);};
+    {
+        // A VR base bank loads its reverse view at the seat. The host stores the stock rear
+        // offset and near (and clears the pose-valid byte) and nothing else; DLC pairs already carry it.
+        auto vr=request;vr.desktop=false;vr.fov=0;
+        seat::CameraHost host;CHECK(host.TestInitialize(Address(image),vr));
+        const auto loadSeated=[&](size_t car) {
+            loadWith(car,vr);seat::CameraPair seated;CHECK(seat::ExpectedPair(vr.Applied(car),table,seated,false));
+            graph.rear=seated[1];Put(graph.rear.data(),0x60,Address(graph.car.data())+0x12c);graph.rear[poseCacheValidOffset]=1;
+        };
+        for(size_t car:{size_t(0),seat::baseCars.size()-1}) {
+            loadSeated(car);
+            const auto a=graph.front,b=graph.rear;const auto applied=vr.Applied(car);
+            CHECK(host.Update([&](size_t selected,bool changed){CHECK(selected==car && changed);return applied;}));
+            seat::CameraPair expected;CHECK(seat::ExpectedPair(applied,table,expected));
+            CHECK(graph.front==a && graph.rear[poseCacheValidOffset]==0);
+            for(size_t i=0;i<3;++i)CHECK(FloatAt(graph.rear,0x2230+i*4)==FloatAt(expected[1],0x2230+i*4));
+            CHECK(FloatAt(graph.rear,0x10)==lookBackNear && FloatAt(graph.rear,0xf4)==lookBackNear);
+            for(size_t byte=0;byte<objectBytes;++byte)if(!RearByte(byte))CHECK(graph.rear[byte]==b[byte]);
+            graph.rear[poseCacheValidOffset]=1;
+            const auto front=graph.front,rear=graph.rear;
+            CHECK(host.Update([&](size_t selected,bool changed){CHECK(selected==car && !changed);return applied;}));
+            CHECK(graph.front==front && graph.rear==rear);
+            // Any other loaded reverse view is not ours to overwrite.
+            loadSeated(car);const float foreign=.1f;Put(graph.rear.data(),0x10,foreign);Put(graph.rear.data(),0xf4,foreign);
+            const auto c=graph.front,d=graph.rear;
+            CHECK(!host.Update([&](size_t,bool){return applied;}));CHECK(graph.front==c && graph.rear==d);
+        }
+        host.Stop();
+    }
     for(bool desktop:{false,true}) {
         request.desktop=desktop;request.fov=desktop?10:0;
         load(0);seat::CameraHost host;CHECK(host.TestInitialize(Address(image),request));
@@ -292,7 +380,7 @@ void LiveTests(uint8_t* image) {
     for(size_t car=0;car<cars.size();++car) {
         graph.Load(car);Put(image,0xe5917c,0u);Present();Present();
         CHECK(TestCounts(car)[0]==1 && TestCounts(car)[1]==0);
-        CHECK(PatchedPair(graph.front,graph.rear,graph.base+mountedTableRva,request.rows[car],false));
+        CHECK(PatchedPair(graph.front,graph.rear,graph.base+mountedTableRva,request.rows[car],false,0,true));
     }
     graph.Load(0);Put(image,0xe5917c,0u);const auto originalFront=graph.front,originalRear=graph.rear;
     Put(image,0xe61010,Address(graph.replay.data()));Present();
@@ -308,7 +396,7 @@ void LiveTests(uint8_t* image) {
         graph.Load(car);const auto a=graph.front,b=graph.rear;
         const std::vector<uint8_t> codeBefore(image,image+imageBytes);
         Present();CHECK(TestCounts(car)[0]==1);
-        CHECK(PatchedPair(graph.front,graph.rear,graph.base+mountedTableRva,request.rows[car],false));
+        CHECK(PatchedPair(graph.front,graph.rear,graph.base+mountedTableRva,request.rows[car],false,0,true));
         CHECK(graph.front[poseCacheValidOffset]==0 && graph.rear[poseCacheValidOffset]==0);
         CHECK(std::equal(codeBefore.begin(),codeBefore.end(),image));
         for(size_t i=0;i<objectBytes;++i) {
@@ -367,7 +455,7 @@ void LiveTests(uint8_t* image) {
 }
 int main(int argc,char** argv) {
     try {
-        CHECK(argc==2);RequestTests();PairTests();DesktopFovTests();auto* image=Image(argv[1]);LiveTests(image);SeatHostTests(image);VirtualFree(image,0,MEM_RELEASE);
+        CHECK(argc==2);RequestTests();PairTests();LookBackTests();DesktopFovTests();auto* image=Image(argv[1]);LiveTests(image);SeatHostTests(image);VirtualFree(image,0,MEM_RELEASE);
         std::cout<<"25 DLC and 2 embedded base-car pairs, 32 relocated code guards, one-time pose cache refresh, unchanged executable bytes, readiness, live ownership, AI/provider refusal and reloaded graph tests passed.\n";return 0;
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}
 }

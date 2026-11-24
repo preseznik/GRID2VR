@@ -14,6 +14,11 @@ namespace grid2vr::dlccockpit {
 void Prepare(uintptr_t base,const std::filesystem::path& output);
 void Present();
 void Stop();
+// Diagnostic only (look-back-hold.request with diagnostic logging): set or clear the camera
+// manager's Look Back byte (+0x759) so an unattended xr-sim run shows the cockpit reverse
+// view without game input. Only while the selected camera is the identified local cockpit's
+// bonnet view whose +0x70 alternate is its bonnet_reverse. Returns the byte now held, or -1.
+int DiagnosticLookBack(bool hold);
 #ifdef GRID2VR_DLC_COCKPIT_TEST
 struct Request;
 bool TestCodeMatches(uintptr_t image);
@@ -72,6 +77,14 @@ inline constexpr std::array<Car,27> cars{{
     {"z06",{0.4379f,1.0799f,-0.4141f},{{{{0.f,1.0814f,0.6086f,0.085f,0.f,0.1f,0.f,0.04f,0.02f,0.2f,0.2f,0.2f,-0.1423f,0.f,0.4107f,0.1f,1.4f,1.f,0.f,60.f,1.f,0.1f},{1,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}},{{0.f,1.1784f,-1.7511f,0.2008f,0.f,0.1f,0.f,0.f,0.f,0.2f,0.2f,0.2f,0.f,0.f,0.f,0.f,0.f,0.f,3.142f,65.f,1.f,0.1f},{0,1,1,1,1,0,1,1,0,0,0,0,0,0,-1,-1,-1}}}}},
 }};
 inline constexpr auto dlcCars=std::span{cars}.first<25>();
+// VR cockpit Look Back (ProJict ed544cc2). Every cockpit's bonnet_reverse view sat at the
+// seat turned 180 degrees, so Look Back looked into the headrest and cabin. In VR it takes
+// the car's stock reverse position instead (centreline, above the rear: the authored
+// original[1] offset here, seat_cars.h baseRearViews for base cars) moved by the player's
+// seat adjustment, with the stock 0.1 m near plane and no pitch. A near-plane clip at the
+// seat was tried and rejected: GRID 2 leaves the clipped area undrawn (stale frames).
+// The game switches to this view itself while Look Back is held, so both eyes match.
+inline constexpr float lookBackNear=.1f;
 struct Row {size_t car{};std::array<float,3> seat{};};
 struct Request {bool hideDriver{},desktop{};int fovOffset{};std::array<Row,cars.size()> rows{};size_t count{};};
 inline bool ValidSession(const Request& request,bool runtime,bool xrSession,bool xrProjection) {
@@ -134,7 +147,7 @@ inline bool ValidObject(std::span<const uint8_t> object,uint32_t table,size_t ca
         if(expected.flags[i]>=0 && object[flagOffsets[i]]!=expected.flags[i])return false;
     return true;
 }
-inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint32_t table,const Row& row,bool hideDriver,int fovOffset=0) {
+inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint32_t table,const Row& row,bool hideDriver,int fovOffset=0,bool clearLookBack=false) {
     const auto a=reinterpret_cast<uintptr_t>(forward.data()),b=reinterpret_cast<uintptr_t>(reverse.data());
     if(fovOffset < -30 || fovOffset > 30 || !ValidSeat(row.car,row.seat) || (a>b?a-b:b-a)<objectBytes ||
        !ValidObject(forward,table,row.car,0) || !ValidObject(reverse,table,row.car,1))return false;
@@ -142,11 +155,14 @@ inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint
         if(view.values[19]+fovOffset<15.f || view.values[19]+fovOffset>140.f)return false;
     for(size_t view=0;view<2;++view) {
         auto object=view?reverse:forward;
+        const bool rear=view && clearLookBack;
+        const float clip=rear?lookBackNear:.02f;
         for(size_t i=0;i<18;++i) {
-            const float value=i<3?row.seat[i]:(i==5?.02f:0.f);
+            const float seat=rear && i<3?cars[row.car].original[1].values[i]+(row.seat[i]-cars[row.car].seat[i]):row.seat[i];
+            const float value=i<3?seat:(i==5?clip:0.f);
             std::memcpy(object.data()+floatOffsets[i],&value,4);
         }
-        const float clip=.02f;std::memcpy(object.data()+0xf4,&clip,4); // Initialized native near-clip cache.
+        std::memcpy(object.data()+0xf4,&clip,4); // Initialized native near-clip cache.
         if(fovOffset) {
             const float fov=cars[row.car].original[view].values[19]+fovOffset;
             std::memcpy(object.data()+0x14,&fov,4);
@@ -159,7 +175,7 @@ inline bool PatchPair(std::span<uint8_t> forward,std::span<uint8_t> reverse,uint
     }
     return true;
 }
-inline bool PatchedPair(std::span<const uint8_t> forward,std::span<const uint8_t> reverse,uint32_t table,const Row& row,bool hideDriver,int fovOffset=0) {
+inline bool PatchedPair(std::span<const uint8_t> forward,std::span<const uint8_t> reverse,uint32_t table,const Row& row,bool hideDriver,int fovOffset=0,bool clearLookBack=false) {
     if(forward.size()!=objectBytes || reverse.size()!=objectBytes || !ValidSeat(row.car,row.seat))return false;
     std::array<std::array<uint8_t,objectBytes>,2> expected{};
     for(size_t view=0;view<2;++view) {
@@ -171,7 +187,7 @@ inline bool PatchedPair(std::span<const uint8_t> forward,std::span<const uint8_t
         for(size_t i=0;i<flagOffsets.size();++i)
             if(original.flags[i]>=0)expected[view][flagOffsets[i]]=original.flags[i];
     }
-    if(!PatchPair(expected[0],expected[1],table,row,hideDriver,fovOffset))return false;
+    if(!PatchPair(expected[0],expected[1],table,row,hideDriver,fovOffset,clearLookBack))return false;
     // A native update may have rebuilt the pose cache. Compare authored fields
     // only, so subsequent Presents leave that rebuilt cache untouched.
     for(size_t view=0;view<2;++view) {

@@ -19,7 +19,7 @@ struct CameraSettings {size_t car{};Position position;int fov{};bool desktop{},h
 inline bool Valid(const CameraSettings& value) {
     return value.car<CarCount && Valid(value.position) && value.fov>=-30 && value.fov<=30 && (value.desktop || !value.fov);
 }
-inline bool ExpectedPair(const CameraSettings& settings,uint32_t table,CameraPair& output) {
+inline bool ExpectedPair(const CameraSettings& settings,uint32_t table,CameraPair& output,bool rearLookBack=true) {
     if(!Valid(settings))return false;
     CameraPair next{};
     const bool base=settings.car<baseCars.size();
@@ -34,24 +34,43 @@ inline bool ExpectedPair(const CameraSettings& settings,uint32_t table,CameraPai
             std::memcpy(object.data()+dlccockpit::floatOffsets[i],&original.values[i],4);
         for(size_t i=0;i<dlccockpit::flagOffsets.size();++i)
             if(original.flags[i]>=0)object[dlccockpit::flagOffsets[i]]=static_cast<uint8_t>(original.flags[i]);
+        // VR Look Back uses the car's stock rear view (dlccockpit::lookBackNear).
+        const bool rear=view && rearLookBack && !settings.desktop;
         if(base) {
             const float offsets[]{-settings.position.right/100.f,settings.position.height/100.f,settings.position.forward/100.f};
             for(size_t i=0;i<3;++i) {
-                const float value=original.values[i]+offsets[i];
+                const float value=(rear?baseRearViews[settings.car].second[i]:original.values[i])+offsets[i];
                 std::memcpy(object.data()+dlccockpit::floatOffsets[i],&value,4);
             }
             object[dlccockpit::flagOffsets[2]]=settings.hideDriver?1:0;
             const float fov=original.values[19]+settings.fov;
             if(fov<15 || fov>140)return false;
             std::memcpy(object.data()+0x14,&fov,4);
+            if(rear) {
+                std::memcpy(object.data()+0x10,&dlccockpit::lookBackNear,4);
+                std::memcpy(object.data()+0xf4,&dlccockpit::lookBackNear,4);
+            }
         }
     }
     if(!base) {
         const auto car=settings.car-baseCars.size();auto position=dlccockpit::dlcCars[car].seat;
         position[0]-=settings.position.right/100.f;position[1]+=settings.position.height/100.f;position[2]+=settings.position.forward/100.f;
-        if(!dlccockpit::PatchPair(next[0],next[1],table,{car,position},settings.hideDriver,settings.fov))return false;
+        if(!dlccockpit::PatchPair(next[0],next[1],table,{car,position},settings.hideDriver,settings.fov,rearLookBack && !settings.desktop))return false;
     }
     output=next;return true;
+}
+inline bool Matches(std::span<const uint8_t> object,const CameraObject& expected,const CameraSettings& settings,size_t view,uint32_t table);
+// A base cockpit's reverse view loads from its camera bank at the seat. In VR, accept exactly
+// that complete authored view as the rear Look Back view still to be written: the snapshot
+// takes the rear offset and near words and clears its pose-valid byte; the host stores them.
+inline bool PendingLookBack(std::span<uint8_t> reverse,const CameraSettings& settings,uint32_t table) {
+    if(reverse.size()!=dlccockpit::objectBytes || settings.desktop || settings.car>=baseCars.size())return false;
+    CameraPair seat,rear;
+    if(!ExpectedPair(settings,table,seat,false) || !ExpectedPair(settings,table,rear) || !Matches(reverse,seat[1],settings,1,table))return false;
+    for(size_t at:{size_t(0x2230),size_t(0x2234),size_t(0x2238),size_t(0x10),size_t(0xf4)})
+        std::memcpy(reverse.data()+at,rear[1].data()+at,4);
+    reverse[dlccockpit::poseCacheValidOffset]=0;
+    return true;
 }
 inline bool Matches(std::span<const uint8_t> object,const CameraObject& expected,const CameraSettings& settings,size_t view,uint32_t table) {
     if(object.size()!=dlccockpit::objectBytes || view>1 || !Valid(settings) || object[dlccockpit::poseCacheValidOffset]>1)return false;

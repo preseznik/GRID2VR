@@ -253,13 +253,15 @@ void Present() {
         // full original pair below still matches, then let the tool reselect it.
         seatOwnsPair=false;
     }
-    if(PatchedPair(snapshots[0],snapshots[1],static_cast<uint32_t>(base+mountedTableRva),row,request.hideDriver,request.fovOffset)) {
+    // VR cockpits clear the player's car from Look Back; the flat desktop cockpit is unchanged.
+    const bool clearLookBack=!request.desktop;
+    if(PatchedPair(snapshots[0],snapshots[1],static_cast<uint32_t>(base+mountedTableRva),row,request.hideDriver,request.fovOffset,clearLookBack)) {
         if(reason!=std::string_view("applied_loaded_camera_data") && reason!=std::string_view("already_patched_loaded_camera_data")) {
             ++alreadyPatchedPairs;Status("already_patched_loaded_camera_data");
         }
         return;
     }
-    if(!PatchPair(snapshots[0],snapshots[1],static_cast<uint32_t>(base+mountedTableRva),row,request.hideDriver,request.fovOffset)) {
+    if(!PatchPair(snapshots[0],snapshots[1],static_cast<uint32_t>(base+mountedTableRva),row,request.hideDriver,request.fovOffset,clearLookBack)) {
         if(!hasRejected || !(lastRejected==graph)) {++rejected[row.car];++rejectedPairs;lastRejected=graph;hasRejected=true;}
         Status("camera_original_values_rejected");return;
     }
@@ -284,6 +286,19 @@ void Present() {
         written=Store(graph.views[i]+poseCacheValidOffset,snapshots[i].data()+poseCacheValidOffset,1);
     if(!written) {failed=true;enabled=false;reason="camera_data_write_failed";WriteStatus();return;}
     ++applied[row.car];++appliedPairs;hasRejected=false;reason="applied_loaded_camera_data";WriteStatus();
+}
+int DiagnosticLookBack(bool hold) {
+    std::lock_guard lock(mutex);
+    if(!base || stopped || !CodeMatches(base))return -1;
+    Graph graph{};
+    if(!Resolve(graph,[](std::string_view code) {return seat::FindCar(code);}))return -1;
+    uintptr_t root{},state{},owner{},manager{},selected{},alternate{};uint8_t flag{};
+    if(!Pointer(base+0xdef810,root) || !Pointer(root+0x10,state) || !Pointer(state+0x14fc,owner) ||
+       !Pointer(owner+0x33c,manager) || !Pointer(manager+0x748,selected) || !Read(manager+0x759,flag) || flag>1 ||
+       selected!=graph.views[0] || !Pointer(selected+0x70,alternate) || alternate!=graph.views[1])return -1;
+    const uint8_t wanted=hold?1:0;
+    if(flag!=wanted && !Store(manager+0x759,&wanted,1))return -1;
+    return wanted;
 }
 void Stop() {
     stopped=true;enabled=false;std::lock_guard lock(mutex);if(!requested || finished)return;finished=true;
@@ -357,6 +372,8 @@ bool CameraHost::Update(const std::function<CameraSettings(size_t,bool)>& edit) 
     std::lock_guard lock(dlccockpit::mutex);
     dlccockpit::Graph graph;CameraPair pair;
     if(!s.Capture(graph,pair))return false;
+    const auto before=pair; // Native bytes; pair may take the pending VR rear Look Back view below.
+    PendingLookBack(pair[1],s.request.Applied(graph.row),static_cast<uint32_t>(s.base+dlccockpit::mountedTableRva));
     bool changed=!s.haveLast || graph!=s.last;
     auto from=changed?s.request.Applied(graph.row):s.applied;
     CameraPair expected;
@@ -367,15 +384,16 @@ bool CameraHost::Update(const std::function<CameraSettings(size_t,bool)>& edit) 
         s.reason="camera_authored_values_rejected";return false;
     }
     const auto to=edit(graph.row,changed);
-    const auto before=pair;
     if(!EditPair(pair[0],pair[1],table,from,to)) {s.reason="seat_edit_rejected";return false;}
     dlccockpit::Graph fresh;CameraPair current;
-    if(!s.Capture(fresh,current) || fresh!=graph || !Matches(current[0],expected[0],from,0,table) || !Matches(current[1],expected[1],from,1,table)) {
+    const bool captured=s.Capture(fresh,current);
+    if(captured)PendingLookBack(current[1],from,table);
+    if(!captured || fresh!=graph || !Matches(current[0],expected[0],from,0,table) || !Matches(current[1],expected[1],from,1,table)) {
         s.reason="camera_owner_changed";return false;
     }
     bool written=true;
     for(size_t view=0;view<2 && written;++view) {
-        for(auto at:{size_t(0x2230),size_t(0x2234),size_t(0x2238),size_t(0x14)})
+        for(auto at:{size_t(0x2230),size_t(0x2234),size_t(0x2238),size_t(0x14),size_t(0x10),size_t(0xf4)})
             if(std::memcmp(before[view].data()+at,pair[view].data()+at,4))
                 written=written && dlccockpit::Store(graph.views[view]+at,pair[view].data()+at,4);
     }

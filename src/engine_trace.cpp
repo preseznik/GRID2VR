@@ -1597,6 +1597,13 @@ bool __fastcall Predicate(void* renderer,void*) {
             pendingScene.id,pendingScene.stage6Seen,result,caller,Read<uint32_t>(mainObject+0xc8));
         // Bounded camera path for locating pre-race shots on converted tracks: every 10th
         // completed scene, at most 200 lines (position at view+0x40, basis rows 0x10/0x20/0x30).
+        // Bounded near-plane changes (cockpit 2 cm, VR Look Back 2.3 m, menu/near-object .2).
+        static uint32_t lastSceneNear{};static unsigned nearLines{};
+        if (pendingScene.nearPlane!=lastSceneNear && nearLines<256) {
+            ++nearLines;lastSceneNear=pendingScene.nearPlane;float nearValue{};memcpy(&nearValue,&lastSceneNear,4);
+            static std::ofstream nearLog(output/L"scene-near.log",std::ios::binary|std::ios::trunc);
+            nearLog << "frame=" << pendingScene.frame << " id=" << pendingScene.id << " near=" << nearValue << " look_back=" << LookBackFlag() << "\n";nearLog.flush();
+        }
         static unsigned cameraPathLines=0;
         if (cameraPathLines<200 && pendingScene.frame%10==0) {
             float v[16]{};std::memcpy(v,pendingScene.view.data()+0x10,sizeof(v));
