@@ -58,7 +58,7 @@ internal static class RouteProbe
             (visuals ? $", {source.Visuals.Sum(m => m.Indices.Length / 3):N0} visual triangles, {source.Textures.Count} textures." : "."));
 
         WriteCollision(source, routeOut);
-        var route = WriteRoute(source, donorRoute, routeOut);
+        var route = WriteRoute(source, donorRoute, routeOut, [.. definition.BrakeZones.Where(z => z.Layout == layout)]);
         var grid = WriteGrid(source, donorRoute, routeOut);
         var cameras = ReplayCameras.Write(donorRoute, routeOut, source.Collision);
         WriteRecovery(source, routeOut);
@@ -105,7 +105,7 @@ internal static class RouteProbe
             foreach (var (path, hash) in extra.Inputs) inputs[path] = hash;
             Console.WriteLine($"Course {extra.Length:N0} m, {extra.Gates.Length} gates, {extra.Collision.Count:N0} collision triangles.");
             WriteCollision(extra, extraOut);
-            var extraRouteReport = WriteRoute(extra, donorRoute, extraOut);
+            var extraRouteReport = WriteRoute(extra, donorRoute, extraOut, [.. definition.BrakeZones.Where(z => z.Layout == extraLayout)]);
             var extraGrid = WriteGrid(extra, donorRoute, extraOut);
             var extraCameras = ReplayCameras.Write(donorRoute, extraOut, extra.Collision);
             WriteRecovery(extra, extraOut);
@@ -188,7 +188,7 @@ internal static class RouteProbe
         Console.WriteLine($"Collision: {readback.Length:N0} triangles read back, 0 unmatched at 2 cm.");
     }
 
-    static object WriteRoute(AcSource source, string donorRoute, string routeOut)
+    static object WriteRoute(AcSource source, string donorRoute, string routeOut, BrakeZone[] brakeZones)
     {
         var gates = source.Gates;
         // Progress: circuit type, gate 0 on the start/finish line, three timed splits.
@@ -229,21 +229,53 @@ internal static class RouteProbe
                     Waypoint(4, "racing_line", g.Left))));
             links.Add(new XElement("link", new XAttribute("id", i), new XAttribute("fork_id", 0), new XAttribute("from_gate", i), new XAttribute("to_gate", (i + 1) % aiIndices.Length)));
         }
+        // Brake zones (TrackDefinition.BrakeZones): stock brake_line at the AI gate where braking starts,
+        // hold_line where the cap ends; ids and defaults as Brands Hatch Indy's. None: no brake lines.
+        int AiGateAt(float metres) => Enumerable.Range(0, aiIndices.Length).MinBy(i => MathF.Abs(gates[aiIndices[i]].Distance - metres));
+        var zones = brakeZones.Select((z, k) => (Id: 1000 + 10 * k, Hold: k, Gate: AiGateAt(z.From), HoldGate: AiGateAt(z.Hold), Zone: z)).ToArray();
+        foreach (var z in zones)
+            if (z.HoldGate <= z.Gate || z.Zone.MaxSpeed is < 10 or > 90) throw new InvalidDataException($"Invalid brake zone at {z.Zone.From} m.");
+        string S1(float v) => v.ToString("0.0", CultureInfo.InvariantCulture); string S2(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+        var brakeLines = new XElement("brake_lines", new XAttribute("num_brake_lines", zones.Length), zones.Select(z => new XElement("brake_line",
+            new XAttribute("id", z.Id), new XAttribute("gate_id", z.Gate),
+            new XElement("brake_data", new XAttribute("type", "normal"), new XAttribute("min_speed", S2(z.Zone.MaxSpeed * .6f)), new XAttribute("min_speed_drop", "0.60"),
+                new XAttribute("max_speed", S2(z.Zone.MaxSpeed)), new XAttribute("max_speed_left", S2(z.Zone.MaxSpeed)), new XAttribute("max_speed_right", S2(z.Zone.MaxSpeed)),
+                new XAttribute("hold_line_id", z.Hold), new XAttribute("hold_distance_modifier", "0.00"), new XAttribute("distance_modifier", "1.00"),
+                new XAttribute("brake_cruise_ratio", "1.10"), new XAttribute("curve_modifier", "1.00"), new XAttribute("curve_modifier_left", "1.00"), new XAttribute("curve_modifier_right", "1.00")))));
+        var holdLines = zones.Length == 0 ? null : new XElement("hold_lines", new XAttribute("num_hold_lines", zones.Length),
+            zones.Select(z => new XElement("hold_line", new XAttribute("id", z.Hold), new XAttribute("gate_id", z.HoldGate), new XAttribute("brakeline_id", z.Id))));
         Files.Xml(new XDocument(new XElement("ai_track_data", new XAttribute("version_major", 3), new XAttribute("version_minor", 0), new XAttribute("version_revision", 2),
             new XElement("track", new XAttribute("name", "default"), aiGates, links,
-                new XElement("brake_lines", new XAttribute("num_brake_lines", 0)), new XElement("min_speed_lines", new XAttribute("num_min_speed_lines", 0)),
+                brakeLines, holdLines, new XElement("min_speed_lines", new XAttribute("num_min_speed_lines", 0)),
                 new XElement("retire_lines", new XAttribute("num_retire_lines", 0)), new XElement("fork_sets", new XAttribute("num_fork_sets", 0))))),
             Replace(routeOut, "ai_track.xml"));
 
-        // Stock per-vehicle brake lines refer to the donor's AI brake lines; clear them.
+        // Stock per-vehicle brake lines refer to the donor's AI brake lines; replace them with this
+        // route's zones for every vehicle type (same cap for all; drift_speed +2 as stock), or none.
         using (var input = File.OpenRead(Path.Combine(donorRoute, "ai_vehicle_track.xml")))
         {
             var vehicle = new XmlFile(input);
-            foreach (System.Xml.XmlElement brake in vehicle.Document.SelectNodes("//brake_lines")!) { brake.RemoveAll(); brake.SetAttribute("num_brake_lines", "0"); }
+            foreach (System.Xml.XmlElement brake in vehicle.Document.SelectNodes("//brake_lines")!)
+            {
+                brake.RemoveAll(); brake.SetAttribute("num_brake_lines", zones.Length.ToString(CultureInfo.InvariantCulture));
+                foreach (var z in zones)
+                {
+                    var line = (System.Xml.XmlElement)brake.AppendChild(vehicle.Document.CreateElement("brake_line"))!;
+                    line.SetAttribute("id", z.Id.ToString(CultureInfo.InvariantCulture)); line.SetAttribute("lineType", "grip");
+                    var data = (System.Xml.XmlElement)line.AppendChild(vehicle.Document.CreateElement("brake_data"))!;
+                    foreach (var (name, value) in new[] { ("type", "normal"), ("min_speed", S1(z.Zone.MaxSpeed * .6f)), ("min_speed_drop", "0.6"), ("max_speed", S1(z.Zone.MaxSpeed)),
+                        ("max_speed_left", S1(z.Zone.MaxSpeed)), ("max_speed_right", S1(z.Zone.MaxSpeed)), ("drift_speed", S1(z.Zone.MaxSpeed + 2)), ("distance_modifier", "1.00"),
+                        ("brake_cruise_ratio", "1.10"), ("hold_line_id", z.Hold.ToString(CultureInfo.InvariantCulture)), ("hold_distance_modifier", "0.00"),
+                        ("curve_modifier", "1.0000000000"), ("curve_modifier_left", "1.0000000000"), ("curve_modifier_right", "1.0000000000") })
+                        data.SetAttribute(name, value);
+                }
+            }
             using var stream = new FileStream(Replace(routeOut, "ai_vehicle_track.xml"), FileMode.CreateNew); vehicle.Write(stream);
         }
         return new { ProgressGates = progressIndices.Length, ProgressGateBudget, AiGates = aiIndices.Length, AiGateBudget, Splits = 4, Type = "circuit",
-            VehicleProgressProfile = "donor (not rescaled)", ReplayCameras = "donor (replays skipped)" };
+            VehicleProgressProfile = "donor (not rescaled)", ReplayCameras = "donor (replays skipped)",
+            BrakeZones = zones.Select(z => new { z.Zone.From, z.Zone.Hold, z.Zone.MaxSpeed, BrakeGate = z.Gate, HoldGate = z.HoldGate,
+                BrakeAt = gates[aiIndices[z.Gate]].Distance, HoldAt = gates[aiIndices[z.HoldGate]].Distance }).ToArray() };
     }
 
     static object WriteGrid(AcSource source, string donorRoute, string routeOut)

@@ -513,6 +513,33 @@ internal static class Program
                         }
                         return 0;
                     }
+                case "ai-widths" when args.Length is 3 or 5:
+                    {
+                        // AC driving-line side widths vs drivable collision (road/kerb) at each gate.
+                        // args: track layout [fromMetres toMetres]. Left is (t.z, 0, -t.x), as RouteProbe.LeftOf.
+                        var source = AcSource.Read(args[1], args[2], (min, max) => System.Numerics.Vector3.Zero, visuals: false);
+                        float from = args.Length == 5 ? float.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture) : 0;
+                        float to = args.Length == 5 ? float.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture) : float.MaxValue;
+                        foreach (var g in source.Gates.Where(g => g.Distance >= from && g.Distance <= to))
+                        {
+                            var left = System.Numerics.Vector3.Normalize(new System.Numerics.Vector3(g.Tangent.Z, 0, -g.Tangent.X));
+                            (float Drivable, string? Beyond) Extent(System.Numerics.Vector3 side, float limit)
+                            {
+                                float reach = 0;
+                                for (float s = .25f; s <= limit + 3; s += .25f)
+                                {
+                                    var surface = source.SurfaceAt(g.Position + side * s);
+                                    if (surface is not ("TSD*" or "RBL*")) return (reach, surface);
+                                    reach = s;
+                                }
+                                return (reach, "drivable");
+                            }
+                            var (l, lb) = Extent(left, g.Left); var (r, rb) = Extent(-left, g.Right);
+                            Console.WriteLine($"{g.Distance,7:0} m  AC L {g.Left,5:0.0} R {g.Right,5:0.0}  road L {l,5:0.0} R {r,5:0.0}  beyond L {lb ?? "none"} R {rb ?? "none"}" +
+                                (g.Left > l + 1 || g.Right > r + 1 ? "  <- AC wider than road" : ""));
+                        }
+                        return 0;
+                    }
                 case "patch-shadow" when args.Length == 3:
                     {
                         // Offline check of DxbcPatch.ShadowMin on one shaderpack program.

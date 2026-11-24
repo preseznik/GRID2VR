@@ -21,7 +21,14 @@ internal sealed record TrackDefinition(string AcTrack, string Layout, string Pin
     internal bool FullView { get; init; }
     // A layout that exists only as another definition's extra route (source pins only).
     internal bool RouteOnly { get; init; }
+    // AI brake lines (GRID 2 brake_line + hold_line), per layout: corners GRID 2's AI misjudges
+    // from the line's shape alone. Layouts without zones keep no brake lines.
+    internal BrakeZone[] BrakeZones { get; init; } = [];
 }
+
+// From/Hold: metres along the AC driving line where braking starts and the speed cap ends;
+// MaxSpeed in m/s (stock brake_data units: Brands Hatch Indy 60 before Paddock Hill, 34 before Druids).
+internal sealed record BrakeZone(string Layout, float From, float Hold, float MaxSpeed);
 
 internal static class TrackDefinitions
 {
@@ -45,6 +52,12 @@ internal static class TrackDefinitions
             LightingPresets = [Tracks.LightingPresets.Evening, Tracks.LightingPresets.MorningFog],
             // The reverse layout differs only in its driving line and AC marker dummies (001.kn5 for 100.kn5).
             ExtraRoutes = [("reverse", "route_1", "Misty Loch Reverse (Assetto Corsa)")],
+            // The drop into the left-hander after the abbey (20% downhill, crest, 86 m radius at
+            // 4,600 m): without a brake line the AI arrived airborne at 200 km/h and ran off or
+            // rolled (runtime 2026-11-23/24, lap ~1:25). AC's own line brakes only here
+            // (fast_lane.ai brake 4,460-4,540 m, apex 84 km/h in its slower car); 30 m/s is
+            // about the grip limit at that radius.
+            BrakeZones = [new("normal", 4460, 4615, 30)],
         },
         new("rt_misty_loch", "reverse", "misty-loch-reverse-sources.json", "g2vr_misty_loch", "SCOTLAND", "MISTY LOCH", "Misty Loch Reverse (Assetto Corsa)") { RouteOnly = true },
     ];
