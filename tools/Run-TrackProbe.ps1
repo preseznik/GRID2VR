@@ -8,6 +8,9 @@ param(
     [ValidateRange(3,60)][int]$CaptureSeconds=15,
     [ValidateRange(60,300)][int]$ArmSeconds=150,
     [string]$Car='z28',
+    # A route of the pack other than its first (e.g. a reverse layout), and a lighting preset it ships.
+    [string]$Track,
+    [ValidateSet('day','day_alt','night','night_alt')][string]$Lighting='day',
     # Release build of the proxy (the pinned RelWithDebInfo candidate is never rebuilt for probes).
     [string]$DiagnosticProxy=(Join-Path $PSScriptRoot '../build/win32/bin/Release/d3d11.dll')
 )
@@ -23,14 +26,15 @@ if($cache -notmatch '(?m)^_?Python3_EXECUTABLE:(?:FILEPATH|INTERNAL)=(.+)\r?$') 
 $python=$Matches[1].Trim()
 # The build must be the one installed pack that provides its track id.
 $manifest=Get-Content -LiteralPath (Join-Path $Build 'custom-track.json') -Raw | ConvertFrom-Json
-$track=@($manifest.tracks)[0].id
+$track=if($Track){$Track}else{@($manifest.tracks)[0].id}
+if(@($manifest.tracks.id) -notcontains $track) { throw "The pack does not provide $track." }
 $installed=& $python -I -c "import json,sys; sys.path.insert(0, sys.argv[1]); import session_config as s; print(json.dumps(s.custom_tracks()))" $PSScriptRoot | ConvertFrom-Json
 $pack=@($installed | Where-Object id -eq $track)
 if($pack.Count -ne 1 -or [IO.Path]::GetFullPath($pack[0].pack) -ne $Build) { throw "Custom track $track is not installed from $Build (installed: $($pack.pack -join ', '))." }
 $started=Get-Date
 $stamp=$started.ToString('yyyyMMdd-HHmmss')
 $selection=Join-Path $Build "selection-$stamp"
-& $python (Join-Path $PSScriptRoot 'session_config.py') --game-root $game prepare --output $selection --car $Car --track $track --mode benchmark --control ai --laps 1 | Out-Null
+& $python (Join-Path $PSScriptRoot 'session_config.py') --game-root $game prepare --output $selection --car $Car --track $track --mode benchmark --control ai --laps 1 --lighting $Lighting | Out-Null
 if($LASTEXITCODE) { throw 'Custom-track selection could not be prepared; nothing launched.' }
 $results=Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'My Games\GRID 2\benchmarks'
 $rootBefore=Get-ChildItem -LiteralPath $game -File | ForEach-Object { "$($_.Name)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" }
@@ -51,7 +55,9 @@ Add-Type -Namespace G2VR -Name GameWindow -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
 public struct RECT { public int Left, Top, Right, Bottom; }
 '@
-$captures=Join-Path $Build "captures-$stamp"
+# Evidence lives outside the pack: rebuilding or removing a pack deletes its folder.
+$probeOut=Join-Path $root "artifacts/custom-track-probes/$(Split-Path $Build -Leaf)-$stamp"; New-Item -ItemType Directory -Path $probeOut | Out-Null
+$captures=Join-Path $probeOut "captures"
 New-Item -ItemType Directory -Path $captures | Out-Null
 $jpeg=[Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object MimeType -eq 'image/jpeg'
 $quality=New-Object Drawing.Imaging.EncoderParameters 1
@@ -104,14 +110,14 @@ if($run -and (Test-Path -LiteralPath (Join-Path $run 'runtime-summary.json'))) {
 $outcome=if($result){'result'}elseif($endedUnarmed){'ended-background-play-not-armed'}elseif($seen){'ended-without-result'}else{'never-started'}
 $crashes=Get-ChildItem -LiteralPath $game -Filter '*.mdmp' -File | Where-Object LastWriteTime -ge $started | ForEach-Object Name
 $rootAfter=Get-ChildItem -LiteralPath $game -File | Where-Object Extension -ne '.mdmp' | ForEach-Object { "$($_.Name)|$($_.Length)|$($_.LastWriteTimeUtc.Ticks)" }
-$receipt=[ordered]@{schema=2;build=$Build;track=$track;started=$started.ToString('o');ended=(Get-Date).ToString('o');outcome=$outcome;sessionExit=$worker.ExitCode
+$receipt=[ordered]@{schema=2;build=$Build;track=$track;lighting=$Lighting;started=$started.ToString('o');ended=(Get-Date).ToString('o');outcome=$outcome;sessionExit=$worker.ExitCode
     sessionLog=$probeLog;run=$run;backgroundPlayArmed=$armed;backgroundPlayVerification=$backgroundPlay;crashDumps=@($crashes)
     captures=$captures;captureCount=@(Get-ChildItem -LiteralPath $captures -File).Count
     gameSeconds=if($seen){[int](((Get-Date)-$seen.StartTime).TotalSeconds)}else{0}; peakVirtualMb=$peakVirtualMb; peakPrivateMb=$peakPrivateMb
     installationRootChanged=[bool](Compare-Object @($rootBefore | Where-Object { $_ -notmatch '\.mdmp\|' }) @($rootAfter))
     gameStillRunning=[bool](Get-Process grid2_avx,grid2 -ErrorAction SilentlyContinue)}
 if($result) {
-    Copy-Item -LiteralPath $result.FullName -Destination $Build
+    Copy-Item -LiteralPath $result.FullName -Destination $probeOut
     $xml=[xml](Get-Content -LiteralPath $result.FullName -Raw)
     $receipt.result=$result.Name
     $receipt.resultTrack=$xml.benchmark.track.settings.name+'/'+$xml.benchmark.track.settings.route
@@ -119,5 +125,5 @@ if($result) {
     $receipt.averageFps=[double]$xml.benchmark.fps_race.av_fps
     $receipt.minimumFps=[double]$xml.benchmark.fps_race.min_fps
 }
-$receipt | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Build "probe-$stamp.json") -Encoding utf8NoBOM
+$receipt | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $probeOut "probe.json") -Encoding utf8NoBOM
 $receipt | ConvertTo-Json

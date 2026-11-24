@@ -17,7 +17,6 @@ internal static class RouteProbe
 {
     internal const string DonorVenue = "tracks/locations/circuits/brands_hatch";
     internal const string DonorRoute = "route_2";
-    internal const string Location = "g2vr_nordschleife";
     internal const string Route = "route_0";
     // Proven stock counts (Okutama: 906 progress / 963 AI gates); stay inside them.
     internal const int ProgressGateBudget = 900;
@@ -28,17 +27,23 @@ internal static class RouteProbe
     static XElement Vec(string name, Vector3 v) => new(name, new XAttribute("format", "float3"), $"{F(v.X)} {F(v.Y)} {F(v.Z)}");
     static Vector3 LeftOf(Vector3 tangent) => Vector3.Normalize(new Vector3(tangent.Z, 0, -tangent.X));
 
-    internal static void Run(string acTrack, string layout, string gameRoot, string output, bool visuals = false, bool reverseTileIds = false)
+    internal static void Run(string acTrack, string layout, string gameRoot, string output, bool visuals = false, bool reverseTileIds = false, bool highQuality = false)
     {
         string exe = Files.Inside(gameRoot, "grid2_avx.exe");
         // Same authentication as the launcher: exact known bytes or the Valve-signed Steam build.
         GRID2VR.GameExecutable.Validate(exe, avx: true);
         // The user's own copy, and only the version this conversion was validated on.
+        var definition = TrackDefinitions.For(acTrack, layout);
+        if (definition.RouteOnly) throw new InvalidDataException($"The {layout} layout is built together with its venue's main layout.");
         SourcePins.Verify(acTrack, layout, Console.WriteLine);
+        foreach (var extra in definition.ExtraRoutes) SourcePins.Verify(acTrack, extra.Layout, Console.WriteLine);
         Files.NewOutput(output, acTrack, gameRoot);
         string donor = Files.Inside(gameRoot, DonorVenue), donorRoute = Files.Inside(donor, DonorRoute);
-        string venueOut = Path.Combine(output, "overlay", "tracks", "locations", "circuits", Location), routeOut = Path.Combine(venueOut, Route);
+        string location = definition.Location;
+        string venueOut = Path.Combine(output, "overlay", "tracks", "locations", "circuits", location), routeOut = Path.Combine(venueOut, Route);
         Directory.CreateDirectory(routeOut);
+        // Lighting presets: one overlay each, listed before the pack's overlay (LightingPresets).
+        string PresetVenue(string set) => Path.Combine(output, "presets", set, "tracks", "locations", "circuits", location);
         var inputs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [exe] = Files.Hash(exe) };
         foreach (var file in Directory.EnumerateFiles(donor)) { Files.NoLinks(file); inputs[file] = Files.Hash(file); File.Copy(file, Path.Combine(venueOut, Path.GetFileName(file))); }
         foreach (var file in Directory.EnumerateFiles(donorRoute)) { Files.NoLinks(file); inputs[file] = Files.Hash(file); File.Copy(file, Path.Combine(routeOut, Path.GetFileName(file))); }
@@ -64,25 +69,71 @@ internal static class RouteProbe
             // G2VR_NO_GRASS_TUFTS (diagnostic): leave ksGrass tufts out, to measure their cost.
             // G2VR_ALL_VISIBLE (diagnostic): the conservative all-visible track.vis instead of the PVS.
             var pvs = Environment.GetEnvironmentVariable("G2VR_ALL_VISIBLE") is null ? new List<Pvs.Cell>() : null;
-            var (tiles, report) = TrackVisuals.Build(source, donor, venueOut, reverseTileIds: reverseTileIds, grassTufts: Environment.GetEnvironmentVariable("G2VR_NO_GRASS_TUFTS") is null, pvs: pvs);
+            var (lake, lakeSplit) = definition.LakeMaterials.Length > 0 ? LakeWater.Detach(source, definition.LakeMaterials) : (null, null);
+            var (animatedGroups, animated) = definition.Flows.Count > 0 || definition.FloatingFiles.Length > 0 || definition.Spins.Length > 0
+                ? Animation.Mark(source, definition) : ([], null);
+            var (tiles, report) = TrackVisuals.Build(source, donor, venueOut, reverseTileIds: reverseTileIds, grassTufts: Environment.GetEnvironmentVariable("G2VR_NO_GRASS_TUFTS") is null, pvs: pvs,
+                maxTextureSize: highQuality ? TrackVisuals.HighQualityTextureSize : TrackVisuals.MaxTextureSize, fullView: definition.FullView);
             var donorVis = File.ReadAllBytes(Path.Combine(donorRoute, "track.vis"));
             object visReport = "all visible";
             byte[] vis;
             if (pvs is { Count: > 0 }) (vis, visReport) = Visibility.WritePvs(tiles, donorVis, pvs);
             else vis = Visibility.Write(tiles, donorVis);
             File.WriteAllBytes(Replace(routeOut, "track.vis"), vis);
-            visualReport = new { Scenery = report, TrackVis = visReport, CutoutShader = CutoutShader.Write(gameRoot, Path.Combine(output, "overlay"), inputs),
+            var water = lake is null ? null : new { Split = lakeSplit, Patches = LakeWater.Write(lake, gameRoot, venueOut, routeOut, inputs) };
+            // After the water: presets carry their own water definitions.
+            var presets = definition.LightingPresets.Length > 0
+                ? new { Venue = LightingPresets.Write(gameRoot, venueOut, PresetVenue, definition.LightingPresets, inputs), Route = LightingPresets.WriteRoute(gameRoot, set => Path.Combine(PresetVenue(set), Route), definition.LightingPresets, inputs) } : null;
+            visualReport = new { Scenery = report, TrackVis = visReport, Water = water, Animated = animated, LightingPresets = presets,
+                CutoutShader = CutoutShader.Write(gameRoot, Path.Combine(output, "overlay"), inputs, animatedGroups),
                 VertexAmbient = (object?)source.Ambient?.Report() ?? "none (Custom Shaders Patch ambient occlusion not found or not readable); open-sky ambient" };
             Console.WriteLine($"Visuals: {tiles.Length} tiles in tracksplit.pssg, {(pvs is { Count: > 0 } ? "visibility-culled" : "conservative all-visible")} track.vis.");
         }
-        WriteSession(output, layout);
+        // Further layouts of the venue as further routes: their own collision, driving line,
+        // progress, grid, cameras and recovery; the venue's scenery, lighting and water shared.
+        var extraRoutes = new List<object>();
+        foreach (var (extraLayout, extraRoute, extraLabel) in definition.ExtraRoutes)
+        {
+            Console.WriteLine($"Route {extraRoute}: {extraLayout} layout...");
+            string extraOut = Path.Combine(venueOut, extraRoute);
+            if (extraRoute == Route || Directory.Exists(extraOut)) throw new InvalidDataException("Duplicate route " + extraRoute);
+            Directory.CreateDirectory(extraOut);
+            foreach (var file in Directory.EnumerateFiles(donorRoute)) File.Copy(file, Path.Combine(extraOut, Path.GetFileName(file)));
+            // Same placement as the main layout: the scenery is shared.
+            var extra = AcSource.Read(acTrack, extraLayout, (_, _) => source.Origin);
+            SourcePins.CheckInputs(acTrack, extraLayout, extra.Inputs);
+            foreach (var (path, hash) in extra.Inputs) inputs[path] = hash;
+            Console.WriteLine($"Course {extra.Length:N0} m, {extra.Gates.Length} gates, {extra.Collision.Count:N0} collision triangles.");
+            WriteCollision(extra, extraOut);
+            var extraRouteReport = WriteRoute(extra, donorRoute, extraOut);
+            var extraGrid = WriteGrid(extra, donorRoute, extraOut);
+            var extraCameras = ReplayCameras.Write(donorRoute, extraOut, extra.Collision);
+            WriteRecovery(extra, extraOut);
+            // track.vis is position-based (eyes along the road, all directions), so the main
+            // route's sets serve another layout of the same road. Required: every one of its
+            // gates within 15 m (horizontally) of the main driving line.
+            float farthest = extra.Gates.Max(g => source.Gates.Min(m => Vector2.Distance(new(g.Position.X, g.Position.Z), new(m.Position.X, m.Position.Z))));
+            if (visuals)
+            {
+                if (farthest > 15) throw new InvalidDataException($"{extraLayout} leaves the main layout's road by {farthest:0} m; it needs its own visibility.");
+                foreach (var name in new[] { "track.vis", "niwater.pssg", "niwater.xml" })
+                    if (File.Exists(Path.Combine(routeOut, name))) File.Copy(Path.Combine(routeOut, name), Replace(extraOut, name));
+                if (definition.LightingPresets.Length > 0) LightingPresets.WriteRoute(gameRoot, set => Path.Combine(PresetVenue(set), extraRoute), definition.LightingPresets, inputs);
+            }
+            extraRoutes.Add(new { Route = extraRoute, Layout = extraLayout, Label = extraLabel, LengthMetres = extra.Length, Progress = extraRouteReport, Grid = extraGrid, Cameras = extraCameras,
+                FarthestFromMainLineMetres = farthest, SharedFromMainRoute = visuals ? new[] { "track.vis", "niwater.pssg", "niwater.xml" } : Array.Empty<string>() });
+        }
+        WriteSession(output, location);
         // Race-intro title (GRID 2 shows its placeholder location/route for a g2vr_ location).
-        var title = TrackTitle.Write(gameRoot, Path.Combine(output, "overlay"), "NÜRBURGRING", "NORDSCHLEIFE", inputs);
+        var title = TrackTitle.Write(gameRoot, Path.Combine(output, "overlay"), definition.TitleLocation, definition.TitleRoute, inputs);
         // Installed-pack manifest: tools/session_config.py lists this build as a track.
         Files.Json(Path.Combine(output, "custom-track.json"), new
         {
-            schema = 1, tracks = new[] { new { id = $"circuits/{Location}/{Route}", label = "Nordschleife (Assetto Corsa)" } },
-            source = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(acTrack))}/{layout}", kind = visuals ? "visual-probe" : "route-probe"
+            schema = 1, tracks = new[] { new { id = $"circuits/{location}/{Route}", label = definition.Label } }
+                .Concat(definition.ExtraRoutes.Select(r => new { id = $"circuits/{location}/{r.Route}", label = r.Label })).ToArray(),
+            source = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(acTrack))}/{layout}", kind = visuals ? "visual-probe" : "route-probe",
+            // The launcher shows the installed quality (Standard or High quality assets).
+            quality = highQuality ? "high" : "standard"
         });
 
         foreach (var (path, hash) in inputs) if (Files.Hash(path) != hash) throw new InvalidDataException("Source changed while converting: " + path);
@@ -90,9 +141,9 @@ internal static class RouteProbe
         Files.Json(Path.Combine(output, "collision-materials.json"), source.CollisionMappings);
         Files.Json(Path.Combine(output, "build.json"), new
         {
-            Schema = 1, Kind = visuals ? "visual-probe" : "route-probe", Visuals = visualReport, Title = title, Cameras = cameras, SourceLayout = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(acTrack))}/{layout}",
-            Donor = $"{DonorVenue}/{DonorRoute}", Location = $"circuits/{Location}/{Route}", LengthMetres = source.Length,
-            Translation = new[] { -source.Origin.X, -source.Origin.Y, -source.Origin.Z }, Surfaces = source.Surfaces, Route = route, Grid = grid,
+            Schema = 1, Kind = visuals ? "visual-probe" : "route-probe", Quality = highQuality ? "high" : "standard", Visuals = visualReport, Title = title, Cameras = cameras, SourceLayout = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(acTrack))}/{layout}",
+            Donor = $"{DonorVenue}/{DonorRoute}", Location = $"circuits/{location}/{Route}", LengthMetres = source.Length,
+            Translation = new[] { -source.Origin.X, -source.Origin.Y, -source.Origin.Z }, Surfaces = source.Surfaces, Route = route, Grid = grid, ExtraRoutes = extraRoutes,
             DonorVisualsRetained = true, RuntimeValidated = false
         });
         Console.WriteLine("Route probe built; runtime validation pending: " + output);
@@ -272,12 +323,12 @@ internal static class RouteProbe
     }
 
     // Benchmark session in the overlay root (GRID 2 resolves it through -mod) and the ModList.
-    static void WriteSession(string output, string layout)
+    static void WriteSession(string output, string location)
     {
         var overlay = Path.Combine(output, "overlay");
         new XDocument(new XElement("config", new XAttribute("cycle_camera", "false"), new XAttribute("infinite_loop", "false"), new XAttribute("skipreplays", "true"),
             new XAttribute("outputfilename", "G2VRTrack"),
-            new XElement("track", new XAttribute("country", "circuits"), new XAttribute("name", Location), new XAttribute("route", Route),
+            new XElement("track", new XAttribute("country", "circuits"), new XAttribute("name", location), new XAttribute("route", Route),
                 new XAttribute("lighting", "day"), new XAttribute("weather", "dry"), new XAttribute("laps", 1), new XAttribute("number_cars", 1),
                 new XElement("car", new XAttribute("name", "z28"), new XAttribute("livery", "user"), new XAttribute("ai_driver", "Cau_Demo_1_1"),
                     new XAttribute("ai_driver0", "Cau_Demo_1_0"), new XAttribute("grid", 0))))).Save(Path.Combine(overlay, "G2VRTrack.xml"));

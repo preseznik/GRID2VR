@@ -24,12 +24,15 @@ internal sealed class VertexAmbient
     VertexAmbient(string path, string hash, Dictionary<string, Entry[]> entries, float opacity, float brightness)
     { Path = path; Hash = hash; this.entries = entries; this.opacity = opacity; this.brightness = brightness; }
 
-    // The track's patch next to the AC installation, or null (missing or unreadable).
+    // The patch the track ships in its own folder (add-ons such as Misty Loch; a pinned
+    // source file, so every player's build matches), else CSP's own patch next to the AC
+    // installation, else null (missing or unreadable).
     internal static VertexAmbient? TryLoad(string trackRoot, Action<string> log)
     {
         string track = System.IO.Path.GetFileName(System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(trackRoot)));
         string acRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(trackRoot, "..", "..", ".."));
-        string path = System.IO.Path.Combine(acRoot, "extension", "vao-patches", track + ".vao-patch");
+        string path = System.IO.Path.Combine(trackRoot, track + ".vao-patch");
+        if (!File.Exists(path)) path = System.IO.Path.Combine(acRoot, "extension", "vao-patches", track + ".vao-patch");
         if (!File.Exists(path)) { log("No Custom Shaders Patch ambient occlusion for " + track + "; neutral ambient."); return null; }
         try
         {

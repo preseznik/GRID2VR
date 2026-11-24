@@ -27,7 +27,11 @@ internal sealed class AcSource
     internal const string Road = "TSD*";
     internal static readonly HashSet<string> RoadSurfaces = new(StringComparer.Ordinal) { Road };
 
-    internal static bool IsGameMarker(string name) => new[] { "AC_START_", "AC_PIT_", "AC_TIME_", "AC_HOTLAP_", "AC_AUDIO_" }
+    // AC helper dummies AC never draws. AC_REVERB_: Misty Loch's 11 reverb volumes, 2.2 m
+    // black cubes that floated above the track in GRID 2 (iztok, 2026-11-23 AI lap). Not
+    // dummies: AC_POBJECT_ (movable cones) and the Nordschleife's AC_CREW_* (196 meshes, 127,676
+    // triangles of pit tents and panels, `ac-prefixes`).
+    internal static bool IsGameMarker(string name) => new[] { "AC_START_", "AC_PIT_", "AC_TIME_", "AC_HOTLAP_", "AC_AUDIO_", "AC_REVERB_" }
         .Any(prefix => name.StartsWith(prefix, StringComparison.Ordinal));
 
     // Reads the closed driving loop and every physical mesh of one layout. Positions keep
@@ -132,8 +136,9 @@ internal sealed class AcSource
     internal static string Surface(string name)
     {
         string key = Regex.Replace(name, "^[0-9]+", "").ToUpperInvariant();
-        if (key.StartsWith("TRM") || key.StartsWith("ROAD") || key.StartsWith("ASPH") || key.StartsWith("PITS") || key.StartsWith("PTRMBL") || key.StartsWith("PAINT")) return Road;
-        if (key.StartsWith("CURB") || key.StartsWith("CRB") || key.StartsWith("CUTKRB")) return "RBL*";
+        // PIT also covers PITS; Misty Loch names its pit lane PIT and its kerbs KERB.
+        if (key.StartsWith("TRM") || key.StartsWith("ROAD") || key.StartsWith("ASPH") || key.StartsWith("PIT") || key.StartsWith("PTRMBL") || key.StartsWith("PAINT")) return Road;
+        if (key.StartsWith("CURB") || key.StartsWith("CRB") || key.StartsWith("CUTKRB") || key.StartsWith("KERB")) return "RBL*";
         if (key.StartsWith("CNC") || key.StartsWith("CONCRETE")) return "CON*";
         if (key.StartsWith("WALL") || key.StartsWith("3DIMP") || key.StartsWith("3DMISC")) return "CON+";
         if (key.StartsWith("GRASS") || key.StartsWith("CUTGRA") || key.StartsWith("CARPET") || key.StartsWith("OUT")) return "GRS*";

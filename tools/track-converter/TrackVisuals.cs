@@ -88,6 +88,9 @@ internal static class TrackVisuals
     }
     // 32-bit game budget: AC maps above this lose whole top mip levels.
     internal const uint MaxTextureSize = 1024;
+    // High quality assets (build option, as DiRT2VR's): source resolutions up to this size
+    // (Misty Loch: 321 MB of textures instead of 88 MB). More GPU and 32-bit process memory.
+    internal const uint HighQualityTextureSize = 4096;
     const string Depth = "batched_track.fx";
     const string Lod = "terrain_lod.fx";
     static readonly HashSet<string> Supported = new(StringComparer.Ordinal)
@@ -95,8 +98,12 @@ internal static class TrackVisuals
         "ksPerPixel", "ksTree", "ksGrass", "ksPerPixelMultiMap", "ksPerPixelSimpleRefl", "ksPerPixelReflection",
         "ksPerPixelNM_UVMult", "ksPerPixelNM", "ksPerPixelMultiMap_NMDetail", "ksMultilayer_objsp",
         "ksMultilayer_fresnel_nm", "ksPerPixelMultiMap_AT", "ksPerPixelAT", "ksPerPixelAlpha",
-        "ksPerPixelMultiMap_AT_NMDetail", "ksPerPixelMultiMapSimpleRefl", "ksFlags"
+        "ksPerPixelMultiMap_AT_NMDetail", "ksPerPixelMultiMapSimpleRefl", "ksFlags", "ksPerPixelAT_NM"
     };
+    // Alpha-tested AC shaders: the _AT variants, ksTree, and ksPerPixelAT(_NM) (Misty Loch's
+    // road lines, track-edge cards and fences use ksPerPixelAT_NM).
+    static bool AlphaTestShader(string shader) =>
+        shader is "ksTree" or "ksPerPixelAT" or "ksPerPixelAT_NM" || shader.Contains("_AT", StringComparison.Ordinal);
 
     // Opaque surfaces: terrain_simple; alpha-tested cutouts: two-sided coverage object
     // shader; blended materials: decal. Road layering is not reproduced yet.
@@ -104,12 +111,18 @@ internal static class TrackVisuals
     {
         if (material.StockGroup is not null) return material.StockGroup;
         if (!Supported.Contains(material.Shader)) throw new InvalidDataException("Unmapped AC shader: " + material.Shader);
-        return IsOpaque(material) ? (MultilayerMaterial.Read(material) is { } layer ? layer.Layers is not null ? TerrainLayered : TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : Decal;
+        var target = IsOpaque(material) ? (MultilayerMaterial.Read(material) is { } layer ? layer.Layers is not null ? TerrainLayered : TerrainVc : Opaque) : IsAlphaTested(material) ? Cutout : Decal;
+        // Animated (Animation.cs): flowing water blends as a decal; plain opaque meshes float.
+        if (material.FlowV is { } speed) return target is Opaque or TerrainVc or TerrainLayered ? throw new InvalidDataException("Opaque flow material: " + material.Id) : Animation.FlowGroup(speed) + ".fx";
+        if (material.Spin is { } spin) return target == Decal ? spin.Group + ".fx" : throw new InvalidDataException("Rotor disc is not blended: " + material.Id);
+        return material.Floating && target == Opaque ? FloatTarget : target;
     }
+    internal const string FloatTarget = Animation.FloatGroup + ".fx";
+    static bool IsBlendTarget(string target) => target == Decal || Animation.IsFlow(target) || Animation.IsSpin(target);
     internal static bool IsAlphaTested(Material material) => material.Blend == 0 && material.Shader != "ksPerPixelAlpha" &&
-        (material.AlphaTest || material.Shader is "ksTree" or "ksPerPixelAT" || material.Shader.Contains("_AT", StringComparison.Ordinal));
+        (material.AlphaTest || AlphaTestShader(material.Shader));
     internal static bool IsOpaque(Material material) => material.Blend == 0 && !material.AlphaTest &&
-        material.Shader is not ("ksTree" or "ksGrass" or "ksPerPixelAT" or "ksPerPixelAlpha") && !material.Shader.Contains("_AT", StringComparison.Ordinal);
+        material.Shader is not ("ksGrass" or "ksPerPixelAlpha") && !AlphaTestShader(material.Shader);
 
     // Coincident duplicates: a triangle with a same-facing triangle of the same material within
     // CoincidentGap along its normal through the centroid is a second copy (AC bush meshes hold
@@ -209,7 +222,7 @@ internal static class TrackVisuals
 
     // Builds the venue tracksplit.pssg: donor terrain removed, source visuals as tiles.
     // Returns the tile bounds in VIS identity order.
-    internal static (Box[] Tiles, object Report) Build(AcSource source, string donorVenue, string venueOut, Vector4[]? weightVariants = null, bool lodOverrides = true, bool keepDonorLand = false, int? fixedTiles = null, bool mergeDraws = true, bool lowCopies = false, bool reverseTileIds = false, bool grassTufts = true, bool bakeSun = true, bool foliageCasters = false, List<Pvs.Cell>? pvs = null)
+    internal static (Box[] Tiles, object Report) Build(AcSource source, string donorVenue, string venueOut, Vector4[]? weightVariants = null, bool lodOverrides = true, bool keepDonorLand = false, int? fixedTiles = null, bool mergeDraws = true, bool lowCopies = false, bool reverseTileIds = false, bool grassTufts = true, bool bakeSun = true, bool foliageCasters = false, List<Pvs.Cell>? pvs = null, uint maxTextureSize = MaxTextureSize, bool fullView = false)
     {
         var tracksplit = Files.Pssg(Path.Combine(donorVenue, "tracksplit.pssg"));
         var objects = Files.Pssg(Path.Combine(donorVenue, "objects.pssg"));
@@ -322,12 +335,28 @@ internal static class TrackVisuals
         }
         else (parts, tileSize) = Tiles.Partition(visuals, fixedTiles);
         if (reverseTileIds) parts.Reverse();
+        // Full view (TrackDefinition.FullView): a track seen across a wide basin (Misty Loch's
+        // lake, ~4.4 x 6.7 km) lost its far mountains to the default 3 km tile cull and 3.7 km
+        // PVS range: they popped in (iztok, 2026-11-23). The view distance becomes the farthest
+        // any tile corner lies from any gate, plus a margin; PVS occlusion still trims hidden tiles.
+        float? viewDistance = null;
+        if (fullView && source.Gates.Length > 0)
+        {
+            float reach = 0;
+            foreach (var part in parts)
+            {
+                var all = part.SelectMany(m => m.Positions); var lo = all.Aggregate(Vector3.Min); var hi = all.Aggregate(Vector3.Max);
+                var corners = Enumerable.Range(0, 8).Select(c => new Vector3((c & 1) == 0 ? lo.X : hi.X, (c & 2) == 0 ? lo.Y : hi.Y, (c & 4) == 0 ? lo.Z : hi.Z)).ToArray();
+                foreach (var g in source.Gates) foreach (var c in corners) reach = MathF.Max(reach, Vector3.Distance(g.Position, c));
+            }
+            viewDistance = MathF.Min(MathF.Ceiling((reach + 100) / 100) * 100, 15000);
+        }
         // Potentially visible sets per 100 m of track (Pvs), for a real track.vis.
         object? pvsReport = null;
         if (pvs is not null && source.Gates.Length > 0)
         {
             Console.WriteLine("Computing visibility from the driving line...");
-            var (cells, cellsReport) = Pvs.Compute(parts, visuals, m => m.Material.StockGroup is null && IsOpaque(m.Material), source.Gates, keepDonorLand ? Visibility.TerrainTiles(tracksplit).Count(t => t.Id.StartsWith("LAND_", StringComparison.Ordinal)) : 0);
+            var (cells, cellsReport) = Pvs.Compute(parts, visuals, m => m.Material.StockGroup is null && IsOpaque(m.Material), source.Gates, keepDonorLand ? Visibility.TerrainTiles(tracksplit).Count(t => t.Id.StartsWith("LAND_", StringComparison.Ordinal)) : 0, viewDistance);
             pvs.AddRange(cells); pvsReport = cellsReport;
         }
         int width = (int)MathF.Ceiling(MathF.Sqrt(parts.Count));
@@ -357,6 +386,14 @@ internal static class TrackVisuals
         int lodDiffuse = Array.FindIndex(doc.Descendants("SHADERGROUP").Single(g => (string?)g.Attribute("id") == Lod).Elements("SHADERINPUTDEFINITION").ToArray(),
             d => (string?)d.Attribute("name") == "TDiffuseAlphaMap");
         if (lodDiffuse < 0 || !lodTemplate.Elements("SHADERINPUT").Any(x => (int?)x.Attribute("parameterID") == lodDiffuse)) throw new InvalidDataException("Unexpected terrain_lod.fx template.");
+        // Animated targets: the plain decal's / ground's tracksplit group and inputs under their own ids.
+        foreach (var target in materials.Where(m => m.StockGroup is null).Select(Target).Distinct().Where(t => !templates.ContainsKey(t)).ToArray())
+        {
+            string from = Animation.IsFlow(target) || Animation.IsSpin(target) ? Decal : target == FloatTarget ? Opaque : throw new InvalidDataException("No template for " + target);
+            var group = new XElement(templates[from].Group); group.SetAttributeValue("id", target);
+            var instance = new XElement(templates[from].Instance); instance.SetAttributeValue("shaderGroup", "#" + target);
+            templates[target] = (group, instance); layouts[target] = layouts[from];
+        }
         foreach (var target in materials.Where(m => m.StockGroup is null).Select(Target).SelectMany(t => LayerOf(t) is { } g ? new[] { t, g } : [t]).Distinct())
             if (!Library("SHADERGROUP").Elements().Any(g => (string?)g.Attribute("id") == target)) Library("SHADERGROUP").Add(new XElement(templates[target].Group));
         // Opaque ids carry the specular mask written into alpha ("_opaque" = 255, "_opaque_sN" = N).
@@ -477,7 +514,7 @@ internal static class TrackVisuals
             {
                 using var memory = new MemoryStream(payload, false); dds = new DdsFile(memory);
                 if (dds.header.width == 0 || dds.header.height == 0 || dds.header.width > 8192 || dds.header.height > 8192) throw new InvalidDataException("Invalid DDS dimensions.");
-                textureBytesTrimmed += DdsAlpha.Shrink(dds, MaxTextureSize);
+                textureBytesTrimmed += DdsAlpha.Shrink(dds, maxTextureSize);
                 int opaqueAt = texture.Id.IndexOf("_opaque", StringComparison.Ordinal);
                 byte spec = opaqueAt >= 0 && texture.Id.IndexOf("_s", opaqueAt, StringComparison.Ordinal) is int s and >= 0 ? byte.Parse(texture.Id[(s + 2)..]) : (byte)255;
                 DdsAlpha.Prepare(dds, opaqueAt >= 0, spec);
@@ -640,9 +677,13 @@ internal static class TrackVisuals
                 }
                 writer.Indices.AddRange(mesh.Indices.Select(i => (uint)i));
                 // Blended materials draw as decals; opaque and alpha-tested ones in HIGH (depth written).
-                var drawNode = cutout && Target(mesh.Material) == Decal ? decal : high;
+                var drawNode = cutout && IsBlendTarget(Target(mesh.Material)) ? decal : high;
                 writer.Write(layouts[Target(mesh.Material)], SetFor(drawNode), dataLib, state);
                 Draw(drawNode, id, ids[mesh.Material.Id]); Grow(drawNode, mesh.Positions);
+                // Animated geometry leaves its rest pose: the node box (GRID 2 culls by it) covers
+                // a rotor's whole swept disc and a floating mesh's whole bob.
+                if (mesh.Material.Spin is { } spin) Grow(drawNode, [spin.Hub - new Vector3(spin.Radius), spin.Hub + new Vector3(spin.Radius)]);
+                if (mesh.Material.Floating) Grow(drawNode, [.. mesh.Positions.Select(p => p + Vector3.UnitY * Animation.Amplitude), .. mesh.Positions.Select(p => p - Vector3.UnitY * Animation.Amplitude)]);
                 // LOW: the same triangles through terrain_lod.fx (position + UV).
                 if (lowCopies && lowIds.TryGetValue(mesh.Material.Id, out var lowShader))
                 {
@@ -652,7 +693,8 @@ internal static class TrackVisuals
                     Draw(lowNode, lowId, lowShader); Grow(lowNode, mesh.Positions);
                 }
                 triangles += mesh.Indices.Length / 3;
-                if (IsOpaque(mesh.Material)) { opaque.Add(mesh); depthTriangles += mesh.Indices.Length / 3; }
+                // Floating meshes move; a static depth copy would cut into them.
+                if (IsOpaque(mesh.Material) && !mesh.Material.Floating) { opaque.Add(mesh); depthTriangles += mesh.Indices.Length / 3; }
                 else if (mesh.Material.Id.EndsWith(CasterSuffix, StringComparison.Ordinal)) casterTriangles += mesh.Indices.Length / 3;
                 if (mesh.Material.Id.EndsWith(LayerSuffix, StringComparison.Ordinal)) layerTriangles += mesh.Indices.Length / 3;
             }
@@ -715,16 +757,18 @@ internal static class TrackVisuals
             throw new InvalidDataException("Saved tracksplit tiles do not match their bounds.");
         if (CheckNodeBoxes(saved) is { Mismatched: > 0 } boxes)
             throw new InvalidDataException($"{boxes.Mismatched} render node bounding boxes differ from their geometry{boxes.Sample}.");
-        object lod = lodOverrides ? WriteLodOverrides(donorVenue, venueOut, tileSize, Math.Max(tileSize, farSize), highToCull: !lowCopies) : "stock";
+        object lod = lodOverrides ? WriteLodOverrides(donorVenue, venueOut, tileSize, Math.Max(tileSize, farSize), highToCull: !lowCopies, viewDistance: viewDistance) : "stock";
         // VIS identities cover every terrain tile, kept LAND tiles included (after ours).
         bounds = [.. bounds, .. savedTiles.Skip(parts.Count).Select(Visibility.Bounds)];
-        return (bounds, new { SunShadows = sunReport, Visibility = pvsReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, CoincidentDuplicates = coincident, HiddenLayersDropped = hiddenLayers, FarLodCopiesDropped = new { Meshes = source.FarLodMeshes, Triangles = source.FarLodTriangles }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
-            Materials = materials.Length, UniqueTextures = textureBytes.Count, TextureBytes = textureBytes.Values.Sum(b => (long)b.Length), TextureBytesTrimmed = textureBytesTrimmed, MaxTextureSize, LowCopies = lowCopies, ReverseTileIds = reverseTileIds, DonorTerrainRemoved = donorTiles.Length, OmittedCoverageTriangles = omittedCoverage });
+        return (bounds, new { ViewDistance = viewDistance, SunShadows = sunReport, Visibility = pvsReport, FoliageShadowCasters = new { Materials = foliageShadow.Count, Triangles = casterTriangles, Group = CutoutCaster, CorridorMetres = CasterReach }, DepthOffsetLayers = new { Triangles = layerTriangles, MaximumGapMetres = LayerGap, ByMaterial = layerCounts.ToDictionary(k => k.Key, k => new[] { k.Value.Layered, k.Value.Free }), Groups = new[] { OffsetDecal, LayerCutout } }, CoincidentDuplicates = coincident, HiddenLayersDropped = hiddenLayers, FarLodCopiesDropped = new { Meshes = source.FarLodMeshes, Triangles = source.FarLodTriangles }, KeptDonorLandTiles = keptLand.Count, MaterialMappings = report, Tiles = parts.Count, NearTileSizeMetres = tileSize, FarTileSizeMetres = farSize, LodOverrides = lod, Meshes = meshId, Triangles = triangles, OpaqueDepthTriangles = depthTriangles,
+            Materials = materials.Length, UniqueTextures = textureBytes.Count, TextureBytes = textureBytes.Values.Sum(b => (long)b.Length), TextureBytesTrimmed = textureBytesTrimmed, MaxTextureSize = maxTextureSize, LowCopies = lowCopies, ReverseTileIds = reverseTileIds, DonorTerrainRemoved = donorTiles.Length, OmittedCoverageTriangles = omittedCoverage });
     }
 
     // Every stock terrain render node stores the bounds of its own geometry; GRID 2
     // culls render nodes by that box (a copied donor box hid all converted scenery
     // whenever the camera faced away from that donor spot).
+    // A node with animated draws (Animation.cs groups) may store a larger box, covering where its
+    // geometry moves; it must still contain the rest geometry.
     internal static (int Checked, int Mismatched, string Sample) CheckNodeBoxes(PssgFile pssg)
     {
         int count = 0, bad = 0; string sample = "";
@@ -734,7 +778,11 @@ internal static class TrackVisuals
             count++;
             var stored = new Box(node.BoundingBox.BoundsMin, node.BoundingBox.BoundsMax);
             var geometry = Visibility.Bounds(node);
-            if (!stored.Contains(geometry) || !geometry.Contains(stored))
+            bool animated = node.ChildElements.OfType<PssgRenderStreamInstance>().Any(d =>
+                d.GetShaderInstance().ShaderGroup.TrimStart('#') is var g && (g == FloatTarget || Animation.IsSpin(g)));
+            // Box.Contains also requires the boxes to be close; an animated node only has to enclose.
+            bool encloses = Vector3.Min(geometry.Min, stored.Min) == stored.Min && Vector3.Max(geometry.Max, stored.Max) == stored.Max;
+            if (animated ? !encloses : !stored.Contains(geometry) || !geometry.Contains(stored))
             {
                 if (bad++ == 0) sample = $"; e.g. {node.Id}: stored {stored}, geometry {geometry}";
             }
@@ -745,12 +793,12 @@ internal static class TrackVisuals
     // Venue draw distances (lod_overrides.xml, text XML). Stock Brands Hatch: terrain HIGH
     // within 90 m, terrain culled beyond 530 m, objects beyond 730 m, world clip 1000 m,
     // tuned for ~200 m tiles. Converted tiles are larger and the course has long views.
-    internal static object WriteLodOverrides(string donorVenue, string venueOut, int nearTile, int farTile, bool highToCull = false)
+    internal static object WriteLodOverrides(string donorVenue, string venueOut, int nearTile, int farTile, bool highToCull = false, float? viewDistance = null)
     {
         var doc = XDocument.Load(Path.Combine(donorVenue, "lod_overrides.xml"));
         // highToCull: LOW nodes are left empty (no second copy of every opaque triangle in a
         // 32-bit process), so tiles stay on HIGH until they are culled.
-        float cull = MathF.Max(2500, farTile * 1.5f), lodDistance = highToCull ? cull : MathF.Max(90, nearTile * 1.5f), world = cull, clip = cull + 500;
+        float cull = viewDistance ?? MathF.Max(2500, farTile * 1.5f), lodDistance = highToCull ? cull : MathF.Max(90, nearTile * 1.5f), world = cull, clip = cull + 500;
         string F(float v) => v.ToString("0.000000", System.Globalization.CultureInfo.InvariantCulture);
         foreach (var name in new[] { "defaults", "replay" })
         {

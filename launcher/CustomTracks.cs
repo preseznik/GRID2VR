@@ -11,20 +11,58 @@ namespace GRID2VR;
 internal sealed record CustomTrackSource(string Id, string Label, string SteamAppId, string SourceTrack, string Layout, string Pack, string Requirement, long RequiredBytes,
     string SourceName, string Summary, string Description)
 {
+    // Lighting presets the converter builds (tools/track-converter/LightingPresets.cs): the
+    // launcher choice, its label and the GRID 2 lighting set it loads. Daylight is the venue's day set.
+    internal CustomCondition[] Conditions { get; init; } = [CustomTracks.Daylight];
     public override string ToString() => Label;
 }
-internal sealed record CustomTrackPack(string Folder, long Bytes, DateTime Built);
+internal sealed record CustomCondition(string Id, string Label, string Lighting)
+{
+    public override string ToString() => Label;
+}
+// HighQuality: built with high quality assets (manifest "quality": "high"; source texture resolutions).
+internal sealed record CustomTrackPack(string Folder, long Bytes, DateTime Built, bool HighQuality = false);
 internal sealed record CustomTrackStatus(CustomTrackSource Source, string? SourceFolder, CustomTrackPack? Installed);
 
 internal static class CustomTracks
 {
+    internal static readonly CustomCondition Daylight = new("day", "Daylight", "day");
     internal static readonly CustomTrackSource[] Supported =
     [
         new("circuits/g2vr_nordschleife/route_0", "Nordschleife", "244210", "ks_nordschleife", "nordschleife", "nordschleife",
             "your own Assetto Corsa with its Nordschleife (ks_nordschleife)", 1536L * 1024 * 1024,
             "Assetto Corsa", "Circuit · 20.7 km",
             "Nürburgring Nordschleife, converted from your Assetto Corsa copy. 20.7 km circuit · Practice and Race · Desktop and VR. Experimental: AI pace is approximate."),
+        // Misty Loch 1.4 is a free Assetto Corsa add-on (Reboot Team), installed by the player.
+        new("circuits/g2vr_misty_loch/route_0", "Misty Loch", "244210", "rt_misty_loch", "normal", "misty_loch",
+            "your own Assetto Corsa with the Misty Loch 1.4 add-on (rt_misty_loch)", 1024L * 1024 * 1024,
+            "Assetto Corsa", "Circuit · 6.4 km",
+            "Misty Loch, a lakeside road circuit in the Scottish mountains, converted from your Assetto Corsa copy of the Misty Loch 1.4 add-on. 6.4 km circuit · Daylight, Evening and Morning Fog · Practice and Race · Desktop and VR. Experimental: AI pace is approximate.")
+        { Conditions = [Daylight, new("evening", "Evening", "day_alt"), new("morning_fog", "Morning Fog", "night_alt")] },
+        // The reverse layout is route_1 of the same pack: building either entry builds both.
+        new("circuits/g2vr_misty_loch/route_1", "Misty Loch Reverse", "244210", "rt_misty_loch", "reverse", "misty_loch",
+            "your own Assetto Corsa with the Misty Loch 1.4 add-on (rt_misty_loch)", 1024L * 1024 * 1024,
+            "Assetto Corsa", "Circuit · 6.4 km · reverse",
+            "Misty Loch driven anticlockwise, built together with Misty Loch from your Assetto Corsa copy of the Misty Loch 1.4 add-on. 6.4 km circuit · Daylight, Evening and Morning Fog · Practice and Race · Desktop and VR. Experimental: AI pace is approximate.")
+        { Conditions = [Daylight, new("evening", "Evening", "day_alt"), new("morning_fog", "Morning Fog", "night_alt")] },
     ];
+
+    // The entry whose layout a pack is built from (the first one naming that pack).
+    internal static CustomTrackSource? PackSource(string pack) => Supported.FirstOrDefault(s => s.Pack == pack);
+
+    // The presets an installed pack actually contains; Daylight always. Each preset is its own
+    // overlay, <pack>/presets/<set>, loaded as the day set (session_config preset_overlay).
+    // Older builds kept set-named files in the pack's overlay, which GRID 2 ignores.
+    internal static CustomCondition[] Available(CustomTrackStatus status)
+    {
+        if (status.Installed is not { } pack) return [Daylight];
+        string Venue(string set) => Path.Combine([pack.Folder, "presets", set, "tracks", "locations", .. status.Source.Id.Split('/')[..2]]);
+        return [.. status.Source.Conditions.Where(c => c.Lighting == "day" || File.Exists(Path.Combine(Venue(c.Lighting), "lighting_day.xml")))];
+    }
+
+    // The GRID 2 lighting set for a custom track's condition; Daylight for anything unknown.
+    internal static string Lighting(string trackId, string condition) =>
+        Supported.SingleOrDefault(s => s.Id == trackId)?.Conditions.SingleOrDefault(c => c.Id == condition)?.Lighting ?? "day";
     const long ManifestLimit = 64 * 1024;
 
     internal static string Root(string root) => Path.Combine(AppPaths.Data(root), "custom-tracks");
@@ -90,15 +128,17 @@ internal static class CustomTracks
             var manifest = Path.Combine(folder, "custom-track.json");
             if (new DirectoryInfo(folder).Attributes.HasFlag(FileAttributes.ReparsePoint) || !File.Exists(manifest) ||
                 new FileInfo(manifest).Length > ManifestLimit || !Directory.Exists(Path.Combine(folder, "overlay"))) continue;
+            bool highQuality;
             try
             {
                 using var document = JsonDocument.Parse(File.ReadAllText(manifest));
                 if (document.RootElement.GetProperty("schema").GetInt32() != 1 ||
                     !document.RootElement.GetProperty("tracks").EnumerateArray().Any(t => t.GetProperty("id").GetString() == id)) continue;
+                highQuality = document.RootElement.TryGetProperty("quality", out var quality) && quality.ValueKind == JsonValueKind.String && quality.GetString() == "high";
             }
             catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException) { continue; }
             var bytes = new DirectoryInfo(folder).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length);
-            packs.Add(new(folder, bytes, File.GetLastWriteTime(manifest)));
+            packs.Add(new(folder, bytes, File.GetLastWriteTime(manifest), highQuality));
         }
         return [.. packs.OrderByDescending(p => p.Built)];
     }
@@ -109,7 +149,7 @@ internal static class CustomTracks
     internal static string Describe(CustomTrackStatus status)
     {
         var installed = status.Installed is { } pack
-            ? $"{status.Source.Label}: installed ({pack.Bytes / (1024.0 * 1024):N0} MB, built {pack.Built:g})."
+            ? $"{status.Source.Label}: installed ({(pack.HighQuality ? "high quality assets, " : "")}{pack.Bytes / (1024.0 * 1024):N0} MB, built {pack.Built:g})."
             : $"{status.Source.Label}: not installed.";
         return installed + (status.SourceFolder is null
             ? " Needs " + status.Source.Requirement + ". If Steam does not find it, choose its folder."
@@ -138,18 +178,22 @@ internal static class CustomTracks
 
     // Converts into a staging folder, then replaces the installed pack in one move.
     // Requires an idle installation: no session, no GRID 2 process, no pending recovery.
-    internal static async Task Build(string root, CustomTrackSource source, IProgress<(int Percent, string Line)>? progress = null, CancellationToken cancellation = default)
+    // High quality assets: source texture resolutions (larger pack, more GPU and 32-bit memory).
+    internal const long HighQualityExtraBytes = 1024L * 1024 * 1024;
+    internal static async Task Build(string root, CustomTrackSource source, IProgress<(int Percent, string Line)>? progress = null, CancellationToken cancellation = default, bool highQuality = false)
     {
         Installation.RequireIdle(root);
         var sourceFolder = FindSource(source, chosen: ChosenFolder(root, source)) ?? throw new IOException(source.Label + " needs " + source.Requirement + ".");
         var staging = Staging(root); Directory.CreateDirectory(staging); Updates.PlainPath(staging);
         var drive = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(staging))!);
-        if (drive.AvailableFreeSpace < source.RequiredBytes)
-            throw new IOException($"Not enough free space to build {source.Label}. Free at least {Math.Ceiling(source.RequiredBytes / 1073741824.0):0} GB on {drive.Name}");
+        long required = source.RequiredBytes + (highQuality ? HighQualityExtraBytes : 0);
+        if (drive.AvailableFreeSpace < required)
+            throw new IOException($"Not enough free space to build {source.Label}. Free at least {Math.Ceiling(required / 1073741824.0):0} GB on {drive.Name}");
         var output = Path.Combine(staging, $"{source.Pack}-{DateTime.Now:yyyyMMdd-HHmmss}");
         var self = Environment.ProcessPath ?? throw new IOException("The launcher path is unknown.");
         var info = new ProcessStartInfo(self) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = staging };
         foreach (var argument in new[] { "--convert-track", source.Pack, sourceFolder, AppPaths.Game(root), output }) info.ArgumentList.Add(argument);
+        if (highQuality) info.ArgumentList.Add("--high-quality-assets");
         int percent = 0; string last = "";
         try
         {
@@ -168,7 +212,7 @@ internal static class CustomTracks
             progress?.Report((98, "Installing…"));
             Installation.RequireIdle(root);
             var installRoot = Root(root); Directory.CreateDirectory(installRoot); Updates.PlainPath(installRoot);
-            foreach (var old in Installed(installRoot, source.Id)) DeletePack(installRoot, old.Folder);
+            foreach (var old in PackInstalls(installRoot, source.Pack)) DeletePack(installRoot, old.Folder);
             var destination = Path.Combine(installRoot, source.Pack);
             if (Directory.Exists(destination)) destination += "-" + Path.GetFileName(output)[(source.Pack.Length + 1)..];
             Directory.Move(built.Folder, destination);
@@ -181,13 +225,13 @@ internal static class CustomTracks
         }
     }
 
-    internal static int Command(string root, string action, string pack)
+    internal static int Command(string root, string action, string pack, bool highQuality = false)
     {
-        var source = Supported.SingleOrDefault(s => s.Pack == pack);
+        var source = PackSource(pack);
         if (source is null) { Console.Error.WriteLine("Unknown custom track: " + pack); return 2; }
         try
         {
-            if (action == "build") Build(root, source, new Progress<(int Percent, string Line)>(p => Console.WriteLine($"{p.Percent,3}% {p.Line}"))).GetAwaiter().GetResult();
+            if (action == "build") Build(root, source, new Progress<(int Percent, string Line)>(p => Console.WriteLine($"{p.Percent,3}% {p.Line}")), highQuality: highQuality).GetAwaiter().GetResult();
             else if (action == "remove") Remove(root, source);
             Console.WriteLine(Describe(Status(root, source)));
             return 0;
@@ -199,8 +243,14 @@ internal static class CustomTracks
     {
         Installation.RequireIdle(root);
         var installRoot = Root(root);
-        foreach (var pack in Installed(installRoot, source.Id)) DeletePack(installRoot, pack.Folder);
+        foreach (var pack in PackInstalls(installRoot, source.Pack)) DeletePack(installRoot, pack.Folder);
     }
+
+    // Installed packs holding any entry built into `pack` (Misty Loch and its reverse share one).
+    static CustomTrackPack[] PackInstalls(string installRoot, string pack) =>
+        [.. Supported.Where(s => s.Pack == pack).SelectMany(s => Installed(installRoot, s.Id)).DistinctBy(p => p.Folder)];
+    // Other entries a build or uninstall of this one also changes.
+    internal static CustomTrackSource[] Sharing(CustomTrackSource source) => [.. Supported.Where(s => s.Pack == source.Pack && s != source)];
 
     // Only a direct, unlinked child of its parent is ever deleted.
     static void DeletePack(string parent, string folder)

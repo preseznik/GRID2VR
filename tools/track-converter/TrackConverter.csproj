@@ -15,6 +15,8 @@
   <ItemGroup>
     <Compile Include="../GameExecutable.cs" Link="GameExecutable.cs" />
     <EmbeddedResource Include="nordschleife-sources.json" LogicalName="GRID2VR.Tracks.nordschleife-sources.json" />
+    <EmbeddedResource Include="misty-loch-sources.json" LogicalName="GRID2VR.Tracks.misty-loch-sources.json" />
+    <EmbeddedResource Include="misty-loch-reverse-sources.json" LogicalName="GRID2VR.Tracks.misty-loch-reverse-sources.json" />
     <ProjectReference Include="../../.deps/Ego-Engine-Modding/src/EgoEngineLibrary/EgoEngineLibrary.csproj" />
   </ItemGroup>
 </Project>

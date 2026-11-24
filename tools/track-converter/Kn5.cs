@@ -11,6 +11,10 @@ internal sealed record Material(string Id, string Name, string Shader, byte Blen
     // Isolation controls only: reuse an existing shader instance/group of the target venue.
     internal string? StockShader { get; init; }
     internal string? StockGroup { get; init; }
+    // Animation (Animation.cs): V scroll in UV units per second, or a rigid float on water.
+    internal float? FlowV { get; init; }
+    internal bool Floating { get; init; }
+    internal Spin? Spin { get; init; }
 }
 internal sealed record Mesh(string Name, Material Material, bool Physical, Vector3[] Positions, Vector3[] Normals, Vector2[] UV, Vector3[] Tangents, ushort[] Indices)
 {

@@ -524,7 +524,7 @@ internal sealed partial class MainForm : LauncherForm
         keepHorizonLevel.Checked = choices.KeepHorizonLevel;
         chaseCamera.LoadChoices(choices);
         forceFeedback.LoadChoices(choices);
-        customTracks.Load(choices.CustomTracks, choices.CustomTrack);
+        customTracks.Load(choices.CustomTracks, choices.CustomTrack, choices.CustomConditions);
         ApplyCustomTrackVisibility();
     }
     private void FilterCars()
@@ -558,7 +558,7 @@ internal sealed partial class MainForm : LauncherForm
         LaunchMode = ChoiceId(launchMode), Opponents = opponents.Value, OpponentCars = ChoiceId(opponentCars), VrReplayCameras = replay3d.Checked, VrGarageMenus = garage3d.Checked, NativeLeftEye = nativeLeftEye.Checked,
         SponsorDepthBias = sponsorDepthBias.Checked, CockpitDepthPrecision = cockpitDepthPrecision.Checked,
         VrCockpit = vrCockpit.Checked, CockpitDriver = ChoiceId(cockpitDriver), CockpitExposureLimit = cockpitExposure.Checked, HideImpactGlitch = impactGlitch.Checked, HideLensDust = lensDust.Checked, RearMirrors = rearMirrors.Checked, Conditions = (conditions.SelectedItem as ContentItem)?.Id ?? TrackNames.Day, CockpitTextures = ChoiceId(cockpitTextures), RecenterDevice = recenterDevice, KeepHorizonLevel = keepHorizonLevel.Checked,
-        CustomTracks = customTracks.CustomEnabled, CustomTrack = customTracks.Selected.Id
+        CustomTracks = customTracks.CustomEnabled, CustomTrack = customTracks.Selected.Id, CustomConditions = customTracks.SelectedCondition
     }));
     private static string ChoiceId(ComboBox box) => ((ContentItem)box.SelectedItem!).Id;
     private static void SelectChoice(ComboBox box, string id) => box.SelectedItem = box.Items.Cast<ContentItem>().Single(x => x.Id == id);

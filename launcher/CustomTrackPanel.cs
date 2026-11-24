@@ -17,6 +17,13 @@ internal sealed class CustomTrackPanel : VerticalStack
     private readonly Label description = new() { Name = "CustomTrackDescription", AutoSize = true, UseMnemonic = false, Margin = new Padding(0, 0, 0, 8) };
     private readonly TrackStatusLabel status = new() { Name = "CustomTrackStatus", AutoSize = true, UseMnemonic = false, Padding = new Padding(8), Margin = new Padding(0, 0, 0, 8) };
     private readonly Label hint = new() { Name = "CustomTrackHint", AutoSize = true, UseMnemonic = false, Margin = new Padding(0, 0, 0, 8) };
+    // Lighting presets of the selected track, shown when its installed pack has more than Daylight.
+    private readonly FlowLayoutPanel conditionsRow = new() { Name = "CustomTrackConditionsRow", AutoSize = true, WrapContents = false, Margin = new Padding(0, 0, 0, 8) };
+    private readonly ComboBox conditions = new() { Name = "CustomTrackConditions", AccessibleName = "Conditions", DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
+    private string preferredCondition = "day";
+    // Next build's quality (DiRT2VR's "Build with high quality assets"); follows the installed quality on selection.
+    private readonly CheckBox highQuality = new() { Text = "Build with high quality assets", Name = "CustomTrackHighQuality", AutoSize = true, Margin = new Padding(0, 0, 0, 8) };
+    private string? qualityShownFor;
     private readonly FlowLayoutPanel actions = new() { Name = "CustomTrackActions", AutoSize = true, WrapContents = true, Margin = new Padding(0, 0, 0, 8) };
     private readonly Button install = new() { Text = "Build and install…", Name = "BuildCustomTrack", AutoSize = true, Padding = new Padding(5, 2, 5, 2) };
     private readonly Button chooseSource = new() { Text = "Choose Assetto Corsa folder…", Name = "ChooseCustomTrackSource", AutoSize = true, Padding = new Padding(5, 2, 5, 2) };
@@ -33,13 +40,20 @@ internal sealed class CustomTrackPanel : VerticalStack
     internal CustomTrackPanel(string launcherRoot)
     {
         root = launcherRoot; Name = "CustomTrackPanel";
-        browser = new TrackBrowser(list, detail) { Name = "CustomTrackBrowser" };
+        browser = new TrackBrowser(list, detail, RowHeight) { Name = "CustomTrackBrowser" };
         Controls.Add(toggle);
         foreach (var source in CustomTracks.Supported) list.Items.Add(source);
         list.SelectedIndex = 0;
         title.Font = new Font("Segoe UI", 12, FontStyle.Bold); status.Font = new Font("Segoe UI", 11, FontStyle.Bold);
         actions.Controls.AddRange([install, chooseSource, manage, stop]);
-        foreach (var control in new Control[] { title, description, status, hint, actions, progress, progressText, footer }) detail.Controls.Add(control);
+        conditionsRow.Controls.AddRange([new Label { Text = "Conditions", AutoSize = true, UseMnemonic = false, Margin = new Padding(0, 6, 8, 0) }, conditions]);
+        conditions.SelectedIndexChanged += (_, _) =>
+        {
+            if (loading || conditions.SelectedItem is not CustomCondition chosen) return;
+            preferredCondition = chosen.Id; Changed?.Invoke(this, EventArgs.Empty);
+        };
+        foreach (var control in new Control[] { title, description, status, hint, conditionsRow, highQuality, actions, progress, progressText, footer }) detail.Controls.Add(control);
+        highQuality.CheckedChanged += (_, _) => { if (!loading) ShowSelected(); };
         var rebuild = menu.Items.Add("Rebuild from source…"); rebuild.Name = "RebuildCustomTrack";
         var folder = menu.Items.Add("Choose Assetto Corsa folder…"); folder.Name = "ManageCustomTrackSource";
         var uninstall = menu.Items.Add("Uninstall…"); uninstall.Name = "UninstallCustomTrack";
@@ -50,7 +64,7 @@ internal sealed class CustomTrackPanel : VerticalStack
         chooseSource.Click += async (_, _) => await ChooseSource();
         manage.Click += (_, _) => menu.Show(manage, new Point(0, manage.Height));
         stop.Click += (_, _) => { stop.Enabled = false; cancellation?.Cancel(); };
-        list.MeasureItem += (_, e) => e.ItemHeight = (int)Math.Ceiling(Font.GetHeight() * 3 + LauncherAppearance.Px(this, 18));
+        list.MeasureItem += (_, e) => e.ItemHeight = RowHeight();
         list.DrawItem += DrawTrack;
         list.SelectedIndexChanged += (_, _) => { if (!loading) { ShowSelected(); Changed?.Invoke(this, EventArgs.Empty); } };
         toggle.CheckedChanged += (_, _) =>
@@ -64,19 +78,24 @@ internal sealed class CustomTrackPanel : VerticalStack
         ShowSelected();
     }
 
+    // Every row: name, summary and status lines plus padding.
+    private int RowHeight() => (int)Math.Ceiling(Font.GetHeight() * 3 + LauncherAppearance.Px(this, 18));
     internal bool CustomEnabled => toggle.Checked;
     internal bool IsWorking => cancellation is not null;
     internal CustomTrackSource Selected => list.SelectedItem as CustomTrackSource ?? CustomTracks.Supported[0];
     internal bool SelectedInstalled => statuses.TryGetValue(Selected.Id, out var value) && value.Installed is not null;
     internal string SelectedLabel => Selected.Label + " (custom)";
+    // The chosen preset when the selected track's installed pack offers it; Daylight otherwise.
+    internal string SelectedCondition => conditions.SelectedItem is CustomCondition chosen && VerticalStack.IsShown(conditionsRow) ? chosen.Id : CustomTracks.Daylight.Id;
 
-    internal void Load(bool enabled, string? trackId)
+    internal void Load(bool enabled, string? trackId, string? condition = null)
     {
         loading = true;
         try
         {
             list.SelectedItem = CustomTracks.Supported.FirstOrDefault(s => s.Id == trackId) ?? CustomTracks.Supported[0];
             toggle.Checked = enabled;
+            preferredCondition = condition ?? preferredCondition;
         }
         finally { loading = false; }
         ShowSelected();
@@ -94,8 +113,8 @@ internal sealed class CustomTrackPanel : VerticalStack
     {
         idle = value;
         toggle.Enabled = value && !IsWorking;
-        list.Enabled = !IsWorking;
-        install.Enabled = chooseSource.Enabled = manage.Enabled = value && !IsWorking;
+        list.Enabled = !IsWorking; conditions.Enabled = value;
+        install.Enabled = chooseSource.Enabled = manage.Enabled = highQuality.Enabled = value && !IsWorking;
         stop.Enabled = cancellation is { IsCancellationRequested: false };
     }
 
@@ -124,11 +143,24 @@ internal sealed class CustomTrackPanel : VerticalStack
         var installed = value?.Installed;
         status.Ready = installed is not null;
         status.Text = installed is not null ? "Installed · Ready offline" : value?.SourceFolder is null ? "Needs " + source.SourceName : "Not installed";
+        // The checkbox starts at the installed quality whenever another track is shown.
+        if (qualityShownFor != source.Id || value is null) { highQuality.Checked = installed?.HighQuality ?? false; if (value is not null) qualityShownFor = source.Id; }
+        VerticalStack.SetShown(highQuality, !IsWorking);
         hint.Text = installed is not null
-            ? $"Built {installed.Built:g} · {installed.Bytes / (1024.0 * 1024):N0} MB" + (value?.SourceFolder is { } from ? " · from " + from : "") + ". Use Manage to rebuild or uninstall."
+            ? $"Built {installed.Built:g} · {(installed.HighQuality ? "High quality assets" : "Standard quality")} · {installed.Bytes / (1024.0 * 1024):N0} MB" + (value?.SourceFolder is { } from ? " · from " + from : "") +
+              ". Use Manage to rebuild or uninstall" + (installed.HighQuality != highQuality.Checked ? "; rebuild to apply the quality selected below." : ".")
             : value?.SourceFolder is { } path
                 ? $"Build this track from your own {source.SourceName} files (about 2 minutes, about 500 MB). Found: {path}. Installed tracks work offline."
                 : $"Build this track from your own {source.SourceName} files. {source.SourceName} was not found in your Steam libraries: install it, or choose its folder.";
+        CustomCondition[] offered = value is null ? [CustomTracks.Daylight] : CustomTracks.Available(value);
+        bool wasLoading = loading; loading = true;
+        try
+        {
+            conditions.Items.Clear(); conditions.Items.AddRange(offered);
+            conditions.SelectedItem = offered.FirstOrDefault(c => c.Id == preferredCondition) ?? offered[0];
+        }
+        finally { loading = wasLoading; }
+        VerticalStack.SetShown(conditionsRow, offered.Length > 1);
         install.Visible = installed is null && !IsWorking; install.Enabled = idle && value?.SourceFolder is not null;
         chooseSource.Visible = installed is null && !IsWorking;
         manage.Visible = installed is not null && !IsWorking;
@@ -151,7 +183,12 @@ internal sealed class CustomTrackPanel : VerticalStack
         statuses.TryGetValue(source.Id, out var value);
         if (value?.SourceFolder is null) { await ChooseSource(); statuses.TryGetValue(source.Id, out value); if (value?.SourceFolder is null) return; }
         var rebuild = value.Installed is not null;
-        if (MessageBox.Show(this, $"{(rebuild ? "Rebuild" : "Build and install")} {source.Label} from your {source.SourceName} files?\n\n{value.SourceFolder}\n\nAbout 2 minutes and 500 MB. Keep GRID 2 closed until it finishes." +
+        var shared = CustomTracks.Sharing(source);
+        string also = shared.Length > 0 ? $" {string.Join(" and ", shared.Select(s => s.Label))} is built at the same time." : "";
+        bool hq = highQuality.Checked;
+        string quality = hq ? "\n\nHigh quality assets: source texture resolutions. Uses more disk space, GPU memory and game memory, especially in VR."
+            : "\n\nStandard quality.";
+        if (MessageBox.Show(this, $"{(rebuild ? "Rebuild" : "Build and install")} {source.Label} from your {source.SourceName} files?{also}{quality}\n\n{value.SourceFolder}\n\nAbout 2 minutes and {(hq ? "1 GB" : "500 MB")}. Keep GRID 2 closed until it finishes." +
                 (rebuild ? " The installed copy is replaced only after the new one is complete." : ""),
                 (rebuild ? "Rebuild " : "Build ") + source.Label, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
         using var stopToken = new CancellationTokenSource(); cancellation = stopToken;
@@ -160,7 +197,7 @@ internal sealed class CustomTrackPanel : VerticalStack
         try
         {
             var report = new Progress<(int Percent, string Line)>(p => { if (!IsDisposed) ShowProgress(p.Percent, p.Line); });
-            await Task.Run(() => CustomTracks.Build(root, source, report, stopToken.Token));
+            await Task.Run(() => CustomTracks.Build(root, source, report, stopToken.Token, hq));
         }
         catch (OperationCanceledException) { failure = $"{source.Label} build stopped. Any installed copy was kept."; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException) { failure = error.Message; }
@@ -185,7 +222,9 @@ internal sealed class CustomTrackPanel : VerticalStack
     {
         if (IsWorking || !idle) return;
         var source = Selected;
-        if (MessageBox.Show(this, $"Uninstall {source.Label}? Your {source.SourceName} installation, GRID 2 and your saves are unchanged, and you can build it again later.",
+        var shared = CustomTracks.Sharing(source);
+        string also = shared.Length > 0 ? $" This also uninstalls {string.Join(" and ", shared.Select(s => s.Label))}, built together with it." : "";
+        if (MessageBox.Show(this, $"Uninstall {source.Label}?{also} Your {source.SourceName} installation, GRID 2 and your saves are unchanged, and you can build it again later.",
                 "Uninstall " + source.Label, MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
         try { await Task.Run(() => CustomTracks.Remove(root, source)); }
         catch (IOException error) { MessageBox.Show(this, error.Message, source.Label, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
@@ -210,10 +249,10 @@ internal sealed class CustomTrackPanel : VerticalStack
     // List beside the detail when there is room; above it otherwise.
     private sealed class TrackBrowser : Panel
     {
-        private readonly ListBox list; private readonly VerticalStack detail; private bool arranging;
-        internal TrackBrowser(ListBox list, VerticalStack detail)
+        private readonly ListBox list; private readonly VerticalStack detail; private readonly Func<int> rowHeight; private bool arranging;
+        internal TrackBrowser(ListBox list, VerticalStack detail, Func<int> rowHeight)
         {
-            this.list = list; this.detail = detail; Margin = new Padding(0, 0, 0, 12); TabStop = false;
+            this.list = list; this.detail = detail; this.rowHeight = rowHeight; Margin = new Padding(0, 0, 0, 12); TabStop = false;
             Controls.Add(list); Controls.Add(detail);
             detail.SizeChanged += (_, _) => PerformLayout();
         }
@@ -225,7 +264,9 @@ internal sealed class CustomTrackPanel : VerticalStack
             try
             {
                 var gap = LauncherAppearance.Px(this, 20);
-                var listHeight = Enumerable.Range(0, list.Items.Count).Sum(list.GetItemHeight) + 4;
+                // Not ListBox.GetItemHeight: during handle (re)creation the native list is still being
+                // refilled and that call fails (Win32Exception 0 with three tracks in the preview).
+                var listHeight = list.Items.Count * rowHeight() + 4;
                 var wide = ClientSize.Width >= LauncherAppearance.Px(this, 620);
                 var listWidth = wide ? Math.Min(LauncherAppearance.Px(this, 240), ClientSize.Width / 3) : ClientSize.Width;
                 list.SetBounds(0, 0, listWidth, listHeight);

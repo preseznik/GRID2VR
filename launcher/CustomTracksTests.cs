@@ -8,8 +8,18 @@ internal static class CustomTracksTests
         // Event labels: converted g2vr_ locations are named and marked; stock names are unchanged.
         Check(SessionClient.LocationLabel("circuits/g2vr_nordschleife") == "Nordschleife (custom)", "custom event label");
         Check(SessionClient.LocationLabel("circuits/brands_hatch") == "Brands Hatch" && !SessionClient.LocationLabel("circuits/g2vr_").Contains("(custom)"), "stock and degenerate labels");
-        var source = CustomTracks.Supported.Single();
-        Check(source.Id == "circuits/g2vr_nordschleife/route_0" && source.SteamAppId == "244210", "the supported source matches the converter's location");
+        Check(SessionClient.LocationLabel("circuits/g2vr_misty_loch") == "Misty Loch (custom)", "multi-word custom event label");
+        // Ids, locations and packs must match tools/track-converter/TrackDefinitions.cs.
+        Check(CustomTracks.Supported.Select(s => (s.Id, s.SourceTrack, s.Layout, s.Pack, s.SteamAppId)).SequenceEqual(new[]
+        {
+            ("circuits/g2vr_nordschleife/route_0", "ks_nordschleife", "nordschleife", "nordschleife", "244210"),
+            ("circuits/g2vr_misty_loch/route_0", "rt_misty_loch", "normal", "misty_loch", "244210"),
+            ("circuits/g2vr_misty_loch/route_1", "rt_misty_loch", "reverse", "misty_loch", "244210"),
+        }), "the supported sources match the converter's locations");
+        // Misty Loch Reverse is route_1 of the Misty Loch pack: built from the normal layout's entry.
+        Check(CustomTracks.PackSource("misty_loch")?.Layout == "normal" && CustomTracks.PackSource("nope") is null &&
+              CustomTracks.Sharing(CustomTracks.Supported[2]).Single() == CustomTracks.Supported[1] && CustomTracks.Sharing(CustomTracks.Supported[0]).Length == 0, "shared pack entries");
+        var source = CustomTracks.Supported[0];
 
         var root = Path.Combine(fixture, "custom-tracks-test"); Directory.CreateDirectory(root);
         string Pack(string name, string json, bool overlay = true)
@@ -62,7 +72,7 @@ internal static class CustomTracksTests
         Check(!toggle.Checked && launcherTab.Controls.Find("CustomTrackList", true).Length == 0, "off by default; the track browser is hidden");
         var eventRow = form.Controls.Find("PracticeEventRow", true).Single(); var trackRow = form.Controls.Find("PracticeTrackRow", true).Single();
         toggle.Checked = true;
-        Check(new[] { "CustomTrackList", "BuildCustomTrack", "ChooseCustomTrackSource", "ManageCustomTrack", "StopCustomTrack", "CustomTrackStatus", "CustomTrackProgress" }
+        Check(new[] { "CustomTrackList", "BuildCustomTrack", "ChooseCustomTrackSource", "ManageCustomTrack", "StopCustomTrack", "CustomTrackStatus", "CustomTrackProgress", "CustomTrackHighQuality" }
               .All(name => launcherTab.Controls.Find(name, true).Length == 1), "the CUSTOM tracks browser and actions are on the Launcher tab");
         var list = (ListBox)launcherTab.Controls.Find("CustomTrackList", true).Single();
         Check(list.Items.Cast<CustomTrackSource>().Select(s => s.Id).SequenceEqual(CustomTracks.Supported.Select(s => s.Id)), "the browser lists the supported tracks");
@@ -80,6 +90,38 @@ internal static class CustomTracksTests
               !System.Text.Json.JsonSerializer.Serialize(choices).Contains("SessionTrack"), "the toggle and selection persist");
         var invalid = false; try { SessionClient.Validate(choices with { CustomTrack = "circuits/brands_hatch/route_2" }); } catch (ArgumentException) { invalid = true; }
         Check(invalid, "only g2vr_ locations are custom tracks");
+
+        // Lighting presets: Misty Loch offers Daylight/Evening/Morning Fog as day/day_alt/night_alt,
+        // only those its installed pack contains; the Nordschleife and unknown choices are Daylight.
+        var misty = CustomTracks.PackSource("misty_loch")!;
+        Check(misty.Conditions.Select(c => (c.Id, c.Lighting)).SequenceEqual(new[] { ("day", "day"), ("evening", "day_alt"), ("morning_fog", "night_alt") }) &&
+              source.Conditions.Single() == CustomTracks.Daylight, "preset lists");
+        var mistyPack = Pack("misty", Manifest(misty.Id));
+        var mistyVenue = Path.Combine(mistyPack, "overlay", "tracks", "locations", "circuits", "g2vr_misty_loch"); Directory.CreateDirectory(mistyVenue);
+        var mistyStatus = new CustomTrackStatus(misty, null, CustomTracks.Installed(root, misty.Id).Single());
+        File.WriteAllText(Path.Combine(mistyPack, "custom-track.json"), "{\"schema\":1,\"tracks\":[{\"id\":\"" + misty.Id + "\",\"label\":\"x\"},{\"id\":\"circuits/g2vr_misty_loch/route_1\",\"label\":\"y\"}]}");
+        Check(CustomTracks.Installed(root, "circuits/g2vr_misty_loch/route_1").Single().Folder == mistyPack && CustomTracks.Installed(root, misty.Id).Single().Folder == mistyPack, "one pack installs both Misty Loch routes");
+        // Quality: the manifest's "quality"; standard unless it says "high".
+        Check(!CustomTracks.Installed(root, misty.Id).Single().HighQuality, "a pack without quality is standard");
+        File.WriteAllText(Path.Combine(mistyPack, "custom-track.json"), "{\"schema\":1,\"quality\":\"high\",\"tracks\":[{\"id\":\"" + misty.Id + "\",\"label\":\"x\"}]}");
+        var highPack = CustomTracks.Installed(root, misty.Id).Single();
+        Check(highPack.HighQuality && CustomTracks.Describe(new(misty, null, highPack)).Contains("high quality assets"), "a high quality pack is shown as such");
+        File.WriteAllText(Path.Combine(mistyPack, "custom-track.json"), "{\"schema\":1,\"quality\":7,\"tracks\":[{\"id\":\"" + misty.Id + "\",\"label\":\"x\"}]}");
+        Check(!CustomTracks.Installed(root, misty.Id).Single().HighQuality, "a malformed quality is standard");
+        Check(CustomTracks.Available(mistyStatus).SequenceEqual([CustomTracks.Daylight]) && CustomTracks.Available(mistyStatus with { Installed = null }).SequenceEqual([CustomTracks.Daylight]), "a pack without presets offers Daylight only");
+        File.WriteAllBytes(Path.Combine(mistyVenue, "lighting_night_alt.xml"), [1]);
+        Check(CustomTracks.Available(mistyStatus).SequenceEqual([CustomTracks.Daylight]), "an old in-overlay preset (ignored by GRID 2) is not offered");
+        var fogVenue = Path.Combine(mistyPack, "presets", "night_alt", "tracks", "locations", "circuits", "g2vr_misty_loch"); Directory.CreateDirectory(fogVenue);
+        File.WriteAllBytes(Path.Combine(fogVenue, "lighting_day.xml"), [1]);
+        Check(CustomTracks.Available(mistyStatus).Select(c => c.Id).SequenceEqual(["day", "morning_fog"]), "presets follow the installed preset overlays");
+        string? LightingArgument(Choices value) { var list = client.LaunchCommand(value, false).ArgumentList; var at = list.IndexOf("-Lighting"); return at > 0 ? list[at + 1] : null; }
+        var fog = choices with { CustomTrack = misty.Id, CustomConditions = "morning_fog" };
+        Check(LightingArgument(fog) == "night_alt" && LightingArgument(fog with { CustomConditions = "evening" }) == "day_alt" && LightingArgument(fog with { CustomConditions = "day" }) is null &&
+              LightingArgument(fog with { CustomConditions = "unknown" }) is null && LightingArgument(fog with { CustomTrack = source.Id }) is null &&
+              LightingArgument(fog with { LaunchMode = "Normal" }) is null, "Launch passes the preset's lighting set for Practice/Race only");
+        Check(SessionClient.ParseChoices(System.Text.Json.JsonSerializer.Serialize(fog)) is { CustomConditions: "morning_fog" }, "the preset persists");
+        var badCondition = false; try { SessionClient.Validate(fog with { CustomConditions = "../x" }); } catch (ArgumentException) { badCondition = true; }
+        Check(badCondition, "custom conditions are validated");
         Directory.Delete(root, true); Directory.Delete(game, true);
     }
 
@@ -103,7 +145,7 @@ internal static class CustomTracksTests
     // handle (never the desktop) and closed. No input is sent.
     static void SavePreviews(string repository, SessionClient fixture)
     {
-        var source = CustomTracks.Supported.Single();
+        var source = CustomTracks.Supported[0];
         var status = CustomTracks.Status(repository, source);
         var catalog = Task.Run(() => new SessionClient(repository).Catalog()).GetAwaiter().GetResult();
         var notInstalled = status with { Installed = null };
@@ -114,6 +156,8 @@ internal static class CustomTracksTests
             ("not-installed", notInstalled, true, null, null),
             ("building", notInstalled, true, 55, "Collision: 880,256 triangles read back, 0 unmatched at 2 cm."),
             ("simple-installed", status, true, null, null),
+            // A track with lighting presets (Conditions picker), as installed on this PC.
+            ("misty", CustomTracks.Status(repository, CustomTracks.PackSource("misty_loch")!), true, null, null),
         };
         foreach (var state in states)
         {

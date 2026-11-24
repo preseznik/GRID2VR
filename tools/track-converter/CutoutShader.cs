@@ -92,7 +92,7 @@ internal static class CutoutShader
         return report;
     }
 
-    internal static object Write(string gameRoot, string overlay, IDictionary<string, string> inputs)
+    internal static object Write(string gameRoot, string overlay, IDictionary<string, string> inputs, IReadOnlyList<AnimatedGroup>? animated = null)
     {
         string source = Files.Inside(gameRoot, Relative); Files.NoLinks(source); inputs[source] = Files.Hash(source);
         var originalFile = Files.Pssg(source);
@@ -265,6 +265,8 @@ internal static class CutoutShader
             layered.SetAttributeValue("parameterCount", layered.Elements("SHADERINPUTDEFINITION").Count());
         }
         vc.AddAfterSelf(layered);
+        // Animated copies (flowing water, floating boats) of the finished plain decal and ground.
+        var (animatedGroups, animatedReport) = Animation.AddGroups(candidate, plainDecal, ground, animated ?? [], newPrograms);
         var programAnchor = candidate.Descendants("SHADERPROGRAM").Last();
         foreach (var p in newPrograms) { programAnchor.AddAfterSelf(p); programAnchor = p; }
 
@@ -302,11 +304,17 @@ internal static class CutoutShader
             if (!XNode.DeepEquals(g, s)) throw new InvalidDataException(what + " changed in serialization.");
             s.Remove();
         }
+        foreach (var g in animatedGroups)
+        {
+            var s = GroupIn(saved, (string)g.Attribute("id")!);
+            if (!XNode.DeepEquals(g, s)) throw new InvalidDataException("Animated group changed in serialization: " + g.Attribute("id"));
+            s.Remove();
+        }
         savedCutout.Remove(); savedVc.Remove();
         if (!XNode.DeepEquals(original, saved)) throw new InvalidDataException("Stock shader programs or states changed.");
         if (Files.Hash(source) != inputs[source]) throw new InvalidDataException("Shaderpack changed while converting.");
         return new { Group, Base = "decal_ao_vc_flat", States = "object_2sidedcov cutout (alpha test, coverage, depth write), decal back-face culling",
             DecalGroup, LayerCutoutGroup, DecalOffset = new { DecalOffset.Factor, DecalOffset.Units }, CutoutOffset = new { CutoutOffset.Factor, CutoutOffset.Units },
-            TerrainGroup, TerrainPasses = patched, GroundGroup, PlainDecalGroup, ShadowMin = shadow, LayeredGroup, LayeredPasses = layeredPasses, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, StockUnchanged = true, OriginalHash = inputs[source] };
+            TerrainGroup, TerrainPasses = patched, GroundGroup, PlainDecalGroup, ShadowMin = shadow, LayeredGroup, LayeredPasses = layeredPasses, FoliageShadowGroup, FoliageShadowVertexBytes = vsCode.Length, Animated = animatedReport, StockUnchanged = true, OriginalHash = inputs[source] };
     }
 }

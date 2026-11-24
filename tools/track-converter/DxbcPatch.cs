@@ -287,6 +287,130 @@ internal static partial class DxbcPatch
         return new(rebuilt, normalReads, text);
     }
 
+    // Animated vertex input: a compiled prologue computes a new value for one stock input
+    // (semantic/index) from that input and GRID 2's running clock (PerFrameConstantBuffer,
+    // cb1[4].w = sunDirectionAndTime.w, which the stock water shaders scroll by), and every
+    // stock read of that input register reads the result instead. Outputs, lighting, fog and
+    // everything else stay stock. `body` is HLSL over `float4 v` (the input, w = 1 for a
+    // position) and `float t` (seconds). A stock shader without cb1[5] gets that declaration
+    // (an unbound slot reads 0: that pass simply stays still). Temps follow the stock ones.
+    internal static Result PrependVertex(byte[] dxbc, string semantic, int index, string body)
+    {
+        if (!Checksum(dxbc).AsSpan().SequenceEqual(dxbc.AsSpan(4, 16))) throw new InvalidDataException("DXBC checksum self-check failed on the stock shader.");
+        var chunks = Chunks(dxbc);
+        var isgn = chunks.Single(c => c.Tag == "ISGN").Data;
+        var shex = chunks.Single(c => c.Tag is "SHEX" or "SHDR");
+        // The prologue's inputs: the stock signature element for element (same registers).
+        int count = BinaryPrimitives.ReadInt32LittleEndian(isgn); var fields = new List<string>(); int target = -1, targetWidth = 0;
+        for (int i = 0; i < count; i++)
+        {
+            int e = 8 + i * 24;
+            string name = CString(isgn, BinaryPrimitives.ReadInt32LittleEndian(isgn.AsSpan(e))); int semanticIndex = BinaryPrimitives.ReadInt32LittleEndian(isgn.AsSpan(e + 4));
+            int systemValue = BinaryPrimitives.ReadInt32LittleEndian(isgn.AsSpan(e + 8)), component = BinaryPrimitives.ReadInt32LittleEndian(isgn.AsSpan(e + 12));
+            int register = BinaryPrimitives.ReadInt32LittleEndian(isgn.AsSpan(e + 16)), width = System.Numerics.BitOperations.PopCount((uint)isgn[e + 20] & 0xf);
+            if (systemValue != 0 || component != 3 || register != i || (isgn[e + 20] & 0xf) != (1 << width) - 1) throw new InvalidDataException($"Unsupported vertex input {name}{semanticIndex}.");
+            fields.Add($"float{width} a{i} : {name}{semanticIndex};");
+            if (name == semantic && semanticIndex == index) { target = register; targetWidth = width; }
+        }
+        if (target < 0) throw new InvalidDataException($"Stock vertex shader has no input {semantic}{index}.");
+        string widen = targetWidth switch { 4 => "i.a{0}", 3 => "float4(i.a{0}, 1)", 2 => "float4(i.a{0}, 0, 1)", _ => "float4(i.a{0}, 0, 0, 1)" };
+        string hlsl = "cbuffer PerFrameConstantBuffer : register(b1) { float4 g2vr_frame[4]; float4 sunDirectionAndTime; };\n" +
+            "struct VSIn { " + string.Join(" ", fields) + " };\n" +
+            "float4 main(VSIn i) : TEXCOORD0 { float4 v = " + string.Format(System.Globalization.CultureInfo.InvariantCulture, widen, target) + "; float t = sunDirectionAndTime.w; " + body + " return v; }\n";
+        var prologue = ShaderCompile.Compile(hlsl, "main", "vs_5_0");
+        var pchunks = Chunks(prologue);
+        if (!Signature(pchunks.Single(c => c.Tag == "ISGN").Data).SequenceEqual(Signature(isgn))) throw new InvalidDataException("Prologue input signature differs from the stock shader.");
+
+        uint[] Tokens(byte[] data) { var t = new uint[data.Length / 4]; for (int i = 0; i < t.Length; i++) t[i] = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(i * 4)); if (t[1] != t.Length) throw new InvalidDataException("Unexpected shader program length."); return t; }
+        var stock = Tokens(shex.Data); var pro = Tokens(pchunks.Single(c => c.Tag is "SHEX" or "SHDR").Data);
+        if ((stock[0] >> 16) != 1 || (pro[0] >> 16) != 1) throw new InvalidDataException("Not a vertex shader.");
+        static bool Declaration(uint opcode) => opcode is >= 0x58 and <= 0x6a or >= 0x8f and <= 0xa2;
+        var stockDecl = Instructions(stock).TakeWhile(i => Declaration(i.Opcode)).ToList();
+        var stockBody = Instructions(stock).Skip(stockDecl.Count).ToList();
+        var proDecl = Instructions(pro).TakeWhile(i => Declaration(i.Opcode)).ToList();
+        var proBody = Instructions(pro).Skip(proDecl.Count).ToList();
+        if (proBody.Count == 0 || proBody[^1].Opcode != 0x3e || proBody.Take(proBody.Count - 1).Any(i => i.Opcode is 0x3e or 0x3f or 0x0d or 0x04 or 0x05 or 0x2c))
+            throw new InvalidDataException("Prologue must end in its only ret, with no call or label.");
+        int stockTemps = stockDecl.Count(i => i.Opcode == 0x68) switch { 0 => 0, 1 => (int)stock[stockDecl.Single(i => i.Opcode == 0x68).At + 1], _ => throw new InvalidDataException("Several dcl_temps.") };
+        int proTemps = proDecl.Count(i => i.Opcode == 0x68) switch { 0 => 0, 1 => (int)pro[proDecl.Single(i => i.Opcode == 0x68).At + 1], _ => throw new InvalidDataException("Several prologue dcl_temps.") };
+        int resultTemp = stockTemps + proTemps;
+        uint frameSize = 0;
+        foreach (var d in proDecl)
+        {
+            var ins = pro.AsSpan(d.At, d.Length);
+            switch (d.Opcode)
+            {
+                case 0x5f: // dcl_input: the stock shader must declare the same components
+                    {
+                        int reg = OperandIndex(ins, 1); uint mask = (ins[1] >> 4) & 0xf, have = 0;
+                        foreach (var s in stockDecl) if (s.Opcode == 0x5f && OperandIndex(stock.AsSpan(s.At, s.Length), 1) == reg) have |= (stock[s.At + 1] >> 4) & 0xf;
+                        if ((mask & ~have) != 0) throw new InvalidDataException($"Prologue reads v{reg} components the stock shader does not declare.");
+                        break;
+                    }
+                case 0x59:
+                    if (ins[2] != 1) throw new InvalidDataException($"Prologue reads cb{ins[2]}.");
+                    frameSize = ins[3]; break;
+                case 0x65 or 0x67 or 0x68 or 0x6a: break;
+                default: throw new InvalidDataException($"Unexpected prologue declaration 0x{d.Opcode:x}.");
+            }
+        }
+        void Rewrite(uint[] t, Func<uint, int, (uint Type, int Index)?> map)
+        {
+            int p = 1; while ((t[p - 1] >> 31) != 0 && p < t.Length) p++;
+            while (p < t.Length)
+            {
+                int n = OperandLength(t, p); uint tok = t[p], type = (tok >> 12) & 0xff;
+                if (type is 0 or 1 or 2)
+                {
+                    if (((tok >> 20) & 3) != 1 || ((tok >> 22) & 7) != 0) throw new InvalidDataException("Relative register index in a rewritten operand.");
+                    int idx = p + 1 + (int)(tok >> 31);
+                    if (map(type, (int)t[idx]) is { } to) { t[p] = (tok & ~(0xffu << 12)) | (to.Type << 12); t[idx] = (uint)to.Index; }
+                }
+                p += n;
+            }
+        }
+        var bodyTokens = new List<uint>();
+        foreach (var i in proBody.Take(proBody.Count - 1))
+        {
+            var copy = pro.AsSpan(i.At, i.Length).ToArray();
+            Rewrite(copy, (type, idx) => type switch { 0 => (0u, stockTemps + idx), 2 when idx == 0 => (0u, resultTemp), 2 => throw new InvalidDataException("Prologue writes an unexpected output."), _ => null });
+            bodyTokens.AddRange(copy);
+        }
+        int reads = 0;
+        foreach (var i in stockBody)
+        {
+            var copy = stock.AsSpan(i.At, i.Length).ToArray();
+            Rewrite(copy, (type, idx) => type == 1 && idx == target ? (reads++ >= 0 ? (0u, resultTemp) : null) : null);
+            bodyTokens.AddRange(copy);
+        }
+        if (reads == 0) throw new InvalidDataException($"Stock vertex shader never reads {semantic}{index}.");
+
+        var output = new List<uint> { stock[0], 0 };
+        bool hasFrame = false, hasTemps = false;
+        foreach (var d in stockDecl)
+        {
+            var ins = stock.AsSpan(d.At, d.Length).ToArray();
+            if (d.Opcode == 0x68) { ins[1] = (uint)(resultTemp + 1); hasTemps = true; }
+            if (d.Opcode == 0x59 && ins[2] == 1) { hasFrame = true; ins[3] = Math.Max(ins[3], frameSize); }
+            if (d.Opcode == 0x5f && !hasTemps && !hasFrame && frameSize > 0)
+            {
+                // cb declarations precede inputs: add cb1 before the first input.
+                output.AddRange(proDecl.Where(p => p.Opcode == 0x59).Select(p => pro.AsSpan(p.At, p.Length).ToArray()).Single()); hasFrame = true;
+            }
+            output.AddRange(ins);
+        }
+        if (!hasFrame && frameSize > 0) throw new InvalidDataException("Could not place the per-frame constant buffer declaration.");
+        if (!hasTemps) throw new InvalidDataException("Stock vertex shader declares no temps.");
+        output.AddRange(bodyTokens);
+        output[1] = (uint)output.Count;
+        var newShex = new byte[output.Count * 4];
+        for (int i = 0; i < output.Count; i++) BinaryPrimitives.WriteUInt32LittleEndian(newShex.AsSpan(i * 4), output[i]);
+        var rebuilt = Assemble(dxbc, chunks.Select(c => c.Tag == shex.Tag ? (c.Tag, newShex) : (c.Tag, c.Data)).ToList());
+        var text = Disassemble.Run(rebuilt);
+        Validate(rebuilt, vertex: true);
+        return new(rebuilt, reads, text);
+    }
+
     static List<(int At, int Length, uint Opcode)> Instructions(uint[] tokens)
     {
         var list = new List<(int, int, uint)>();

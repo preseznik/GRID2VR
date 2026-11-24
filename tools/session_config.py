@@ -135,9 +135,23 @@ def custom_tracks():
     return tracks
 
 
-def modlist(overlay):
-    """GRID 2's documented -mod configuration for one overlay folder."""
+def preset_overlay(route, lighting):
+    """A converted track's lighting preset: its own overlay, <pack>/presets/<set>, holding the
+    preset's files under the day names (a g2vr_ venue always renders the day set; see
+    tools/track-converter/LightingPresets.cs). None for day or a set the pack lacks."""
+    if lighting not in ('day_alt', 'night', 'night_alt') or not route.get('custom') or not route.get('pack'):
+        return None
+    overlay = Path(route['pack'])/'presets'/lighting
+    if not regular(overlay/'tracks/locations'/route['country']/route['name']/'lighting_day.xml'):
+        return None
+    return str(plain_path(overlay))
+
+
+def modlist(overlay, preset=None):
+    """GRID 2's documented -mod configuration: the first folder holding a file wins."""
     root = ET.Element('ModList')
+    if preset is not None:
+        ET.SubElement(root, 'Mod', Path=str(preset))
     ET.SubElement(root, 'Mod', Path=str(overlay))
     ET.indent(root, space='  ')
     return ET.tostring(root, encoding='utf-8', xml_declaration=True)+b'\n'
@@ -223,15 +237,20 @@ def configuration(installed, car, track, livery='user', mode='benchmark', lighti
     if not all(TOKEN.fullmatch(v) for v in (car, livery, route['country'], route['name'], route['route'])):
         raise ValueError('Invalid content identifier')
     if lighting != 'day':
-        # Night/sunset only where the loose stock location ships that lighting set
-        # (archived DLC and converted tracks are day only).
-        location = Path(installed.get('gameRoot') or '')/'tracks/locations'/route['country']/route['name']
-        if route.get('dlc') or route.get('custom') or not installed.get('gameRoot') or not regular(location/f'lighting_{lighting}.xml'):
+        # Night/sunset only where the loose stock location, or a converted track's own preset
+        # overlay, ships that lighting set. Archived DLC is day only.
+        if route.get('custom'):
+            available = preset_overlay(route, lighting) is not None
+        else:
+            location = Path(installed.get('gameRoot') or '')/'tracks/locations'/route['country']/route['name']
+            available = not route.get('dlc') and bool(installed.get('gameRoot')) and regular(location/f'lighting_{lighting}.xml')
+        if not available:
             raise ValueError(f'{track} has no {lighting} lighting')
     config = ET.Element('config', cycle_camera=str(cycle_camera).lower(), infinite_loop='false', skipreplays='true',
                         outputfilename='GRID2VR_SelectedSession')
+    # A converted track's preset is loaded as its day set (preset_overlay).
     entry = ET.SubElement(config, 'track', country=route['country'], name=route['name'], route=route['route'],
-                          lighting=lighting, weather=weather, laps=str(laps), number_cars=str(opponents+1))
+                          lighting='day' if route.get('custom') else lighting, weather=weather, laps=str(laps), number_cars=str(opponents+1))
     # The native loader still needs its shipped driver presets. Human practice
     # comes from normal race entry, never from changing these XML attributes.
     ET.SubElement(entry, 'car', name=car, livery=livery, ai_driver='Cau_Demo_1_1', ai_driver0='Cau_Demo_1_0', grid='0')
@@ -266,11 +285,19 @@ def verify_custom(installed, data, folder):
             raise ValueError('Prepared session names an overlay for a stock track')
         return
     path = folder/MODLIST_FILENAME
-    expected = modlist(custom['overlay'])
+    expected, track = custom_modlist(custom, data['selection'].get('lighting', 'day'))
     if (data.get('modList') != str(path) or not regular(path) or path.stat().st_size > 16384 or path.read_bytes() != expected
-            or data.get('customTrack') != dict(id=custom['id'], overlay=custom['overlay'], pack=custom['pack'],
-                                               modListSha256=hashlib.sha256(expected).hexdigest())):
+            or data.get('customTrack') != track):
         raise ValueError('Custom track overlay changed; regenerate the session')
+
+
+def custom_modlist(custom, lighting):
+    preset = preset_overlay(custom, lighting)
+    mods = modlist(custom['overlay'], preset)
+    track = dict(id=custom['id'], overlay=custom['overlay'], pack=custom['pack'], modListSha256=hashlib.sha256(mods).hexdigest())
+    if preset is not None:
+        track['preset'] = preset
+    return mods, track
 
 
 def launch_flag(mode):
@@ -325,10 +352,8 @@ def prepare(game_root, output, practice_bundle=None, **selection):
     mods = None
     if custom is not None:
         # Converted tracks load through GRID 2's own -mod overlay; the session owns its ModList.
-        mods = modlist(custom['overlay'])
+        mods, result['customTrack'] = custom_modlist(custom, selection.get('lighting', 'day'))
         result['modList'] = str(destination/MODLIST_FILENAME)
-        result['customTrack'] = dict(id=custom['id'], overlay=custom['overlay'], pack=custom['pack'],
-                                     modListSha256=hashlib.sha256(mods).hexdigest())
     # Own a new directory. Never overwrite an existing prepared session or use
     # filenames/paths supplied by a catalog as output paths.
     destination.mkdir(parents=True, exist_ok=False)

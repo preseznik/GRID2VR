@@ -131,6 +131,44 @@ class SessionConfigurationTests(unittest.TestCase):
             sessions.verify(self.root, destination)
         self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
 
+    def test_custom_track_lighting_presets_come_from_its_preset_overlays(self):
+        pack = self.custom_pack()
+        venue = pack/'overlay/tracks/locations/circuits/g2vr_test'
+        # No preset overlay: day only, even with a set-named file in the pack's overlay or a
+        # stock location of that name.
+        (venue/'lighting_day_alt.xml').write_bytes(b'old in-overlay preset')
+        stock = self.root/'tracks/locations/circuits/g2vr_test'
+        stock.mkdir(parents=True)
+        (stock/'lighting_day_alt.xml').write_bytes(b'not the pack')
+        for lighting in ('day_alt', 'night_alt', 'night'):
+            with self.subTest(lighting=lighting), self.assertRaises(ValueError):
+                self.prepare(Path(self.temp.name)/f'custom-missing-{lighting}', track='circuits/g2vr_test/route_0', lighting=lighting)
+        (stock/'lighting_day_alt.xml').unlink(); stock.rmdir()
+        for lighting in ('day_alt', 'night_alt'):
+            preset = pack/'presets'/lighting
+            (preset/'tracks/locations/circuits/g2vr_test').mkdir(parents=True)
+            (preset/'tracks/locations/circuits/g2vr_test/lighting_day.xml').write_bytes(b'preset lighting')
+            destination = Path(self.temp.name)/f'custom-{lighting}'
+            result = self.prepare(destination, track='circuits/g2vr_test/route_0', lighting=lighting)
+            # The preset loads as the day set, from its overlay listed before the pack's.
+            self.assertEqual(ET.parse(destination/'session.xml').getroot().find('track').get('lighting'), 'day')
+            mods = ET.parse(destination/'modlist.xml').getroot()
+            self.assertEqual([m.attrib['Path'] for m in mods.findall('Mod')], [str(preset), str(pack/'overlay')])
+            self.assertEqual(result['customTrack']['preset'], str(preset))
+            self.assertEqual(result['selection']['lighting'], lighting)
+            with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest):
+                self.assertEqual(sessions.verify(self.root, destination), result)
+        # Day never lists a preset.
+        destination = Path(self.temp.name)/'custom-day'
+        self.prepare(destination, track='circuits/g2vr_test/route_0')
+        self.assertEqual([m.attrib['Path'] for m in ET.parse(destination/'modlist.xml').getroot().findall('Mod')], [str(pack/'overlay')])
+        # A preset removed after preparing invalidates the session.
+        destination = Path(self.temp.name)/'custom-removed'
+        self.prepare(destination, track='circuits/g2vr_test/route_0', lighting='night_alt')
+        (pack/'presets/night_alt/tracks/locations/circuits/g2vr_test/lighting_day.xml').unlink()
+        with patch.object(sessions, 'SUPPORTED_AVX_SHA256', self.digest), self.assertRaises(ValueError):
+            sessions.verify(self.root, destination)
+
     def test_custom_tracks_cannot_shadow_or_escape_stock_content(self):
         self.custom_pack(track='circuits/test/route_0', name='unprefixed')
         with self.assertRaises(ValueError):

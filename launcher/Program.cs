@@ -9,12 +9,13 @@ internal static class Program
     {
         if (args is ["--self-test"]) return SelfTests.Run();
         // Child process of Build: the converter compiled into this launcher.
-        if (args is ["--convert-track", var convertPack, var convertSource, var convertGame, var convertOutput])
-            return CustomTracks.Supported.SingleOrDefault(s => s.Pack == convertPack) is { } convert
-                ? trackconverter::GRID2VR.Tracks.TrackConverterCli.Run(["visual-probe", convertSource, convert.Layout, convertGame, convertOutput])
+        if (args is ["--convert-track", var convertPack, var convertSource, var convertGame, var convertOutput, ..] && args.Length <= 6 && (args.Length == 5 || args[5] == "--high-quality-assets"))
+            return CustomTracks.PackSource(convertPack) is { } convert
+                ? trackconverter::GRID2VR.Tracks.TrackConverterCli.Run(["visual-probe", convertSource, convert.Layout, convertGame, convertOutput, .. args[5..]])
                 : 2;
         // Same build/remove path as Settings → Custom tracks, for scripted use and checks.
         if (args is ["--custom-track", "build" or "remove" or "status", var pack]) return CustomTracks.Command(SessionClient.FindRoot(AppContext.BaseDirectory), args[1], pack);
+        if (args is ["--custom-track", "build", var hqPack, "--high-quality-assets"]) return CustomTracks.Command(SessionClient.FindRoot(AppContext.BaseDirectory), "build", hqPack, highQuality: true);
         if (args.Length > 0 && args[0] is "--discover" or "--check-install" or "--check-uninstall" or "--setup" or "--verify-package" or "--migrate-from") return Installation.Command(args);
         if (args is ["--borderless-desktop" or "--borderless-vr-mirror", var desktopRun, var desktopPid, var desktopTicks])
         {
@@ -33,7 +34,8 @@ internal static class Program
         if (args.Length != 0 && args is not ["--preview-custom-tracks"]) return 1;
         ApplicationConfiguration.Initialize();
         Application.SetColorMode(SystemColorMode.System);
-        if (args is ["--preview-custom-tracks"]) return CustomTracksTests.Preview();
+        // Unattended captures: a UI exception must end the run with its stack, never wait in a dialog.
+        if (args is ["--preview-custom-tracks"]) { Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException); return CustomTracksTests.Preview(); }
         try
         {
             var root = SessionClient.FindRoot(AppContext.BaseDirectory);

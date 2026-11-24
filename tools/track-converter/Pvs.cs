@@ -17,13 +17,15 @@ internal static class Pvs
 {
     internal sealed record Cell(Vector3[] Eyes, bool[] Visible);
 
-    const float CellLength = 100, Far = 3700, NearAlways = 400;
+    const float CellLength = 100, DefaultFar = 3700, NearAlways = 400;
     const int TargetsPerTile = 192;
     static readonly float[] Heights = [.7f, 1.2f, 2.2f, 4f];
     static readonly float[] Lateral = [-1.15f, -.6f, 0, .6f, 1.15f];
 
-    internal static (List<Cell> Cells, object Report) Compute(IReadOnlyList<List<Mesh>> parts, IReadOnlyList<Mesh> occluderMeshes, Func<Mesh, bool> opaque, Gate[] gates, int extraTiles)
+    // far: the track's view distance (TrackDefinition.FullView), else DefaultFar.
+    internal static (List<Cell> Cells, object Report) Compute(IReadOnlyList<List<Mesh>> parts, IReadOnlyList<Mesh> occluderMeshes, Func<Mesh, bool> opaque, Gate[] gates, int extraTiles, float? far = null)
     {
+        var Far = far ?? DefaultFar;
         var bvh = new SunShadow.Bvh(occluderMeshes, m => opaque(m) ? 1 : 0);
         var rng = new Random(20261113);
         var tiles = parts.Select(meshes =>

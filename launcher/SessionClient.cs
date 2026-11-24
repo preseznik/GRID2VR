@@ -56,6 +56,8 @@ internal sealed record Choices(string Car = "pag", string Track = "p2p/okutama/r
     // CUSTOM tracks (Launcher tab): Practice and Race use CustomTrack instead of Track.
     public bool CustomTracks { get; init; }
     public string CustomTrack { get; init; } = "circuits/g2vr_nordschleife/route_0";
+    // The custom track's lighting preset (CustomTrackSource.Conditions), e.g. Misty Loch's Morning Fog.
+    public string CustomConditions { get; init; } = "day";
     // The track a Practice/Race session actually loads.
     [System.Text.Json.Serialization.JsonIgnore]
     public string SessionTrack => CustomTracks && LaunchMode is "Practice" or "Race" ? CustomTrack : Track;
@@ -100,6 +102,7 @@ internal sealed class SessionClient(string root)
         if (value.LaunchMode is not ("Practice" or "Race" or "Normal" or "Online")) throw new ArgumentException("Choose Normal, Online, Practice or Race.");
         if (!Regex.IsMatch(value.CustomTrack, @"\A(circuits|cities|p2p)/g2vr_[a-z0-9_]+/route_[0-9]+\z")) throw new ArgumentException("Invalid custom track selection.");
         if (value.Conditions is not (TrackNames.Day or TrackNames.Night or TrackNames.Sunset)) throw new ArgumentException("Choose Day, Night or Sunset.");
+        if (!Regex.IsMatch(value.CustomConditions, @"\A[a-z_]{1,24}\z")) throw new ArgumentException("Invalid custom track conditions.");
         if (value.Opponents is < 1 or > 7) throw new ArgumentException("Choose between 1 and 7 opponents.");
         if (value.OpponentCars is not ("same" or "mixed" or "class")) throw new ArgumentException("Choose Same car, Mixed or Same class.");
         if (value.CockpitDriver is not ("HeadOnly" or "HideDriver")) throw new ArgumentException("Choose a cockpit driver visibility option.");
@@ -292,7 +295,9 @@ internal sealed class SessionClient(string root)
         if (vr && value.HideLensDust) command.ArgumentList.Add("-HideLensDust");
         if (vr && value.RearMirrors && value.NativeLeftEye) command.ArgumentList.Add("-RearMirrors");
         // Normal/Online use the game's own menus; selected sessions get the route's chosen lighting.
-        var lighting = value.LaunchMode is "Practice" or "Race" ? TrackNames.Lighting(value.SessionTrack, value.Conditions) : "day";
+        // CUSTOM tracks use their own presets; session_config refuses a set the installed pack lacks.
+        var lighting = value.LaunchMode is not ("Practice" or "Race") ? "day"
+            : value.CustomTracks ? CustomTracks.Lighting(value.CustomTrack, value.CustomConditions) : TrackNames.Lighting(value.SessionTrack, value.Conditions);
         if (lighting != "day") { command.ArgumentList.Add("-Lighting"); command.ArgumentList.Add(lighting); }
         if (vr && value.RecenterDevice is not null) { command.ArgumentList.Add("-RecenterDeviceBase64"); command.ArgumentList.Add(DeviceRecenter.Encode(value.RecenterDevice)); }
         if (value.ForceFeedbackOverride)

@@ -22,6 +22,9 @@ internal static class Program
                     RouteProbe.Run(args[1], args[2], args[3], args[4]); return 0;
                 case "visual-probe" when args.Length == 5:
                     RouteProbe.Run(args[1], args[2], args[3], args[4], visuals: true); return 0;
+                case "visual-probe" when args.Length == 6 && args[5] == "--high-quality-assets":
+                    // Launcher build option: source texture resolutions (TrackVisuals.HighQualityTextureSize).
+                    RouteProbe.Run(args[1], args[2], args[3], args[4], visuals: true, highQuality: true); return 0;
                 case "visual-probe" when args.Length == 6 && args[5] == "--reverse-tile-ids":
                     // Diagnostic control: identical geometry, tile identities in reverse order.
                     RouteProbe.Run(args[1], args[2], args[3], args[4], visuals: true, reverseTileIds: true); return 0;
@@ -264,6 +267,40 @@ internal static class Program
                                 string.Join(" ", m.Textures.Select(t => $"{t.Key}={t.Value}")) + "\n            " +
                                 string.Join(" ", m.Properties.Where(p => p.Key is not ("ksSpecular" or "ksSpecularEXP" or "ksAlphaRef"))
                                     .Select(p => $"{p.Key}={string.Join(",", p.Value.Take(p.Key.StartsWith("mult") || p.Key.Contains("Mult") ? 1 : 4).Select(v => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)))}")));
+                        return 0;
+                    }
+                case "ac-small-meshes" when args.Length == 4:
+                    {
+                        // Converted visual meshes with at most N triangles or a black/blank placeholder material:
+                        // helper boxes (audio emitters, dummies) that AC hides but GRID 2 would draw.
+                        var source = AcSource.Read(args[1], args[2], (min, max) => min, visuals: true);
+                        int limit = int.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture);
+                        foreach (var group in source.Visuals.Where(m => m.Indices.Length / 3 <= limit || m.Material.Textures.Values.Any(t => t.Contains("black", StringComparison.OrdinalIgnoreCase) || t.Contains("blank", StringComparison.OrdinalIgnoreCase)) || m.Material.Name.Contains("blank", StringComparison.OrdinalIgnoreCase))
+                                     .GroupBy(m => (File: m.Material.Id[..m.Material.Id.IndexOf(':')], m.Material.Name, m.Material.Shader)))
+                        {
+                            var sizes = group.Select(m => { var lo = m.Positions.Aggregate(System.Numerics.Vector3.Min); var hi = m.Positions.Aggregate(System.Numerics.Vector3.Max); return (hi - lo).Length(); }).ToArray();
+                            Console.WriteLine($"{group.Key.File,-28} {group.Key.Name,-28} {group.Key.Shader,-22} meshes={group.Count(),4} tris={group.Sum(m => m.Indices.Length / 3),6} size={sizes.Min():0.0}-{sizes.Max():0.0} m names={string.Join(",", group.Select(m => m.Name).Distinct().Take(4))} tex={string.Join(",", group.First().Material.Textures.Values)}");
+                        }
+                        return 0;
+                    }
+                case "ac-prefixes" when args.Length == 3:
+                    {
+                        // AC_ name prefixes among all meshes (visible or not), with counts and whether physical/visible.
+                        var rows = new List<(string Prefix, bool Visible, bool Physical, int Triangles, string Material)>();
+                        var models = AcSource.Ini(File.ReadAllText(Path.Combine(args[1], $"models_{args[2]}.ini")));
+                        foreach (var (_, values) in models.Where(x => x.Key.StartsWith("MODEL_", StringComparison.Ordinal)))
+                            Kn5.Read(Path.Combine(args[1], values["FILE"]), System.Numerics.Matrix4x4.Identity, new(StringComparer.OrdinalIgnoreCase),
+                                m => { if (m.Name.StartsWith("AC_", StringComparison.Ordinal)) rows.Add((System.Text.RegularExpressions.Regex.Replace(m.Name, @"[_\d]*\d.*$|_[LR]$", ""), m.Visible, m.Physical, m.Indices.Length / 3, m.Material.Name)); });
+                        foreach (var g in rows.GroupBy(r => (r.Prefix, r.Visible, r.Physical)).OrderBy(g => g.Key.Prefix))
+                            Console.WriteLine($"{g.Key.Prefix,-20} visible={g.Key.Visible,-5} physical={g.Key.Physical,-5} meshes={g.Count()} tris={g.Sum(r => r.Triangles)} materials={string.Join(",", g.Select(r => r.Material).Distinct().Take(3))}");
+                        return 0;
+                    }
+                case "ac-spin" when args.Length == 4:
+                    {
+                        // Rotor geometry per mesh of one AC material: hub, axis, flatness, and U against angle.
+                        var source = AcSource.Read(args[1], args[2], (min, max) => min, visuals: true);
+                        foreach (var mesh in source.Visuals.Where(m => m.Material.Name == args[3]))
+                            Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(Animation.Measure(mesh)));
                         return 0;
                     }
                 case "instance-params" when args.Length >= 4:

@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "track": "rt_misty_loch",
+  "layout": "normal",
+  "note": "Assetto Corsa Misty Loch 1.4 (Reboot Team add-on) files the converter reads, pinned to the version the GRID2VR conversion is validated on (same hashes as DiRT2VR tools/misty-converter/misty-sources.json at d1e730c, assettocorsa entries). Paths are relative to content/tracks/rt_misty_loch.",
+  "files": [
+    {
+      "Path": "100.kn5",
+      "Sha256": "1220E516251DB02C430998C9BFFBEE54C8D901A0144DFF03E7C3DBB26C2C16D8"
+    },
+    {
+      "Path": "extension/ext_config.ini",
+      "Sha256": "1689385DCC5246FD6EA9149C1C58CD6C8F3083C00B011C1E6A90DC9B923481C4"
+    },
+    {
+      "Path": "heli.kn5",
+      "Sha256": "5D86A7B3C7511DFAFB61A4AF4D9E100AC799CA9D7F2D160128812440A3E3CC80"
+    },
+    {
+      "Path": "models_normal.ini",
+      "Sha256": "138D46AAC144E32A13DE16D17DC1B1C73653146BE3CE276733094480C1E186ED"
+    },
+    {
+      "Path": "normal/ai/fast_lane.ai",
+      "Sha256": "C7C1A98D47FD182C229DF3E1BE81570A9FBCDC33A6FC340B2A3AC57CFC5711B5"
+    },
+    {
+      "Path": "normal/data/surfaces.ini",
+      "Sha256": "6E9DFD91D560B369B1B0CFFEF9A20ED16D078C1907EFC9438014ADB49E25C3B1"
+    },
+    {
+      "Path": "readme.txt",
+      "Sha256": "8A7863393D03FBFA7EDAF126FCA4A1041106E3997B6EF32DB0F1CCEEFF06DE63"
+    },
+    {
+      "Path": "rt_misty_loch.kn5",
+      "Sha256": "3A0319DA1C5D02C4A1CAC2BED43B52344B5B30BBA20E1691F2267A7B057A685A"
+    },
+    {
+      "Path": "rt_misty_loch.vao-patch",
+      "Sha256": "AD8ED057B4A2B68B776B64897B30741AF075B3260D146797D46D9260F9D96282"
+    },
+    {
+      "Path": "rt_misty_loch_audio.kn5",
+      "Sha256": "17C28DCCFEB4055DB8815E6664A21832F8C2779D648DD906C04522E44040B5E9"
+    },
+    {
+      "Path": "rt_misty_loch_groove.kn5",
+      "Sha256": "36E7D3C01102F6AD3CE6C6293B89A5A836FA73FFFE393B34508A62CA41D64A64"
+    },
+    {
+      "Path": "rt_misty_loch_marker.kn5",
+      "Sha256": "7AA38BDC59D1181468B01D1486C7D6C359EC4E4291159B125AAF79E6092B6501"
+    },
+    {
+      "Path": "rt_misty_loch_phy.kn5",
+      "Sha256": "72DB19CCC33BC2A31501C497380F7741BBBEC01C06D946346088EAAFDB86AAD2"
+    },
+    {
+      "Path": "rt_misty_loch_ships.kn5",
+      "Sha256": "25D3D359A26B811EB2E75835DE99C6CD6F94071D628C71118653BC25F6E3A755"
+    },
+    {
+      "Path": "rt_misty_loch_slabs.kn5",
+      "Sha256": "980FA57307684D582290190D6A3E5A5D230C8CBDD6AF645A1B09076E1B65E76D"
+    },
+    {
+      "Path": "rt_misty_loch_trees.kn5",
+      "Sha256": "22B41AF9378FD8C642A8903FDC4D6F24E700FB0F72F4032570850A5A8E7C1026"
+    },
+    {
+      "Path": "ui/normal/ui_track.json",
+      "Sha256": "6BD8C4F337E625B10A34FF9CCC16D1D60198080AE4EAC658D79AE5A8C9E6514C"
+    }
+  ]
+}
