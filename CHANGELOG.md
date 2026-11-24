@@ -1,3 +1,17 @@
+# GRID2VR 0.2.27 — Experimental
+
+- **Custom tracks: Misty Loch (Experimental).** With **CUSTOM tracks** on, **Build and install…** converts Misty Loch, a 6.4 km lakeside road circuit in the Scottish mountains, from your own Assetto Corsa copy of the free Misty Loch 1.4 add-on (Reboot Team). It builds both directions, **Misty Loch** and **Misty Loch Reverse**, for Practice and Race, in VR and Desktop, with moving lake water, sailing boats and a turning helicopter rotor. AI pace is approximate.
+
+- **Conditions for custom tracks.** Misty Loch offers **Daylight**, **Evening** and **Morning Fog**. Evening has low sunset light with car lights on; Morning Fog is dense grey fog that hides the hills. The Nordschleife stays Daylight only.
+
+- **Build with high quality assets.** Keeps Assetto Corsa textures at up to 4096 px instead of 1024, so surfaces look sharper. Misty Loch then takes about 710 MB instead of 430 MB, and more graphics card memory. Rebuild a track to change its quality.
+
+- **Look Back in VR cockpit view.** Look Back now shows the view from the car's own rear camera, above the boot, instead of turning you around in your seat to face the headrest. Desktop cockpit and chase views are unchanged.
+
+- **Race intro on custom tracks.** The shots before a race now show the grid and the cars. Before, they showed empty hillside, often from inside it. On the Nordschleife, rebuild the track (**Manage… → Rebuild from source…**) to get them.
+
+- **Clearer warning for a missing controller.** When a controller from **Driving controls** isn't connected, the warning now offers **Launch anyway** or **Cancel launch** instead of Yes and No.
+
 # GRID2VR 0.2.26 — Experimental
 
 - **Wheel controls after Windows re-registers your wheel.** A driver or G HUB update, plugging the wheel into another USB port, or reinstalling Windows can make Windows treat your wheel as a new device. Your bindings then still showed in **Driving controls**, but did nothing in the game, and force feedback was gone. Before each launch, the launcher now moves your bindings to the connected wheel of the same model and tells you it did. If a bound controller isn't connected, or two of the same model are connected so it can't tell which is yours, the launcher asks before starting instead of launching with dead controls.
