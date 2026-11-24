@@ -674,10 +674,23 @@ internal sealed partial class MainForm : LauncherForm
             notice.Text = "Driving controls now use " + string.Join(", ", retargeted) + ": Windows re-registered it since your bindings were made.";
         }
         if (missing.Count == 0) return true;
-        var answer = MessageBox.Show(this, "These controllers from Driving controls are not connected: " + string.Join(", ", missing.Distinct()) + "." + Environment.NewLine + Environment.NewLine +
-            "Their bindings and force feedback will not work in this session. Connect them and launch again, or launch anyway?", "Driving controls",
-            MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-        if (answer == DialogResult.Yes) return true;
+        // Named buttons: the choice is launching without the controller or stopping to connect it.
+        var launchAnyway = new TaskDialogButton("Launch anyway");
+        var cancel = new TaskDialogButton("Cancel launch");
+        var names = missing.Distinct().ToList();
+        var one = names.Count == 1;
+        var answer = TaskDialog.ShowDialog(this, new TaskDialogPage
+        {
+            Caption = "Driving controls",
+            Heading = one ? "A controller from Driving controls is not connected" : "Controllers from Driving controls are not connected",
+            Text = "Not connected: " + string.Join(", ", names) + "." + Environment.NewLine + Environment.NewLine +
+                (one ? "If you launch anyway, its bindings and force feedback will not work in this session. To use it, cancel, connect it, then launch again."
+                     : "If you launch anyway, their bindings and force feedback will not work in this session. To use them, cancel, connect them, then launch again."),
+            Icon = TaskDialogIcon.Warning,
+            Buttons = { launchAnyway, cancel },
+            DefaultButton = cancel,
+        });
+        if (answer == launchAnyway) return true;
         notice.Text = "Launch cancelled. Connect the controller, then launch again.";
         return false;
     }
