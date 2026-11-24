@@ -16,7 +16,7 @@ namespace GRID2VR.Tracks;
 // new grid as it framed the old one. Timing curves and the dynamic rig are unchanged.
 internal static class ReplayCameras
 {
-    internal static object Write(string donorRoute, string routeOut, IReadOnlyList<QuadTreeDataTriangle> ground)
+    internal static object Write(string donorRoute, string routeOut, IReadOnlyList<QuadTreeDataTriangle> ground, SceneryHeights scenery)
     {
         var heights = new GroundIndex(ground);
         var (donorPole, donorForward) = Pole(Files.Pssg(Path.Combine(donorRoute, "grids.pssg")));
@@ -65,6 +65,7 @@ internal static class ReplayCameras
                 foreach (var position in camera.Elements("Parameter").Where(e => (string?)e.Attribute("name") == "Position")) { var v = GetVector(position); v.Y += lift; SetVector(position, v); }
         }
         foreach (var zone in root.Elements("TriggerZone")) { Transform(zone, "position"); zones++; }
+        var intro = Reanchor(root, splines, Slots(Files.Pssg(Path.Combine(routeOut, "grids.pssg"))), heights, scenery);
 
         void Transform(XElement element, string positionName = "Position")
         {
@@ -91,11 +92,97 @@ internal static class ReplayCameras
             DonorPole = new[] { donorPole.X, donorPole.Y, donorPole.Z }, Pole = new[] { pole.X, pole.Y, pole.Z },
             YawDegrees = MathF.Round(2 * MathF.Acos(Math.Clamp(yaw.W, -1, 1)) * 180 / MathF.PI * MathF.Sign(yaw.Y), 2),
             WorldPathPoints = points, WorldCameras = cameras, TriggerZones = zones,
-            SplinesLiftedAboveGround = lifted, SplinesWithoutCollisionBelow = uncovered, MinimumClearanceMetres = MinimumClearance
+            SplinesLiftedAboveGround = lifted, SplinesWithoutCollisionBelow = uncovered, MinimumClearanceMetres = MinimumClearance,
+            Intro = intro
         };
     }
 
     const float MinimumClearance = 2;
+
+    // Race-intro shots (reveal_*, transition_*, grid_*, 12watch_* with a target). The rigid move
+    // keeps them where they were relative to the donor's pole, which frames nothing here: on
+    // Misty Loch they looked at hillsides 270-440 m from the grid, mostly from inside them
+    // (iztok, 0.2.27 test 2026-11-24; camera-path.jsonl of run 20261124-180306-741). Each shot is
+    // moved so its target is the middle of this grid, keeping its distance, height and
+    // motion, then turned about the grid (0, ±20°, ... 180°, raised up to 30 m if needed) to the
+    // first vantage where every camera point is outside the scenery, clear of the ground and
+    // sees its target.
+    static readonly string[] IntroPrefixes = ["reveal_", "transition_", "grid_", "12watch_"];
+
+    static object Reanchor(XElement root, List<XElement> splines, IReadOnlyList<Vector3> slots, GroundIndex ground, SceneryHeights scenery)
+    {
+        var anchor = slots.Aggregate(Vector3.Zero, (sum, s) => sum + s) / slots.Count + Vector3.UnitY;
+        var byIdent = splines.GroupBy(p => (string)p.Attribute("ident")!).ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+        var cameras = root.Elements("Camera").ToList();
+        // Paths any other camera also uses stay as they are.
+        var users = cameras.SelectMany(c => new[] { (string?)c.Attribute("sourcePath"), (string?)c.Attribute("targetPath") }.Where(s => !string.IsNullOrEmpty(s)).Distinct().Select(s => s!))
+            .GroupBy(s => s, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var shots = new List<object>();
+        foreach (var camera in cameras)
+        {
+            string ident = (string?)camera.Attribute("ident") ?? "";
+            string? sourceIdent = (string?)camera.Attribute("sourcePath"), targetIdent = (string?)camera.Attribute("targetPath");
+            if (!IntroPrefixes.Any(p => ident.StartsWith(p, StringComparison.Ordinal)) || string.IsNullOrEmpty(targetIdent) || string.IsNullOrEmpty(sourceIdent)) continue;
+            if (!byIdent.TryGetValue(sourceIdent, out var sourcePaths) || !byIdent.TryGetValue(targetIdent, out var targetPaths)) continue;
+            if (users[sourceIdent] > 1 || users[targetIdent] > 1) { shots.Add(new { Camera = ident, Kept = "path shared with another camera" }); continue; }
+            var eye = sourcePaths.SelectMany(p => p.Elements("Point")).Select(GetVector).ToArray();
+            var aim = targetPaths.SelectMany(p => p.Elements("Point")).Select(GetVector).ToArray();
+            // The target's middle goes to the grid's middle, its lowest point to the grid's
+            // height: crane shots whose target rises (to the sky) start on the cars.
+            var centre = aim.Aggregate(Vector3.Zero, (sum, v) => sum + v) / aim.Length;
+            var shift = new Vector3(anchor.X - centre.X, anchor.Y - aim.Min(v => v.Y), anchor.Z - centre.Z);
+            // Shots that looked up at the donor's stands or trees would sit under this grid:
+            // every camera point starts at least 1.5 m above the target.
+            float floor = MathF.Max(0, anchor.Y + 1.5f - eye.Min(v => v.Y + shift.Y));
+            Vector3 Place(Vector3 v, Quaternion turn, float lift) => Vector3.Transform(v + shift - anchor, turn) + anchor + (lift > 0 ? new Vector3(0, lift, 0) : Vector3.Zero);
+            bool Clear(Quaternion turn, float lift)
+            {
+                for (int i = 0; i < eye.Length; i++)
+                {
+                    var p = Place(eye[i], turn, lift);
+                    if (ground.Highest(p.X, p.Z) is float h && p.Y < h + MinimumClearance) return false;
+                    if (scenery.Empty) continue;
+                    var (inside, below) = scenery.At(p);
+                    if (inside || (below is float b && p.Y < b + MinimumClearance)) return false;
+                    var target = Place(aim[Math.Min(aim.Length - 1, i * aim.Length / eye.Length)], turn, 0);
+                    if (scenery.Blocked(p, target, 6)) return false;
+                }
+                return true;
+            }
+            (float Degrees, float Lift)? found = null;
+            foreach (var lift in new float[] { 0, 5, 10, 20, 30 }.Select(l => l + floor))
+            {
+                foreach (var step in Enumerable.Range(0, 19).Select(k => (k + 1) / 2 * 20f * (k % 2 == 0 ? 1 : -1)).Where(d => d > -180))
+                    if (Clear(Quaternion.CreateFromAxisAngle(Vector3.UnitY, step * MathF.PI / 180), lift)) { found = (step, lift); break; }
+                if (found is not null) break;
+            }
+            var (degrees, raise) = found ?? (0, floor);
+            var turn = Quaternion.CreateFromAxisAngle(Vector3.UnitY, degrees * MathF.PI / 180);
+            foreach (var point in sourcePaths.SelectMany(p => p.Elements("Point"))) SetVector(point, Place(GetVector(point), turn, raise));
+            foreach (var point in targetPaths.SelectMany(p => p.Elements("Point"))) SetVector(point, Place(GetVector(point), turn, 0));
+            foreach (var parameter in camera.Elements("Parameter"))
+            {
+                string? name = (string?)parameter.Attribute("name");
+                if (name == "Position" && (string?)parameter.Attribute("type") == "vector3") SetVector(parameter, Place(GetVector(parameter), turn, raise));
+                else if (name == "orientation" && (string?)parameter.Attribute("type") == "Quaternion")
+                {
+                    var r = Quaternion.Normalize(turn * new Quaternion(F(parameter, "x"), F(parameter, "y"), F(parameter, "z"), F(parameter, "w")));
+                    foreach (var (axis, value) in new[] { ("x", r.X), ("y", r.Y), ("z", r.Z), ("w", r.W) }) parameter.SetAttributeValue(axis, value.ToString("0.000000", CultureInfo.InvariantCulture));
+                }
+            }
+            var first = Place(eye[0], turn, raise);
+            shots.Add(new
+            {
+                Camera = ident, Distance = MathF.Round(Vector3.Distance(eye[0], aim[0]), 1), TurnDegrees = degrees, RaisedMetres = raise,
+                Clear = found is not null, Eye = new[] { MathF.Round(first.X, 1), MathF.Round(first.Y, 1), MathF.Round(first.Z, 1) }
+            });
+        }
+        return new { Target = new[] { MathF.Round(anchor.X, 1), MathF.Round(anchor.Y, 1), MathF.Round(anchor.Z, 1) }, SceneryChecked = !scenery.Empty, Shots = shots };
+    }
+
+    // Every grid slot position (slot_00 ...).
+    static List<Vector3> Slots(EgoEngineLibrary.Graphics.Pssg.PssgFile grid) =>
+        [.. grid.Elements<PssgNode>().Where(n => n.Id?.StartsWith("slot_", StringComparison.Ordinal) == true).Select(n => new Vector3(n.Transform.Transform.M41, n.Transform.Transform.M42, n.Transform.Transform.M43))];
 
     // Highest collision surface under (x, z), via a 25 m cell index.
     sealed class GroundIndex

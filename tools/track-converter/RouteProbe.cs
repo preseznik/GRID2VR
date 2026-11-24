@@ -60,7 +60,9 @@ internal static class RouteProbe
         WriteCollision(source, routeOut);
         var route = WriteRoute(source, donorRoute, routeOut, [.. definition.BrakeZones.Where(z => z.Layout == layout)]);
         var grid = WriteGrid(source, donorRoute, routeOut);
-        var cameras = ReplayCameras.Write(donorRoute, routeOut, source.Collision);
+        // Drawn scenery for the intro shots' clearance and sight lines (glass does not block a view).
+        var scenery = new SceneryHeights(visuals ? source.Visuals.Where(m => !m.Material.Name.Contains("glass", StringComparison.OrdinalIgnoreCase)) : []);
+        var cameras = ReplayCameras.Write(donorRoute, routeOut, source.Collision, scenery);
         WriteRecovery(source, routeOut);
         object? visualReport = null;
         if (visuals)
@@ -107,7 +109,7 @@ internal static class RouteProbe
             WriteCollision(extra, extraOut);
             var extraRouteReport = WriteRoute(extra, donorRoute, extraOut, [.. definition.BrakeZones.Where(z => z.Layout == extraLayout)]);
             var extraGrid = WriteGrid(extra, donorRoute, extraOut);
-            var extraCameras = ReplayCameras.Write(donorRoute, extraOut, extra.Collision);
+            var extraCameras = ReplayCameras.Write(donorRoute, extraOut, extra.Collision, scenery);
             WriteRecovery(extra, extraOut);
             // track.vis is position-based (eyes along the road, all directions), so the main
             // route's sets serve another layout of the same road. Required: every one of its

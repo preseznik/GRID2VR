@@ -513,6 +513,34 @@ internal static class Program
                         }
                         return 0;
                     }
+                case "camera-ground" when args.Length == 8:
+                    {
+                        // Replay/intro camera clearance against the drawn scenery. args: track layout
+                        // replay_camera_config.xml tx ty tz text-out (Translation from build.json; text-out
+                        // receives the readable XML). Per world spline: points inside the scenery (the
+                        // first surface straight up is seen from behind) and the least height above it.
+                        var source = AcSource.Read(args[1], args[2], (min, max) => System.Numerics.Vector3.Zero, visuals: true);
+                        var t = new System.Numerics.Vector3(float.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture), float.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture), float.Parse(args[6], System.Globalization.CultureInfo.InvariantCulture));
+                        var probe = new SceneryHeights(source.Visuals.Where(m => !m.Material.Name.Contains("glass", StringComparison.OrdinalIgnoreCase)), t);
+                        System.Xml.Linq.XDocument doc;
+                        using (var stream = File.OpenRead(args[3])) doc = System.Xml.Linq.XDocument.Parse(new EgoEngineLibrary.Xml.XmlFile(stream).Document.OuterXml);
+                        doc.Save(args[7]);
+                        static System.Numerics.Vector3 V(System.Xml.Linq.XElement e) => new(float.Parse((string)e.Attribute("x")!, System.Globalization.CultureInfo.InvariantCulture), float.Parse((string)e.Attribute("y")!, System.Globalization.CultureInfo.InvariantCulture), float.Parse((string)e.Attribute("z")!, System.Globalization.CultureInfo.InvariantCulture));
+                        foreach (var path in doc.Root!.Elements("Path").Where(p => (string?)p.Attribute("type") == "spline"))
+                        {
+                            int inside = 0, n = 0; float least = float.MaxValue;
+                            foreach (var point in path.Elements("Point"))
+                            {
+                                var p = V(point); n++;
+                                var (under, above) = probe.At(p);
+                                if (under) inside++;
+                                else if (above is float h) least = MathF.Min(least, p.Y - h);
+                            }
+                            var first = V(path.Elements("Point").First());
+                            Console.WriteLine($"{(string?)path.Attribute("ident"),-40} {n,3} pts  inside {inside,3}  least {(least == float.MaxValue ? "-" : least.ToString("0.0")),6} m  first ({first.X:0},{first.Y:0},{first.Z:0})");
+                        }
+                        return 0;
+                    }
                 case "ai-widths" when args.Length is 3 or 5:
                     {
                         // AC driving-line side widths vs drivable collision (road/kerb) at each gate.
